@@ -96,12 +96,16 @@ describe("production gateway proxy contract", () => {
       expect(nginxTemplate).toContain("map $request_uri $citylife_ws_original");
       expect(nginxTemplate).toContain('map "$citylife_ws_normalized$citylife_ws_original" $citylife_ws_log_safe');
       expect(nginxTemplate).toContain("map $citylife_ws_log_safe $citylife_log_request");
+      expect(nginxTemplate).toContain("map $request_uri $citylife_sensitive_clean_req");
+      expect(nginxTemplate).toContain("map $uri $citylife_sensitive_clean_uri");
+      expect(nginxTemplate).toContain("map $citylife_sensitive_clean_req $citylife_clean_path");
       expect(nginxTemplate).toContain("map $http_referer $citylife_log_referer");
     });
 
     it("verifies map regex logic for sensitive aliases and referer sanitization", () => {
-      const sensitiveNormalizedRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:\/|$)/;
-      const sensitiveOriginalRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:[/?]|$)/;
+      const sensitiveNormalizedRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:%3[fF]|[/?]|$)/i;
+      const sensitiveOriginalRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:%3[fF]|[/?]|$)/i;
+      const cleanPathRe = /^((?:(?:\/kooker)?\/api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)\/?))(?:%3[fF]|\?|\/|$)/i;
       const refererSanitizeRe = /(?:\?|%3f)/i;
 
       // Sensitive path matches: ws, browser-ws, auth/cookie, auth/clear (direct and /kooker alias)
@@ -128,7 +132,28 @@ describe("production gateway proxy contract", () => {
         expect(sensitiveNormalizedRe.test(p), `normalized must match ${p}`).toBe(true);
         expect(sensitiveOriginalRe.test(p), `original must match ${p}`).toBe(true);
         expect(sensitiveOriginalRe.test(`${p}?token=secret`), `original with query must match ${p}`).toBe(true);
+        expect(sensitiveOriginalRe.test(`${p}%3ftoken=secret`), `original with encoded lower %3f must match ${p}`).toBe(true);
+        expect(sensitiveOriginalRe.test(`${p}%3Ftoken=secret`), `original with encoded upper %3F must match ${p}`).toBe(true);
       }
+
+      // Legacy fae1090 regression negative: legacy original regex lacked %3[fF] and missed encoded queries
+      const legacyFaeOriginalRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:[/?]|$)/;
+      expect(legacyFaeOriginalRe.test("/api/v1/citylife/ws%3ftoken=secret")).toBe(false);
+      expect(legacyFaeOriginalRe.test("/api/v1/citylife/ws%3Ftoken=secret")).toBe(false);
+      expect(legacyFaeOriginalRe.test("/kooker/api/v1/citylife/ws%3ftoken=secret")).toBe(false);
+      expect(legacyFaeOriginalRe.test("/kooker/api/v1/citylife/ws%3Ftoken=secret")).toBe(false);
+
+      // Clean path extraction verifies stripping queries without echoing decoded ?token into access.log
+      const extractClean = (u: string) => {
+        const m = u.match(cleanPathRe);
+        return m ? m[1] : null;
+      };
+      expect(extractClean("/api/v1/citylife/ws%3Ftoken=secret")).toBe("/api/v1/citylife/ws");
+      expect(extractClean("/api/v1/citylife/ws%3ftoken=secret")).toBe("/api/v1/citylife/ws");
+      expect(extractClean("/kooker/api/v1/citylife/ws%3Ftoken=secret")).toBe("/kooker/api/v1/citylife/ws");
+      expect(extractClean("/api/v1/citylife/ws?token=secret")).toBe("/api/v1/citylife/ws");
+      expect(extractClean("/api/v1/citylife/ws/?token=secret")).toBe("/api/v1/citylife/ws/");
+      expect(extractClean("/ask?search=query")).toBeNull();
 
       // Unrelated paths do not match (preserving ordinary access diagnostics)
       expect(sensitiveNormalizedRe.test("/ask")).toBe(false);
@@ -227,9 +252,9 @@ describe("production gateway proxy contract", () => {
     });
 
     it("dispositions internal browser-ws route against public exposure with 404", () => {
-      expect(nginxTemplate).toContain("location ~ ^/(?:kooker/)?api/v1/citylife/browser-ws(?:/|$) {");
+      expect(nginxTemplate).toContain("location ~ ^/(?:kooker/)?api/v1/citylife/browser-ws(?:%3[fF]|\\?|/|$) {");
       const match = nginxTemplate.match(
-        /location ~ \^\/\(\?:kooker\/\)\?api\/v1\/citylife\/browser-ws\(\?:\/\|\$\) \{([\s\S]*?)\n    \}/,
+        /location ~ \^\/\(\?:kooker\/\)\?api\/v1\/citylife\/browser-ws\(\?:%3\[fF\]\|\\\?\|\/\|\$\) \{([\s\S]*?)\n    \}/,
       );
       expect(match).not.toBeNull();
       expect(match![1]).toContain("return 404;");
@@ -245,13 +270,15 @@ describe("production gateway proxy contract", () => {
     });
 
     it("verifies browser-ws blocking regex matches internal aliases and rejects valid routes", () => {
-      const browserWsBlockRe = /^\/(?:kooker\/)?api\/v1\/citylife\/browser-ws(?:\/|$)/;
+      const browserWsBlockRe = /^\/(?:kooker\/)?api\/v1\/citylife\/browser-ws(?:%3[fF]|\?|\/|$)/i;
 
       // Internal browser-ws routes must match (and be 404'd)
       expect(browserWsBlockRe.test("/api/v1/citylife/browser-ws")).toBe(true);
       expect(browserWsBlockRe.test("/api/v1/citylife/browser-ws/")).toBe(true);
       expect(browserWsBlockRe.test("/kooker/api/v1/citylife/browser-ws")).toBe(true);
       expect(browserWsBlockRe.test("/kooker/api/v1/citylife/browser-ws/")).toBe(true);
+      expect(browserWsBlockRe.test("/api/v1/citylife/browser-ws%3ftoken=abc")).toBe(true);
+      expect(browserWsBlockRe.test("/kooker/api/v1/citylife/browser-ws%3Ftoken=abc")).toBe(true);
 
       // Valid public ws and auth routes must not match
       expect(browserWsBlockRe.test("/api/v1/citylife/ws")).toBe(false);
@@ -349,5 +376,3 @@ describe("production gateway proxy contract", () => {
     });
   });
 });
-
-

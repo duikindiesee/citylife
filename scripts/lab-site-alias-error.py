@@ -217,16 +217,33 @@ server.serve_forever()
         m11 = "FABRICATED_REFERER_11"
         r20 = test_req("referer_sanitized", "/api/v1/citylife/ws", headers=["Referer: https://example.invalid/?token=" + m11])
 
+        # Encoded query path variants (%3f lower and %3F upper, direct and /kooker aliases)
+        m_enc_01 = "FABRICATED_ENC_WS_DIRECT_LOWER_01"
+        r_enc_01 = test_req("ws_enc_direct_lower_404", f"/api/v1/citylife/ws%3ftoken={m_enc_01}")
+        m_enc_02 = "FABRICATED_ENC_WS_DIRECT_UPPER_02"
+        r_enc_02 = test_req("ws_enc_direct_upper_404", f"/api/v1/citylife/ws%3Ftoken={m_enc_02}")
+        m_enc_03 = "FABRICATED_ENC_WS_KOOKER_LOWER_03"
+        r_enc_03 = test_req("ws_enc_kooker_lower_404", f"/kooker/api/v1/citylife/ws%3ftoken={m_enc_03}")
+        m_enc_04 = "FABRICATED_ENC_WS_KOOKER_UPPER_04"
+        r_enc_04 = test_req("ws_enc_kooker_upper_404", f"/kooker/api/v1/citylife/ws%3Ftoken={m_enc_04}")
+        m_enc_05 = "FABRICATED_ENC_BWS_DIRECT_05"
+        r_enc_05 = test_req("bws_enc_direct_404", f"/api/v1/citylife/browser-ws%3ftoken={m_enc_05}")
+        m_enc_06 = "FABRICATED_ENC_BWS_KOOKER_06"
+        r_enc_06 = test_req("bws_enc_kooker_404", f"/kooker/api/v1/citylife/browser-ws%3Ftoken={m_enc_06}")
+        m_enc_07 = "FABRICATED_ENC_COOKIE_DIRECT_07"
+        r_enc_07 = test_req("cookie_enc_direct_404", f"/api/v1/citylife/auth/cookie%3ftoken={m_enc_07}")
+        m_enc_08 = "FABRICATED_ENC_COOKIE_KOOKER_08"
+        r_enc_08 = test_req("cookie_enc_kooker_404", f"/kooker/api/v1/citylife/auth/cookie%3Ftoken={m_enc_08}")
+        m_enc_09 = "FABRICATED_ENC_CLEAR_DIRECT_09"
+        r_enc_09 = test_req("clear_enc_direct_404", f"/api/v1/citylife/auth/clear%3ftoken={m_enc_09}")
+        m_enc_10 = "FABRICATED_ENC_CLEAR_KOOKER_10"
+        r_enc_10 = test_req("clear_enc_kooker_404", f"/kooker/api/v1/citylife/auth/clear%3Ftoken={m_enc_10}")
+
         # -------------------------------------------------------------
         # Part C: Ordinary diagnostic preservation (access.log)
         # -------------------------------------------------------------
         m12 = "FABRICATED_ORDINARY_QUERY_12"
         r21 = test_req("ordinary_query_preserved", f"/ask?search={m12}")
-
-        # Fetch rendered access and error logs before shutting down upstream
-        nginx_logs = run_cmd(["docker", "logs", nginx_name])
-        access_log = nginx_logs.stdout
-        gw_logs = run_cmd(["docker", "logs", gw_name]).stdout
 
         # -------------------------------------------------------------
         # Part D: Pre-Emission Containment Acceptance (502 & error.log)
@@ -246,17 +263,30 @@ server.serve_forever()
         m14 = "FABRICATED_UPSTREAM_FAIL_KOOKER_14"
         r23 = test_req("upstream_failure_kooker_502", f"/kooker/api/v1/citylife/ws?token={m14}", headers=["Upgrade: websocket", "Connection: upgrade"])
 
-        # 4. Sensitive URL-encoded query in path rejected with 404 (preventing SPA fallback)
+        # 4. Sensitive URL-encoded query in path rejected with 404 (lower %3f and upper %3F, direct and /kooker)
         m15 = "FABRICATED_UPSTREAM_FAIL_ENCODED_15"
         r24 = test_req("upstream_failure_encoded_404", f"/api/v1/citylife/ws%3ftoken={m15}", headers=["Upgrade: websocket", "Connection: upgrade"])
+        m15_upper = "FABRICATED_UPSTREAM_FAIL_ENCODED_UPPER_15B"
+        r24_upper = test_req("upstream_failure_encoded_upper_404", f"/kooker/api/v1/citylife/ws%3Ftoken={m15_upper}", headers=["Upgrade: websocket", "Connection: upgrade"])
 
         # 5. Query-bearing Referer on 404
         m16 = "FABRICATED_REFERER_404_16"
         r25 = test_req("referer_404_sanitized", "/missing-file.html", headers=["Referer: https://example.invalid/path?jwt=" + m16])
 
+        # Fetch rendered access and error logs AFTER all Part B, C, and D requests (including all encoded requests)
         time.sleep(0.5)
         nginx_logs_post = run_cmd(["docker", "logs", nginx_name])
+        access_log_post = nginx_logs_post.stdout
         error_log_post = nginx_logs_post.stderr
+        gw_logs = run_cmd(["docker", "logs", gw_name]).stdout
+
+        # Map Regression Negative: evaluate legacy fae1090 regex against encoded query path
+        import re
+        legacy_map_re = re.compile(r"^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:[/?]|$)")
+        corrected_map_re = re.compile(r"^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:%3[fF]|[/?]|$)", re.IGNORECASE)
+        test_enc_path = "/api/v1/citylife/ws%3Ftoken=CANARY"
+        legacy_missed_encoded = not bool(legacy_map_re.search(test_enc_path))
+        corrected_matches_encoded = bool(corrected_map_re.search(test_enc_path))
 
         # -------------------------------------------------------------
         # Part E: Process Lifecycle, Drain & Fail-Closed Contract
@@ -356,21 +386,44 @@ server.serve_forever()
             ("cookie_trailing_kooker_404 returns 404", r15["status"] == 404),
             ("clear_trailing_direct_404 returns 404", r16["status"] == 404),
             ("clear_trailing_kooker_404 returns 404", r17["status"] == 404),
+            ("ws_enc_direct_lower_404 returns 404 (not 200 SPA index)", r_enc_01["status"] == 404 and "SPA Index" not in r_enc_01["body"]),
+            ("ws_enc_direct_upper_404 returns 404", r_enc_02["status"] == 404),
+            ("ws_enc_kooker_lower_404 returns 404", r_enc_03["status"] == 404),
+            ("ws_enc_kooker_upper_404 returns 404", r_enc_04["status"] == 404),
+            ("bws_enc_direct_404 returns 404", r_enc_05["status"] == 404),
+            ("bws_enc_kooker_404 returns 404", r_enc_06["status"] == 404),
+            ("cookie_enc_direct_404 returns 404", r_enc_07["status"] == 404),
+            ("cookie_enc_kooker_404 returns 404", r_enc_08["status"] == 404),
+            ("clear_enc_direct_404 returns 404", r_enc_09["status"] == 404),
+            ("clear_enc_kooker_404 returns 404", r_enc_10["status"] == 404),
 
-            # Part C: Access Log Sanitization & Non-Leak
-            ("access.log does not leak FABRICATED_MARKER_01", m01 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_02", m02 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_03", m03 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_04", m04 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_05", m05 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_06", m06 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_07", m07 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_08", m08 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_09", m09 not in access_log),
-            ("access.log does not leak FABRICATED_MARKER_10", m10 not in access_log),
-            ("access.log does not leak FABRICATED_REFERER_11", m11 not in access_log),
+            # Part C: Access Log Sanitization & Non-Leak (Post-Request Stream)
+            ("access.log does not leak FABRICATED_MARKER_01", m01 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_02", m02 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_03", m03 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_04", m04 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_05", m05 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_06", m06 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_07", m07 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_08", m08 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_09", m09 not in access_log_post),
+            ("access.log does not leak FABRICATED_MARKER_10", m10 not in access_log_post),
+            ("access.log does not leak FABRICATED_REFERER_11", m11 not in access_log_post),
+            ("access.log does not leak encoded ws direct lower marker", m_enc_01 not in access_log_post),
+            ("access.log does not leak encoded ws direct upper marker", m_enc_02 not in access_log_post),
+            ("access.log does not leak encoded ws kooker lower marker", m_enc_03 not in access_log_post),
+            ("access.log does not leak encoded ws kooker upper marker", m_enc_04 not in access_log_post),
+            ("access.log does not leak encoded bws direct marker", m_enc_05 not in access_log_post),
+            ("access.log does not leak encoded bws kooker marker", m_enc_06 not in access_log_post),
+            ("access.log does not leak encoded cookie direct marker", m_enc_07 not in access_log_post),
+            ("access.log does not leak encoded cookie kooker marker", m_enc_08 not in access_log_post),
+            ("access.log does not leak encoded clear direct marker", m_enc_09 not in access_log_post),
+            ("access.log does not leak encoded clear kooker marker", m_enc_10 not in access_log_post),
+            ("access.log does not leak upstream encoded marker 15", m15 not in access_log_post),
+            ("access.log does not leak upstream encoded upper marker 15B", m15_upper not in access_log_post),
             ("ordinary_query_preserved returns 200", r21["status"] == 200),
-            ("access.log PRESERVES ordinary non-sensitive query diagnostics", m12 in access_log),
+            ("access.log PRESERVES ordinary non-sensitive query diagnostics", m12 in access_log_post),
+            ("access.log safely renders clean path without raw or decoded query parameters", '"GET /api/v1/citylife/ws HTTP/1.1"' in access_log_post),
 
             # Part D: Pre-Emission Containment Acceptance
             ("ordinary_upstream_error_502 returns 502 Bad Gateway", r_ord_err["status"] == 502),
@@ -379,11 +432,15 @@ server.serve_forever()
             ("upstream_failure_direct_502 returns 502 Bad Gateway", r22["status"] == 502),
             ("upstream_failure_kooker_502 returns 502 Bad Gateway", r23["status"] == 502),
             ("upstream_failure_encoded_404 returns 404 (preventing SPA fallback)", r24["status"] == 404),
+            ("upstream_failure_encoded_upper_404 returns 404", r24_upper["status"] == 404),
             ("error.log SANITIZES and does not leak direct sensitive marker 13", m13 not in error_log_post),
             ("error.log SANITIZES and does not leak kooker sensitive marker 14", m14 not in error_log_post),
             ("error.log SANITIZES and does not leak encoded sensitive marker 15", m15 not in error_log_post),
+            ("error.log SANITIZES and does not leak encoded sensitive upper marker 15B", m15_upper not in error_log_post),
             ("error.log SANITIZES and does not leak 404 referer marker 16", m16 not in error_log_post),
             ("error.log confirms pre-emission [REDACTED] substitution in output stream", "[REDACTED]" in error_log_post),
+            ("legacy map regex reproduces encoded %3F classification miss (regression negative)", legacy_missed_encoded),
+            ("corrected map regex classifies encoded %3f and %3F into safe log rendering", corrected_matches_encoded),
 
             # Part E: Process Lifecycle, Drain & Fail-Closed Contract
             ("container graceful stop completes cleanly within 3s", graceful_stop_ok),
@@ -422,7 +479,7 @@ server.serve_forever()
             json.dump(results, f, indent=2)
 
         with open(os.path.join(outputs_dir, "effective-access.log"), "w") as f:
-            f.write(access_log)
+            f.write(access_log_post)
 
         with open(os.path.join(outputs_dir, "effective-error.log"), "w") as f:
             f.write(error_log_post)

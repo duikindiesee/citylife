@@ -4,22 +4,35 @@
 # to the gateway like the vite dev proxy, so a production build reaches kooker the same way.
 
 # Shared declarations: effective only when referenced by the chosen access log format.
-# $uri is normalized; raw $request_uri catches later internal rewrites and denials.
+# $uri is normalized (and decodes %3F to ?); raw $request_uri catches raw %3f/%3F encodings, trailing slashes, and raw ?.
 map $uri $citylife_ws_normalized {
     default 0;
-    ~^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:/|$) 1;
+    ~*^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:%3[fF]|[/?]|$) 1;
 }
 map $request_uri $citylife_ws_original {
     default 0;
-    ~^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:[/?]|$) 1;
+    ~*^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:%3[fF]|[/?]|$) 1;
 }
 map "$citylife_ws_normalized$citylife_ws_original" $citylife_ws_log_safe {
     default 0;
     ~1 1;
 }
+# Extract clean sensitive path without raw or decoded query parameters
+map $request_uri $citylife_sensitive_clean_req {
+    default "";
+    ~*^((?:/kooker)?/api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)/?)(?:%3[fF]|\?|/|$) $1;
+}
+map $uri $citylife_sensitive_clean_uri {
+    default "";
+    ~*^((?:/kooker)?/api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)/?)(?:%3[fF]|\?|/|$) $1;
+}
+map $citylife_sensitive_clean_req $citylife_clean_path {
+    default $citylife_sensitive_clean_uri;
+    ~.+ $citylife_sensitive_clean_req;
+}
 map $citylife_ws_log_safe $citylife_log_request {
     default $request;
-    1 "$request_method $uri $server_protocol";
+    1 "$request_method $citylife_clean_path $server_protocol";
 }
 # Any query-like Referer on any route is a deliberate narrow exception to
 # otherwise byte-identical unrelated-route access diagnostics.
@@ -198,7 +211,7 @@ server {
     }
 
     # Deny direct public access to internal browser-ws endpoints (both direct and /kooker alias)
-    location ~ ^/(?:kooker/)?api/v1/citylife/browser-ws(?:/|$) {
+    location ~ ^/(?:kooker/)?api/v1/citylife/browser-ws(?:%3[fF]|\?|/|$) {
         return 404;
     }
 
