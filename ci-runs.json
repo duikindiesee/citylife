@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-14T23:58:01.007Z",
+  "updatedAt": "2026-10-15T00:35:15.245Z",
   "runs": [
+    {
+      "runId": 38660845209,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38660845209",
+      "event": "pull_request",
+      "branch": "feat/client-bus-cookie-compatible-integration",
+      "sha": "11c9cb17fc17b248e51ff794f46e34c920922869",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/11c9cb17fc17b248e51ff794f46e34c920922869",
+      "pullRequestNumbers": "#567",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/567",
+      "pullRequests": [
+        {
+          "number": 567,
+          "url": "https://github.com/duikindiesee/citylife/pull/567"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-15T00:34:53Z",
+      "completedAt": "2026-10-15T00:35:06Z",
+      "durationSeconds": 13,
+      "runnerSummary": "GitHub Actions 1000011283",
+      "jobs": [
+        {
+          "id": 116181442149,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011283",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-15T00:34:56Z",
+          "completedAt": "2026-10-15T00:35:05Z",
+          "durationSeconds": 9
+        }
+      ]
+    },
     {
       "runId": 38657111728,
       "workflowName": "Build CityLife Debug APK",
@@ -11168,45 +11207,6 @@
           "startedAt": "2026-10-05T07:00:44Z",
           "completedAt": "2026-10-05T07:19:58Z",
           "durationSeconds": 1154
-        }
-      ]
-    },
-    {
-      "runId": 37273717966,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37273717966",
-      "event": "pull_request",
-      "branch": "chore/bump-0.60.1",
-      "sha": "7b1c9c29262c79ffd0b4b483be908401bee3b8d5",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/7b1c9c29262c79ffd0b4b483be908401bee3b8d5",
-      "pullRequestNumbers": "#556",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/556",
-      "pullRequests": [
-        {
-          "number": 556,
-          "url": "https://github.com/duikindiesee/citylife/pull/556"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-05T06:41:44Z",
-      "completedAt": "2026-10-05T06:42:49Z",
-      "durationSeconds": 65,
-      "runnerSummary": "GitHub Actions 1000010677",
-      "jobs": [
-        {
-          "id": 111646028622,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010677",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-05T06:41:47Z",
-          "completedAt": "2026-10-05T06:42:48Z",
-          "durationSeconds": 61
         }
       ]
     }
