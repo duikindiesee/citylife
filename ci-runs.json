@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-15T01:10:46.343Z",
+  "updatedAt": "2026-10-15T01:11:40.513Z",
   "runs": [
+    {
+      "runId": 38664185381,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38664185381",
+      "event": "pull_request",
+      "branch": "feat/client-bus-cookie-compatible-integration",
+      "sha": "9b79b8520e856eb6e72c4cc9b2622b8473e23f9d",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/9b79b8520e856eb6e72c4cc9b2622b8473e23f9d",
+      "pullRequestNumbers": "#567",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/567",
+      "pullRequests": [
+        {
+          "number": 567,
+          "url": "https://github.com/duikindiesee/citylife/pull/567"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-15T01:10:23Z",
+      "completedAt": "2026-10-15T01:11:28Z",
+      "durationSeconds": 65,
+      "runnerSummary": "GitHub Actions 1000011289",
+      "jobs": [
+        {
+          "id": 116192173617,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011289",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-15T01:10:26Z",
+          "completedAt": "2026-10-15T01:11:27Z",
+          "durationSeconds": 61
+        }
+      ]
+    },
     {
       "runId": 38664185348,
       "workflowName": "Secret scan",
@@ -11240,45 +11279,6 @@
           "startedAt": "2026-10-05T10:52:05Z",
           "completedAt": "2026-10-05T10:52:13Z",
           "durationSeconds": 8
-        }
-      ]
-    },
-    {
-      "runId": 37299282882,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37299282882",
-      "event": "pull_request",
-      "branch": "fix/spec-177-garage-apron-plinth-leveling",
-      "sha": "a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
-      "pullRequestNumbers": "#557",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
-      "pullRequests": [
-        {
-          "number": 557,
-          "url": "https://github.com/duikindiesee/citylife/pull/557"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-05T10:52:01Z",
-      "completedAt": "2026-10-05T10:53:04Z",
-      "durationSeconds": 63,
-      "runnerSummary": "GitHub Actions 1000010690",
-      "jobs": [
-        {
-          "id": 111727886945,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010690",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-05T10:52:05Z",
-          "completedAt": "2026-10-05T10:53:03Z",
-          "durationSeconds": 58
         }
       ]
     }
