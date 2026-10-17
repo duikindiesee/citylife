@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T18:37:03.694Z",
+  "updatedAt": "2026-10-17T20:41:30.743Z",
   "runs": [
     {
       "runId": 38737691054,
@@ -20,13 +20,13 @@
       ],
       "status": "completed",
       "conclusion": "failure",
-      "startedAt": "2026-10-17T18:36:18Z",
-      "completedAt": "2026-10-17T18:36:54Z",
-      "durationSeconds": 36,
+      "startedAt": "2026-10-17T20:40:50Z",
+      "completedAt": "2026-10-17T20:41:20Z",
+      "durationSeconds": 30,
       "runnerSummary": "kooker1-org-docker-1, kooker1-org-docker-2, GitHub Actions 1000011443",
       "jobs": [
         {
-          "id": 117472359958,
+          "id": 117498789713,
           "name": "deploy / sync",
           "status": "completed",
           "conclusion": "failure",
@@ -39,12 +39,12 @@
             "kooker1-org",
             "docker"
           ],
-          "startedAt": "2026-10-17T18:36:24Z",
-          "completedAt": "2026-10-17T18:36:53Z",
-          "durationSeconds": 29
+          "startedAt": "2026-10-17T20:40:55Z",
+          "completedAt": "2026-10-17T20:41:20Z",
+          "durationSeconds": 25
         },
         {
-          "id": 117472360988,
+          "id": 117498789908,
           "name": "version-bump / bump",
           "status": "completed",
           "conclusion": "success",
@@ -62,7 +62,21 @@
           "durationSeconds": 20
         },
         {
-          "id": 117472361896,
+          "id": 117498790233,
+          "name": "build-and-push",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011443",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-15T13:43:03Z",
+          "completedAt": "2026-10-15T14:33:41Z",
+          "durationSeconds": 3038
+        },
+        {
+          "id": 117498790399,
           "name": "retention / prune-ghcr",
           "status": "completed",
           "conclusion": "success",
@@ -78,20 +92,6 @@
           "startedAt": "2026-10-15T14:33:44Z",
           "completedAt": "2026-10-15T14:33:53Z",
           "durationSeconds": 9
-        },
-        {
-          "id": 117472387912,
-          "name": "build-and-push",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000011443",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-15T13:43:03Z",
-          "completedAt": "2026-10-15T14:33:41Z",
-          "durationSeconds": 3038
         }
       ]
     },
