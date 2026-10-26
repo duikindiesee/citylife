@@ -1,7 +1,82 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-19T08:50:55.878Z",
+  "updatedAt": "2026-10-26T08:34:25.458Z",
   "runs": [
+    {
+      "runId": 40288058540,
+      "workflowName": "Docker",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/40288058540",
+      "event": "pull_request",
+      "branch": "codex/kooker2-devmain-bootstrap",
+      "sha": "71555a3fead04b19adc2bddcae246f13f72f2d56",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/71555a3fead04b19adc2bddcae246f13f72f2d56",
+      "pullRequestNumbers": "#580",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/580",
+      "pullRequests": [
+        {
+          "number": 580,
+          "url": "https://github.com/duikindiesee/citylife/pull/580"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-26T07:48:26Z",
+      "completedAt": "2026-10-26T08:34:15Z",
+      "durationSeconds": 2749,
+      "runnerSummary": "GitHub Actions 1000012072",
+      "jobs": [
+        {
+          "id": 121456323821,
+          "name": "build-and-push",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000012072",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-26T07:48:30Z",
+          "completedAt": "2026-10-26T08:34:14Z",
+          "durationSeconds": 2744
+        },
+        {
+          "id": 121456324422,
+          "name": "version-bump",
+          "status": "completed",
+          "conclusion": "skipped",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [],
+          "startedAt": "2026-10-26T07:48:27Z",
+          "completedAt": "2026-10-26T07:48:27Z",
+          "durationSeconds": 0
+        },
+        {
+          "id": 121472802480,
+          "name": "deploy",
+          "status": "completed",
+          "conclusion": "skipped",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [],
+          "startedAt": "2026-10-26T08:34:14Z",
+          "completedAt": "2026-10-26T08:34:14Z",
+          "durationSeconds": 0
+        },
+        {
+          "id": 121472802604,
+          "name": "retention",
+          "status": "completed",
+          "conclusion": "skipped",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [],
+          "startedAt": "2026-10-26T08:34:14Z",
+          "completedAt": "2026-10-26T08:34:14Z",
+          "durationSeconds": 0
+        }
+      ]
+    },
     {
       "runId": 39225649424,
       "workflowName": "Secret scan",
@@ -12430,45 +12505,6 @@
           "startedAt": "2026-10-08T16:08:53Z",
           "completedAt": "2026-10-08T16:30:19Z",
           "durationSeconds": 1286
-        }
-      ]
-    },
-    {
-      "runId": 37805377506,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37805377506",
-      "event": "pull_request",
-      "branch": "feat/multiplayer-racing",
-      "sha": "5f1ef5412e7278f7152a122e6f7edf80125d2fd2",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/5f1ef5412e7278f7152a122e6f7edf80125d2fd2",
-      "pullRequestNumbers": "#561",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
-      "pullRequests": [
-        {
-          "number": 561,
-          "url": "https://github.com/duikindiesee/citylife/pull/561"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-08T16:00:31Z",
-      "completedAt": "2026-10-08T16:01:45Z",
-      "durationSeconds": 74,
-      "runnerSummary": "GitHub Actions 1000010896",
-      "jobs": [
-        {
-          "id": 113408153200,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010896",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-08T16:00:35Z",
-          "completedAt": "2026-10-08T16:01:44Z",
-          "durationSeconds": 69
         }
       ]
     }
