@@ -17,7 +17,9 @@ name: Docker
 
 on:
   push:
-    branches: [main]
+    branches: [main, devmain]
+  pull_request:
+    branches: [devmain]
   workflow_dispatch:
 
 permissions:
@@ -41,6 +43,8 @@ jobs:
     needs: [version-bump]
     if: always() && (needs.version-bump.result == 'success' || needs.version-bump.result == 'skipped') && !startsWith(github.head_ref, 'chore/bump')
     runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.image-build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -119,6 +123,7 @@ jobs:
           BUMP_VER="${{ needs.version-bump.outputs.new-version }}"
           PKG_VER=$(node -p "require('./package.json').version")
           VERSION="${BUMP_VER:-$PKG_VER}"
+          if [[ "$GITHUB_REF" == "refs/heads/devmain" ]]; then VERSION="devmain"; fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           # UI.VERSION.1 — the exact build identity baked into the bundle. Short SHA because this
           # is rendered in a corner of the game; the full SHA is still on the image via type=sha.
@@ -141,15 +146,18 @@ jobs:
         with:
           images: ghcr.io/duikindiesee/citylife
           tags: |
-            type=raw,value=${{ steps.ver.outputs.version }}
+            type=raw,value=${{ steps.ver.outputs.version }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=devmain,enable=${{ github.ref == 'refs/heads/devmain' }}
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
+            type=sha
+            type=sha,format=long,prefix=sha-,enable=${{ github.ref == 'refs/heads/devmain' }}
 
       - name: Build and push
+        id: image-build
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/devmain' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -159,10 +167,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Record devmain image evidence
+        if: github.ref == 'refs/heads/devmain'
+        env:
+          IMAGE_DIGEST: ${{ steps.image-build.outputs.digest }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          test -n "$IMAGE_DIGEST"
+          printf 'Image: ghcr.io/duikindiesee/citylife@%s\nSource SHA: %s\n' "$IMAGE_DIGEST" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+
   # STEP 3 - keep the last few GHCR images
   retention:
     needs: build-and-push
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref != 'refs/heads/devmain'
     permissions:
       packages: write
       contents: read
