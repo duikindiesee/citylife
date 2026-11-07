@@ -38,6 +38,7 @@ import {
   type HomeResidency,
   type ArrivalOutcome,
 } from "../home/driveHome";
+import { postConfirmArrival } from "../home/starterProperty";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -78,7 +79,13 @@ export function DriveHomeOverlay({
   runtime,
 }: {
   onClose: () => void;
-  runtime?: { focusSurveyCell(x: number, y: number): boolean };
+  runtime?: {
+    focusSurveyCell(x: number, y: number): boolean;
+    getOwnedDrivePose?(): { x: number; y: number; heading?: number } | null;
+    getPhysicalCarPosition?(): { x: number; y: number } | null;
+    getActiveLayoutRevisionId?(): string | null;
+    worldLayoutDocument?(): any;
+  };
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [residency, setResidency] = useState<HomeResidency | null>(null);
@@ -123,6 +130,25 @@ export function DriveHomeOverlay({
     () => computeRouteGuidance(cursor, home),
     [cursor, home],
   );
+  const physicalCarPose =
+    runtime?.getOwnedDrivePose?.() ??
+    runtime?.getPhysicalCarPosition?.() ??
+    null;
+  const physicalCarCell: Cell | null = physicalCarPose
+    ? { x: Math.round(physicalCarPose.x), y: Math.round(physicalCarPose.y) }
+    : null;
+
+  const physicalWithinBounds = useMemo(() => {
+    if (!home) return false;
+    if (physicalCarCell) {
+      return isWithinArrivalBounds(physicalCarCell, home);
+    }
+    if (runtime && (runtime.getOwnedDrivePose || runtime.getPhysicalCarPosition)) {
+      return false;
+    }
+    return cursor ? isWithinArrivalBounds(cursor, home) : false;
+  }, [physicalCarCell, home, runtime, cursor]);
+
   const withinBounds = useMemo(
     () => (cursor && home ? isWithinArrivalBounds(cursor, home) : false),
     [cursor, home],
@@ -144,13 +170,28 @@ export function DriveHomeOverlay({
   }, [cursor, runtime]);
 
   const arrive = useCallback(() => {
-    if (pending || resident || !cursor || !withinBounds) return;
+    if (pending || resident || !withinBounds) return;
+    // P4 discriminating negative: if runtime is tracking car and car is not within bounds, refuse arrival!
+    if (runtime && (runtime.getOwnedDrivePose || runtime.getPhysicalCarPosition)) {
+      if (!physicalCarCell || !isWithinArrivalBounds(physicalCarCell, home!)) {
+        setOutcome({ kind: "rejected" });
+        return;
+      }
+    }
+    const targetCell = physicalCarCell ?? cursor;
+    if (!targetCell) return;
     setPending(true);
-    void postHomeArrival(cursor, residency?.truth ?? null).then((result) => {
+    void postHomeArrival(targetCell, residency?.truth ?? null).then((result) => {
       setOutcome(result);
       if (result.kind === "confirmed" || result.kind === "pending") {
-        // Reconcile against a FRESH re-fetch of the server truth (never a local guess) — this is what the
-        // garage unlock and the RESIDENT convergence bind to.
+        const plotId = residency?.truth?.plotId ?? residency?.truth?.geometry?.plotId;
+        const layoutRevision =
+          runtime?.getActiveLayoutRevisionId?.() ??
+          runtime?.worldLayoutDocument?.()?.revision?.contentHash ??
+          residency?.truth?.geometry?.layoutRevision;
+        if (plotId) {
+          void postConfirmArrival({ plotId, layoutRevision });
+        }
         void fetchHomeResidency().then((fresh) => {
           if (fresh) setResidency(fresh);
           setPending(false);
@@ -159,9 +200,9 @@ export function DriveHomeOverlay({
         setPending(false);
       }
     });
-  }, [pending, resident, cursor, withinBounds, residency]);
+  }, [pending, resident, cursor, withinBounds, residency, physicalCarCell, home, runtime]);
 
-  const view = arrivalButtonView(resident, withinBounds, pending, outcome);
+  const view = arrivalButtonView(resident, withinBounds && physicalWithinBounds, pending, outcome);
 
   // Keyboard navigation: WASD or Arrow keys drive the car, Escape exits the guidance HUD.
   useEffect(() => {

@@ -1,12 +1,7 @@
 import { getAuthClient } from "../authClient";
 import { parseWorldLayoutDocument, type WorldLayoutDocument } from "../spatial/worldLayoutDocument";
-
-export interface PublishedPlayerInventory {
-  worldId: string;
-  layoutRevision: string;
-  plotIds: readonly string[];
-  layout: WorldLayoutDocument;
-}
+import type { PublishedPlayerInventory, StarterParcelGeometry } from "./starterCatalogueClient";
+export type { PublishedPlayerInventory };
 export const STARTER_CATALOGUE_TIMEOUT_MS = 10_000;
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid world catalogue");
@@ -23,6 +18,8 @@ export function parsePublishedStarterWorld(raw: unknown, worldId: string): Publi
       layout.revision.parentHash !== manifest.sourceLayoutRevision)
     throw new Error("World catalogue revision does not match its layout");
   const plotIds = new Set<string>(), frameIds = new Set<string>();
+  const plotFrames = new Map<string, string>();
+  const plotGeometry = new Map<string, StarterParcelGeometry>();
   for (const entry of manifest.plots) {
     const plot = object(entry), geometry = object(plot.geometry);
     if (typeof plot.plotId !== "string" || !/^[A-Za-z0-9_.:-]{1,120}$/.test(plot.plotId) ||
@@ -32,8 +29,17 @@ export function parsePublishedStarterWorld(raw: unknown, worldId: string): Publi
         !layout.frames.some(f => f.id === plot.frameId && f.kind === "region" && f.layer === "surface"))
       throw new Error("World catalogue has inconsistent plot bindings");
     plotIds.add(plot.plotId); frameIds.add(plot.frameId);
+    plotFrames.set(plot.plotId, plot.frameId);
+    plotGeometry.set(plot.plotId, geometry as unknown as StarterParcelGeometry);
   }
-  return { worldId, layoutRevision: layout.revision.contentHash, plotIds: [...plotIds], layout };
+  return {
+    worldId,
+    layoutRevision: layout.revision.contentHash,
+    plotIds: [...plotIds],
+    plotFrames,
+    plotGeometry,
+    layout,
+  };
 }
 
 export async function fetchPublishedStarterWorld(worldId: string, signal?: AbortSignal): Promise<PublishedPlayerInventory> {

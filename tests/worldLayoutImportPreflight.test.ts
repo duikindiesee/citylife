@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+
+const WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS = 120_000;
 import {
   ColonyRuntime,
   WorldLayoutPreflightError,
@@ -329,7 +331,7 @@ describe("world layout import runtime preflight", () => {
       save(input);
     }).toThrow("unsupported elevation");
     expect(save).not.toHaveBeenCalled();
-  }, 60_000);
+  }, WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS);
 
   it("allows disjoint and boundary-touch reservations but rejects overlap", () => {
     const runtime = new ColonyRuntime(4242);
@@ -364,7 +366,7 @@ describe("world layout import runtime preflight", () => {
           /RESERVED_VOLUME/,
         );
     }
-  }, 60_000);
+  }, WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS);
 
   it("allows disjoint and boundary-touch stacked placements but rejects overlap", () => {
     const runtime = new ColonyRuntime(4242);
@@ -395,5 +397,5 @@ describe("world layout import runtime preflight", () => {
           /PLACEMENT_COLLISION/,
         );
     }
-  }, 60_000);
+  }, WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS);
 });

@@ -69,6 +69,38 @@ export function resolveAuthenticatedPlayerMapMarker(input: {
   const operatorCitizenId = (runtime as any).operatorCitizenId?.() ?? null;
   const fpCitizenId = (runtime as any).fpCitizenId ?? null;
 
+  // Default expected fences from input or runtime
+  const expectedSeed =
+    input.expectedWorldSeed !== undefined
+      ? input.expectedWorldSeed
+      : ((runtime as any).worldSeed ?? runtime.sim?.state?.seed ?? null);
+  const expectedRevision =
+    input.expectedLayoutRevision !== undefined
+      ? input.expectedLayoutRevision
+      : ((runtime as any).getActiveLayoutRevisionId?.() ??
+         (runtime as any).worldLayoutDocument?.()?.revision?.contentHash ??
+         null);
+
+  // Generation / stamp fences on presenceReadout:
+  if (presenceReadout?.stamp) {
+    if (
+      expectedSeed !== null &&
+      presenceReadout.stamp.worldSeed !== undefined &&
+      presenceReadout.stamp.worldSeed !== null &&
+      presenceReadout.stamp.worldSeed !== expectedSeed
+    ) {
+      return { player: null, parkedCar: null };
+    }
+    if (
+      expectedRevision !== null &&
+      presenceReadout.stamp.layoutRevision !== undefined &&
+      presenceReadout.stamp.layoutRevision !== null &&
+      presenceReadout.stamp.layoutRevision !== expectedRevision
+    ) {
+      return { player: null, parkedCar: null };
+    }
+  }
+
   // Inspected other citizen: if fpCitizenId is set and does not match operatorCitizenId, fail closed
   if (
     fpCitizenId !== null &&
@@ -106,24 +138,6 @@ export function resolveAuthenticatedPlayerMapMarker(input: {
     // 3. Exact fix check: must have valid fix within extent
     if (!local.fix || local.fix.withinExtent === false) {
       return { player: null, parkedCar: null };
-    }
-    // 4. Generation / stamp fences
-    if (presenceReadout?.stamp) {
-      if (
-        input.expectedWorldSeed !== undefined &&
-        input.expectedWorldSeed !== null &&
-        presenceReadout.stamp.worldSeed !== input.expectedWorldSeed
-      ) {
-        return { player: null, parkedCar: null };
-      }
-      if (
-        input.expectedLayoutRevision !== undefined &&
-        input.expectedLayoutRevision !== null &&
-        presenceReadout.stamp.layoutRevision &&
-        presenceReadout.stamp.layoutRevision !== input.expectedLayoutRevision
-      ) {
-        return { player: null, parkedCar: null };
-      }
     }
   }
 
@@ -189,11 +203,16 @@ function OpenBusNetworkMiniMap({
   const mpClient = runtime.getMultiplayerClient();
   const isOnline = mpClient?.getStatus() === "connected";
 
+  const expectedWorldSeed = (runtime as any).worldSeed ?? runtime.sim?.state?.seed ?? null;
+  const expectedLayoutRevision = (runtime as any).getActiveLayoutRevisionId?.() ?? (runtime as any).worldLayoutDocument?.()?.revision?.contentHash ?? null;
+
   const { player, parkedCar } = resolveAuthenticatedPlayerMapMarker({
     playerLocationAuthorized,
     runtime,
     presenceReadout,
     authenticatedUserId,
+    expectedWorldSeed,
+    expectedLayoutRevision,
   });
 
   const peers = Array.from(state.remoteRacers?.values() ?? []).map((r) => {

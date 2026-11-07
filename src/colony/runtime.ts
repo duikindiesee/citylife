@@ -1188,7 +1188,7 @@ export class ColonyRuntime {
 
   constructor(
     seed: number = COLONY.render.seed,
-    opts: { surveyOnly?: boolean } = {},
+    opts: { surveyOnly?: boolean; initialWorldLayout?: WorldLayoutDocument | unknown } = {},
   ) {
     this.surveyOnly = opts.surveyOnly === true;
     this.worldSeed = seed;
@@ -1200,7 +1200,6 @@ export class ColonyRuntime {
       buildability: new Uint8Array(this.sim.state.terrain.buildable),
       distanceToWater: new Int32Array(this.sim.state.terrain.distToWater),
     };
-    restoreColony(this.sim.state); // re-place settlers + restore the Kookerverse ledger
     this.cityPlan = makeCityPlan(this.sim.state.terrain);
     this.sim.state.cityPlan = this.cityPlan; // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan);
@@ -2311,7 +2310,11 @@ export class ColonyRuntime {
     //
     // This exists so seeds can be QUALIFIED in bulk (scripts/seedQualify.ts). It is not a "fast
     // mode" for the game: a surveyed runtime has no residents and must never be handed to the UI.
+    if (opts.initialWorldLayout) {
+      this.hydrateWorldLayout(opts.initialWorldLayout as WorldLayoutDocument);
+    }
     if (this.surveyOnly) return;
+    restoreColony(this.sim.state); // re-place settlers + restore the Kookerverse ledger
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
@@ -4749,6 +4752,55 @@ export class ColonyRuntime {
   }
 
   private authoritativeHomeTruth: HomeTruth | null = null;
+
+  getActiveLayoutRevisionId(): string | null {
+    return this.activeWorldLayout
+      ? worldLayoutRevisionId(this.activeWorldLayout.revision)
+      : null;
+  }
+
+  setAuthoritativeOwnedVehicle(
+    vehicle: { id: string; model: string; x: number; y: number; heading: number } | null,
+  ): void {
+    if (!vehicle) {
+      this.authoritativeCar = null;
+      this.ownedDrivePose = null;
+      this.emit();
+      return;
+    }
+    if (
+      typeof vehicle.id === "string" &&
+      vehicle.id.trim().length > 0 &&
+      typeof vehicle.model === "string" &&
+      vehicle.model.trim().length > 0 &&
+      typeof vehicle.x === "number" &&
+      Number.isFinite(vehicle.x) &&
+      typeof vehicle.y === "number" &&
+      Number.isFinite(vehicle.y)
+    ) {
+      this.authoritativeCar = {
+        id: vehicle.id,
+        model: vehicle.model,
+      } as any;
+      this.ownedDrivePose = {
+        x: vehicle.x,
+        y: vehicle.y,
+        heading:
+          typeof vehicle.heading === "number" && Number.isFinite(vehicle.heading)
+            ? vehicle.heading
+            : 0,
+        speed: 0,
+      };
+      this.emit();
+    }
+  }
+
+  getPhysicalCarPosition(): { x: number; y: number } | null {
+    if (this.ownedDrivePose) {
+      return { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
+    }
+    return null;
+  }
 
   setAuthoritativeHomeTruth(truth: HomeTruth | null): void {
     this.authoritativeHomeTruth = truth;

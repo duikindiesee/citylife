@@ -26,6 +26,7 @@ import {
   fetchEligibleNeighbourhoods,
   fetchHomeTruth,
   postPurchaseHome,
+  postBuildHome,
   purchaseButtonView,
   purchaseStateColor,
   isHomeOwned,
@@ -35,6 +36,11 @@ import {
   type PurchaseHomeOptions,
 } from "../home/starterProperty";
 import { projectStarterHome } from "../home/starterHouseProjection";
+import {
+  loadHouseBuild,
+  completeHouseBuild,
+  type HouseBuildSession,
+} from "../home/starterCatalogueClient";
 import type { PlayerWalletStatus } from "../wallet/playerWallet";
 
 const panelStyle: CSSProperties = {
@@ -89,6 +95,49 @@ export function StarterPropertyOverlay({
   const [pending, setPending] = useState(false);
   const [relocateMode, setRelocateMode] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [buildSession, setBuildSession] = useState<HouseBuildSession | null>(null);
+  const [buildScript, setBuildScript] = useState("");
+  const [buildPending, setBuildPending] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildConfirmed, setBuildConfirmed] = useState(false);
+
+  const startHouseBuild = useCallback(async () => {
+    setBuildError(null);
+    setBuildPending(true);
+    try {
+      const session = await loadHouseBuild();
+      setBuildSession(session);
+      setBuildScript(session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n");
+    } catch (err: any) {
+      setBuildError(err?.message || "House building unavailable");
+    } finally {
+      setBuildPending(false);
+    }
+  }, []);
+
+  const finishHouseBuild = useCallback(async () => {
+    if (!buildSession) return;
+    setBuildError(null);
+    setBuildPending(true);
+    try {
+      await completeHouseBuild(buildSession, buildScript);
+      await postBuildHome({
+        plotId: buildSession.context.plotId,
+        layoutRevision: buildSession.context.layoutRevision,
+        script: buildScript,
+      });
+      setBuildConfirmed(true);
+      const fresh = await fetchHomeTruth();
+      if (fresh) {
+        setTruth(fresh);
+        onHomePurchased?.(fresh);
+      }
+    } catch (err: any) {
+      setBuildError(err?.message || "Failed to confirm house build");
+    } finally {
+      setBuildPending(false);
+    }
+  }, [buildSession, buildScript, onHomePurchased]);
 
   // Load the authoritative eligible choices + home truth together. Fail-soft: a null from either read
   // (signed out / endpoint absent / malformed) surfaces the retry state and never a client-invented list.
@@ -337,21 +386,110 @@ export function StarterPropertyOverlay({
             Placed at {projected.placement.x},{projected.placement.y} · the same
             on every device.
           </span>
-          <button
-            type="button"
-            data-testid="home-relocate-btn"
-            onClick={() => setRelocateMode((m) => !m)}
-            style={{
-              ...controlButtonStyle,
-              marginTop: 6,
-              alignSelf: "flex-start",
-              fontSize: 12,
-            }}
-          >
-            {relocateMode
-              ? "✕ Cancel plot change"
-              : "📍 Select a different coastal plot"}
-          </button>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              data-testid="home-build-start-btn"
+              onClick={startHouseBuild}
+              style={{ ...controlButtonStyle, fontSize: 12 }}
+            >
+              🔨 Build / Edit Your House
+            </button>
+            <button
+              type="button"
+              data-testid="home-relocate-btn"
+              onClick={() => setRelocateMode((m) => !m)}
+              style={{
+                ...controlButtonStyle,
+                fontSize: 12,
+              }}
+            >
+              {relocateMode
+                ? "✕ Cancel plot change"
+                : "📍 Select a different coastal plot"}
+            </button>
+          </div>
+
+          {buildSession && (
+            <div
+              data-testid="home-builder-panel"
+              style={{
+                ...panelStyle,
+                marginTop: 8,
+                padding: 12,
+                border: "1px solid #3a6080",
+              }}
+            >
+              <div style={{ color: "#ffd25a", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+                Plot {buildSession.context.plotId} House Builder
+              </div>
+              <div style={{ fontSize: 11, color: "#7ab0d0", marginBottom: 6 }}>
+                Layout revision: {buildSession.context.layoutRevision}
+              </div>
+              <textarea
+                data-testid="home-builder-script"
+                value={buildScript}
+                onChange={(e) => setBuildScript(e.target.value)}
+                rows={4}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#050d18",
+                  color: "#dceaff",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  padding: 8,
+                  borderRadius: 4,
+                  border: "1px solid #244060",
+                }}
+              />
+              {buildError && (
+                <div
+                  data-testid="home-builder-error"
+                  role="alert"
+                  style={{ color: "#e07a7a", fontSize: 12, marginTop: 4 }}
+                >
+                  {buildError}
+                </div>
+              )}
+              {buildConfirmed && (
+                <div
+                  data-testid="home-builder-confirmed"
+                  style={{ color: "#9fd4a6", fontSize: 12, marginTop: 4, fontWeight: 700 }}
+                >
+                  ✓ House build confirmed by server!
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  data-testid="home-builder-submit"
+                  disabled={buildPending}
+                  onClick={finishHouseBuild}
+                  style={{
+                    ...controlButtonStyle,
+                    background: "#163a24",
+                    borderColor: "#3ca05a",
+                    color: "#9fd4a6",
+                    fontSize: 12,
+                  }}
+                >
+                  {buildPending ? "Confirming…" : "Save House Blueprint"}
+                </button>
+                <button
+                  type="button"
+                  data-testid="home-builder-cancel"
+                  onClick={() => {
+                    setBuildSession(null);
+                    setBuildError(null);
+                  }}
+                  style={{ ...controlButtonStyle, fontSize: 12 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

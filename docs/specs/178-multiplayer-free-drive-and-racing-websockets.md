@@ -27,7 +27,7 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
 
 - **`create_session`**: Creates a new racing lobby with an optional custom invite code or auto-generated 6-character room code.
 - **`join_session`**: Joins an existing lobby by session ID or room code (`inviteCode`). If `autoCreate: true` or a custom room code is requested that does not exist, the server automatically initializes the room.
-- **`pose` / `peer_pose`**: Clients multicast their vehicle kinematic transform:
+- **`pose` / `peer_pose`**: Clients multicast their vehicle kinematic transform (in protocol v2, pedestrian walking controls stream intent via `sendWalkingInput` / `walking_input`, while `pose` is preserved for legacy kinematics and vehicles):
   ```ts
   interface RacerPose {
     x: number;       // Grid cell X
@@ -53,7 +53,7 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
 Implemented in `src/colony/multiplayer/multiplayerClient.ts`:
 - Manages WebSocket lifecycle, approved endpoint boundaries, ping/pong heartbeats, and auto-reconnection.
 - Streams driving inputs via `sendInput` with monotonic sequence tracking and reconciles authoritative snapshots (`onSnapshot`).
-- Dispatches walking poses via `sendPose` and receives peer updates via `onPeerPose`.
+- Dispatches walking intent via `sendWalkingInput` (and `sendPose` for vehicle transform) and receives peer updates via `onPeerPose`.
 - Emits reactive callbacks (`onPeerJoined`, `onPeerLeft`, `onPeerPose`, `onStatusChange`) wired directly into `ColonyRuntime` and `sim.state.remoteRacers`.
 
 ### 3. Sim State & Runtime Integration

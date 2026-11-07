@@ -99,6 +99,9 @@ import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
+import { fetchHomeTruth, isHomeOwned } from "../home/starterProperty";
+import { COLONY } from "../config";
+import { projectReturningResidentState } from "../home/starterCatalogueClient";
 import { OwnedCarControls } from "./OwnedCarControls";
 import { DrivableRoadTestModal } from "./DrivableRoadTestModal";
 import { RoadmapPanel } from "./RoadmapPanel";
@@ -580,17 +583,9 @@ export function publicWorldLayoutHistoryEntries(
 function useRuntime(initialInventory?: PublishedPlayerInventory): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
-    ref.current = new ColonyRuntime();
-    if (initialInventory) {
-      try {
-        ref.current.hydrateWorldLayout(initialInventory.layout);
-      } catch (err) {
-        console.warn(
-          "[ColonyApp] Failed pre-boot hydration of published starter world layout",
-          err,
-        );
-      }
-    }
+    ref.current = new ColonyRuntime(COLONY.render.seed, {
+      initialWorldLayout: initialInventory?.layout,
+    });
     // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
     // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
     if (
@@ -803,6 +798,39 @@ export function ColonyApp({
   const auth = useMemo(() => propAuth ?? getAuthClient(), [propAuth]);
   const operatorUserId = auth.operator?.userId ?? null;
   const [loggedOut, setLoggedOut] = useState(false);
+
+  // P3 — Load authenticated home truth and exact owned vehicle on mount or operatorUserId change
+  useEffect(() => {
+    let active = true;
+    if (!operatorUserId) {
+      runtime.setAuthoritativeHomeTruth(null);
+      runtime.setAuthoritativeOwnedVehicle(null);
+      return;
+    }
+    void fetchHomeTruth().then((truth) => {
+      if (!active) return;
+      if (truth && isHomeOwned(truth)) {
+        runtime.setAuthoritativeHomeTruth(truth);
+        const projection = projectReturningResidentState(truth, initialInventory);
+        if (projection.isResident && projection.vehicle) {
+          runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
+        } else {
+          runtime.setAuthoritativeOwnedVehicle(null);
+        }
+      } else {
+        runtime.setAuthoritativeHomeTruth(null);
+        runtime.setAuthoritativeOwnedVehicle(null);
+      }
+    }).catch(() => {
+      if (active) {
+        runtime.setAuthoritativeHomeTruth(null);
+        runtime.setAuthoritativeOwnedVehicle(null);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [operatorUserId, runtime, initialInventory]);
 
   const executeLogout = useCallback(
     createColonyLogoutHandler({
@@ -2261,7 +2289,7 @@ export function ColonyApp({
       {/* Defense in depth: the overlay renders ONLY while the gate is open, so a forced/stale
           driveHomeOpen can never mount it and a mid-session revocation (account switch) closes it. */}
       {driveHomeOpen && newPlayerJourneyEnabled && (
-        <DriveHomeOverlay onClose={() => setDriveHomeOpen(false)} />
+        <DriveHomeOverlay runtime={runtime} onClose={() => setDriveHomeOpen(false)} />
       )}
       {drivableModalOpen && (
         <DrivableRoadTestModal

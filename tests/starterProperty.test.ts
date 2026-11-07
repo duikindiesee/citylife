@@ -14,13 +14,16 @@ import {
   type HomeTruth,
 } from "../src/colony/home/starterProperty";
 import { deriveHomePlacement } from "../src/colony/home/starterHouseProjection";
-import { homeTargetCell } from "../src/colony/home/driveHome";
+import { homeTargetCell, isWithinArrivalBounds, arrivalButtonView } from "../src/colony/home/driveHome";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { createWorldLayoutDocument, worldLayoutRevisionId } from "../src/colony/spatial/worldLayoutDocument";
 import {
   parseStarterPlotOffers,
   bindStarterPlotOffers,
   verifyX19Pricing,
   projectReturningResidentState,
+  loadHouseBuild,
+  completeHouseBuild,
 } from "../src/colony/home/starterCatalogueClient";
 
 // PLAYER.HOME.1C — the pure model for the dark starter-property slice. Everything here is node-testable
@@ -562,4 +565,66 @@ describe("Starter catalogue client & returning resident projection", () => {
     });
     expect(arrivalRes.kind).toBe("disabled");
   });
+
+  it("P1: adopts initialWorldLayout before resident/blueprint restore, and fails closed on invalid layout", () => {
+    // 1. Valid layout adoption with clean document from survey
+    const baseRuntime = new ColonyRuntime(1234, { surveyOnly: true });
+    const captured = baseRuntime.captureWorldLayout();
+    const validDoc = createWorldLayoutDocument({
+      ...captured,
+      placements: [],
+    });
+    // Normal player runtime without surveyOnly: proves layout adoption before resident and blueprint restoration
+    const runtime = new ColonyRuntime(1234, { initialWorldLayout: validDoc });
+    expect(runtime.getActiveLayoutRevisionId()).toBe(worldLayoutRevisionId(validDoc.revision));
+    expect(runtime.lots().length).toBeGreaterThan(0);
+    expect(runtime.lots()[0]!.built).toBe(true);
+    expect((runtime as any).citizens.byId("citizen_joe")).toBeDefined();
+
+    // 2. Corrupt / invalid layout throws fail-closed without partial fallback world
+    expect(() => {
+      new ColonyRuntime(1234, { initialWorldLayout: { invalid: true } as any });
+    }).toThrow();
+  }, 60_000);
+
+  it("P2: exercises player-owned house builder session and submission with server confirmation", async () => {
+    // 1. Without signed in operator, loadHouseBuild rejects fail-closed
+    await expect(loadHouseBuild()).rejects.toThrow(/Sign in to CityLife/);
+
+    // 2. postBuildHome fails closed cleanly without active operator session
+    const confirm = await postBuildHome({
+      plotId: "plot-alpha-1",
+      layoutRevision: "rev-alpha",
+      script: "wall(0, 0, 4, 0); door(2, 0);",
+    });
+    expect(confirm.kind).toBe("disabled");
+  });
+
+  it("P4: discriminating negative: arrival is rejected when UI cursor is at home but physical vehicle is elsewhere", () => {
+    const home = { x: 32, y: 48 };
+    const cursorAtHome = { x: 32, y: 48 };
+    const vehicleAtDealership = { x: 10, y: 10 };
+
+    const cursorWithinBounds = isWithinArrivalBounds(cursorAtHome, home);
+    const physicalWithinBounds = isWithinArrivalBounds(vehicleAtDealership, home);
+
+    expect(cursorWithinBounds).toBe(true);
+    expect(physicalWithinBounds).toBe(false);
+
+    // Button view with physical vehicle away must be disabled
+    const buttonViewAway = arrivalButtonView(false, cursorWithinBounds && physicalWithinBounds, false, undefined);
+    expect(buttonViewAway.disabled).toBe(true);
+    expect(buttonViewAway.label).toBe("Drive to your home plot");
+
+    // Once physical vehicle is also at home
+    const vehicleAtHome = { x: 32, y: 48 };
+    const physicalArrived = isWithinArrivalBounds(vehicleAtHome, home);
+    expect(physicalArrived).toBe(true);
+
+    const buttonViewArrived = arrivalButtonView(false, cursorWithinBounds && physicalArrived, false, undefined);
+    expect(buttonViewArrived.disabled).toBe(false);
+    expect(buttonViewArrived.label).toBe("Pull into your home");
+  });
 });
+
+

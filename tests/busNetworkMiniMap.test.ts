@@ -1104,4 +1104,113 @@ describe("mounted consumer chain: ColonyApp -> BusNetworkMiniMap -> DOM (#544)",
     });
     expect(findNode(container3, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker")).toBeNull();
   });
+
+  it("mounts BusNetworkMiniMap and verifies foreign generation stamp fences fail closed against mismatched worldSeed or layoutRevision (Challenger 1)", async () => {
+    setupTestDOM();
+    const runtime = new ColonyRuntime(42);
+    runtime.setOperatorUserId("user-alice");
+    (runtime as any).operatorCitizenId = () => "cit-alice";
+    (runtime as any).fpCitizenId = "cit-alice";
+    (runtime as any).fpCameraCell = { x: 25, y: 35 };
+
+    // Set active layout revision on runtime
+    (runtime as any).getActiveLayoutRevisionId = () => "rev-42";
+
+    // 1. Foreign worldSeed in presence readout stamp (e.g. 9999 vs 42) fails closed without rendering player marker
+    const foreignSeedReadout = makePresenceReadout(
+      [
+        {
+          isLocal: true,
+          subjectId: "user-alice",
+          resolution: "exact",
+          fix: { projectionFrameId: "f1", world: { x: 0, y: 0, z: 0 }, cell: { x: 25, y: 35 }, withinExtent: true },
+        },
+      ],
+      { worldSeed: 9999, layoutRevision: "rev-42" },
+    );
+
+    const container1 = (globalThis as any).document.createElement("div");
+    const root1 = createRoot(container1);
+    await act(async () => {
+      root1.render(
+        React.createElement(BusNetworkMiniMap, {
+          runtime,
+          walletLabel: "Alice Wallet",
+          presenceReadout: foreignSeedReadout as any,
+          open: true,
+          onClose: () => {},
+          playerLocationAuthorized: true,
+          authenticatedUserId: "user-alice",
+        }),
+      );
+    });
+    expect(
+      findNode(container1, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker"),
+    ).toBeNull();
+
+    // 2. Foreign layoutRevision in presence readout stamp (e.g. 'foreign-rev-999' vs 'rev-42') fails closed
+    const foreignLayoutReadout = makePresenceReadout(
+      [
+        {
+          isLocal: true,
+          subjectId: "user-alice",
+          resolution: "exact",
+          fix: { projectionFrameId: "f1", world: { x: 0, y: 0, z: 0 }, cell: { x: 25, y: 35 }, withinExtent: true },
+        },
+      ],
+      { worldSeed: 42, layoutRevision: "foreign-rev-999" },
+    );
+
+    const container2 = (globalThis as any).document.createElement("div");
+    const root2 = createRoot(container2);
+    await act(async () => {
+      root2.render(
+        React.createElement(BusNetworkMiniMap, {
+          runtime,
+          walletLabel: "Alice Wallet",
+          presenceReadout: foreignLayoutReadout as any,
+          open: true,
+          onClose: () => {},
+          playerLocationAuthorized: true,
+          authenticatedUserId: "user-alice",
+        }),
+      );
+    });
+    expect(
+      findNode(container2, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker"),
+    ).toBeNull();
+
+    // 3. Matching generation stamp renders player marker
+    const matchingReadout = makePresenceReadout(
+      [
+        {
+          isLocal: true,
+          subjectId: "user-alice",
+          resolution: "exact",
+          fix: { projectionFrameId: "f1", world: { x: 0, y: 0, z: 0 }, cell: { x: 25, y: 35 }, withinExtent: true },
+        },
+      ],
+      { worldSeed: 42, layoutRevision: "rev-42" },
+    );
+
+    const container3 = (globalThis as any).document.createElement("div");
+    const root3 = createRoot(container3);
+    await act(async () => {
+      root3.render(
+        React.createElement(BusNetworkMiniMap, {
+          runtime,
+          walletLabel: "Alice Wallet",
+          presenceReadout: matchingReadout as any,
+          open: true,
+          onClose: () => {},
+          playerLocationAuthorized: true,
+          authenticatedUserId: "user-alice",
+        }),
+      );
+    });
+    expect(
+      findNode(container3, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker"),
+    ).not.toBeNull();
+  });
 });
+
