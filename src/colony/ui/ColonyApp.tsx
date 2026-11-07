@@ -18,6 +18,7 @@ import {
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
 import { AuthClient, getAuthClient, canEnterCityBuilder } from "../authClient";
+import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
 // PLAYER.FLAG.S3 — the fail-closed, default-OFF new-player-journey entitlement (gates the garage
 // showroom entry and every future journey-only action on the server allowlist).
 import {
@@ -110,6 +111,7 @@ import {
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
+import { canShowPlayerLocationForAccount } from "./busNetworkMiniMapModel";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
@@ -575,10 +577,20 @@ export function publicWorldLayoutHistoryEntries(
   }));
 }
 
-function useRuntime(): ColonyRuntime {
+function useRuntime(initialInventory?: PublishedPlayerInventory): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
     ref.current = new ColonyRuntime();
+    if (initialInventory) {
+      try {
+        ref.current.hydrateWorldLayout(initialInventory.layout);
+      } catch (err) {
+        console.warn(
+          "[ColonyApp] Failed pre-boot hydration of published starter world layout",
+          err,
+        );
+      }
+    }
     // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
     // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
     if (
@@ -764,6 +776,7 @@ export function createColonyLogoutHandler({
   return async (beforeLogout?: () => void) => {
     // 1. Immediately disable multiplayer and clear all peer/input/driving state synchronously
     runtime.disableMultiplayer();
+    runtime.setOperatorUserId(null);
     // 2. Immediately switch to local signed-out UI
     setLoggedOut(true);
     // 3. Mark pre-logout state (e.g. pending password change notice)
@@ -777,9 +790,15 @@ export function createColonyLogoutHandler({
   };
 }
 
-export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
+export function ColonyApp({
+  auth: propAuth,
+  initialInventory,
+}: {
+  auth?: AuthClient;
+  initialInventory?: PublishedPlayerInventory;
+} = {}) {
   const { builderActive, worldViewActive } = useRoadNetwork();
-  const runtime = useRuntime();
+  const runtime = useRuntime(initialInventory);
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
   const auth = useMemo(() => propAuth ?? getAuthClient(), [propAuth]);
   const operatorUserId = auth.operator?.userId ?? null;
@@ -1178,6 +1197,17 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
     auth.isAuthenticated && operatorUserId !== null
       ? String(operatorUserId)
       : null;
+  const playerLocationAuthorized =
+    canShowPlayerLocationForAccount({
+      isCityLifePlayer: auth.isCityLifePlayer,
+      authenticatedAccountKey: walletAccountKey,
+      runtimeAccountKey:
+        (runtime as any).getBoundOperatorUserId?.() ??
+        (runtime as any).operatorUserId ??
+        null,
+    }) &&
+    !builderActive &&
+    !worldViewActive;
   const [playerWallet, setPlayerWallet] = useState<PlayerWalletSnapshot>(() =>
     emptyPlayerWallet(null, "unavailable"),
   );
@@ -2459,6 +2489,7 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
         />
         {topbar.showMenu && (
           <TopbarMenu
+            runtime={runtime}
             hasRealAccount={hasRealAccount}
             playerId={operatorUserId}
             firstPersonActive={ui.firstPerson.active}
@@ -2479,6 +2510,8 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
         presenceReadout={presenceReadout}
         open={mapOpen}
         onClose={() => setMapOpen(false)}
+        playerLocationAuthorized={playerLocationAuthorized}
+        authenticatedUserId={walletAccountKey}
       />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
           rendered above, as a member of `.hud-corner-rail-left`. UI.GEO.OVERLAP.1 moved it there

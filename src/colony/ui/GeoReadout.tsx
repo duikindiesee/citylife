@@ -29,6 +29,12 @@ function coordinateLines(entry: PresenceReadoutEntry): string[] {
   return lines;
 }
 
+function presenceMeaning(_entry: PresenceReadoutEntry): string {
+  // This adapter projects the deterministic CityLife roster. It does not receive an authenticated-
+  // session or freshness heartbeat feed, so no marker can imply a genuinely online player yet.
+  return "SIMULATION CITIZEN · not an authenticated online session";
+}
+
 function Marker({ entry }: { entry: PresenceReadoutEntry }) {
   return (
     <div
@@ -48,6 +54,7 @@ function Marker({ entry }: { entry: PresenceReadoutEntry }) {
       <div className="geo-readout__address" title={entry.frame.address}>
         {entry.frame.address}
       </div>
+      <div className="geo-readout__meaning">{presenceMeaning(entry)}</div>
       {coordinateLines(entry).map((line) => (
         <div className="geo-readout__coord" key={line}>
           {line}

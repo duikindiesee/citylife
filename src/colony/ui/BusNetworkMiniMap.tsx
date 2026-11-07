@@ -14,6 +14,8 @@ type BusNetworkMiniMapProps = {
   /** The map is summoned on demand so it does not cover the driving view. */
   open: boolean;
   onClose: () => void;
+  playerLocationAuthorized?: boolean;
+  authenticatedUserId?: string | null;
 };
 
 export function computeBusNetworkMiniMapSignal(runtime: ColonyRuntime): string {
@@ -46,11 +48,132 @@ export function BusNetworkMiniMap(props: BusNetworkMiniMapProps) {
   return <OpenBusNetworkMiniMap {...props} />;
 }
 
+export function resolveAuthenticatedPlayerMapMarker(input: {
+  playerLocationAuthorized?: boolean;
+  runtime: ColonyRuntime;
+  presenceReadout?: PresenceReadout | null;
+  authenticatedUserId?: string | null;
+  expectedWorldSeed?: number | null;
+  expectedLayoutRevision?: string | null;
+}): {
+  player: { x: number; y: number } | null;
+  parkedCar: { x: number; y: number } | null;
+} {
+  if (input.playerLocationAuthorized !== true) {
+    return { player: null, parkedCar: null };
+  }
+
+  const { runtime, presenceReadout } = input;
+  const boundUserId =
+    (runtime as any).getBoundOperatorUserId?.() ?? (runtime as any).operatorUserId ?? null;
+  const operatorCitizenId = (runtime as any).operatorCitizenId?.() ?? null;
+  const fpCitizenId = (runtime as any).fpCitizenId ?? null;
+
+  // Inspected other citizen: if fpCitizenId is set and does not match operatorCitizenId, fail closed
+  if (
+    fpCitizenId !== null &&
+    operatorCitizenId !== null &&
+    fpCitizenId !== operatorCitizenId
+  ) {
+    return { player: null, parkedCar: null };
+  }
+
+  // Account switch / mismatch check:
+  if (
+    input.authenticatedUserId &&
+    boundUserId &&
+    input.authenticatedUserId !== boundUserId
+  ) {
+    return { player: null, parkedCar: null };
+  }
+
+  const local =
+    presenceReadout?.entries?.find((entry) => entry.isLocal) ?? null;
+  if (local) {
+    // 1. Wrong subject negative: entry subjectId must match operator identity
+    if (
+      local.subjectId &&
+      boundUserId &&
+      local.subjectId !== boundUserId &&
+      local.subjectId !== operatorCitizenId
+    ) {
+      return { player: null, parkedCar: null };
+    }
+    // 2. Coarse fallback negative: if presence is not exact resolution, refuse
+    if (local.resolution && local.resolution !== "exact") {
+      return { player: null, parkedCar: null };
+    }
+    // 3. Exact fix check: must have valid fix within extent
+    if (!local.fix || local.fix.withinExtent === false) {
+      return { player: null, parkedCar: null };
+    }
+    // 4. Generation / stamp fences
+    if (presenceReadout?.stamp) {
+      if (
+        input.expectedWorldSeed !== undefined &&
+        input.expectedWorldSeed !== null &&
+        presenceReadout.stamp.worldSeed !== input.expectedWorldSeed
+      ) {
+        return { player: null, parkedCar: null };
+      }
+      if (
+        input.expectedLayoutRevision !== undefined &&
+        input.expectedLayoutRevision !== null &&
+        presenceReadout.stamp.layoutRevision &&
+        presenceReadout.stamp.layoutRevision !== input.expectedLayoutRevision
+      ) {
+        return { player: null, parkedCar: null };
+      }
+    }
+  }
+
+  const isDriving =
+    runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
+  const driving = runtime.getOwnedDrivePose?.();
+  const mpClient = runtime.getMultiplayerClient?.();
+  const tSize = runtime.sim?.state?.terrain?.size ?? 128;
+
+  let player: { x: number; y: number } | null = null;
+  let parkedCar: { x: number; y: number } | null = null;
+
+  if (isDriving && driving) {
+    player = { x: driving.x, y: driving.y };
+  } else {
+    let walkingCell: { x: number; y: number } | null = null;
+    if (
+      local?.resolution === "exact" &&
+      local.fix?.withinExtent &&
+      local.fix.cell
+    ) {
+      walkingCell = local.fix.cell;
+    } else if (!fpCitizenId || fpCitizenId === operatorCitizenId) {
+      walkingCell = runtime.getWalkingCell?.() ?? null;
+    }
+    if (walkingCell) {
+      player = { x: walkingCell.x, y: walkingCell.y };
+    }
+    const parkedPose = runtime.getParkedCarPose?.();
+    if (parkedPose) {
+      parkedCar = { x: parkedPose.x, y: parkedPose.y };
+    } else if (mpClient?.getParkedCar?.()) {
+      const pc = mpClient.getParkedCar()!;
+      parkedCar = {
+        x: pc.x / 4 + tSize / 2,
+        y: pc.z / 4 + tSize / 2,
+      };
+    }
+  }
+
+  return { player, parkedCar };
+}
+
 function OpenBusNetworkMiniMap({
   runtime,
   walletLabel,
   presenceReadout,
   onClose,
+  playerLocationAuthorized,
+  authenticatedUserId,
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
   // heartbeat while seated or walking so the player marker and peer markers follow live poses on the map.
@@ -66,28 +189,12 @@ function OpenBusNetworkMiniMap({
   const mpClient = runtime.getMultiplayerClient();
   const isOnline = mpClient?.getStatus() === "connected";
 
-  let player: { x: number; y: number } | null = null;
-  let parkedCar: { x: number; y: number } | null = null;
-
-  if (isDriving && driving) {
-    player = { x: driving.x, y: driving.y };
-  } else {
-    const walkingCell = runtime.getWalkingCell?.() ??
-      (local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell ? local.fix.cell : null);
-    if (walkingCell) {
-      player = { x: walkingCell.x, y: walkingCell.y };
-    }
-    const parkedPose = runtime.getParkedCarPose?.();
-    if (parkedPose) {
-      parkedCar = { x: parkedPose.x, y: parkedPose.y };
-    } else if (mpClient?.getParkedCar()) {
-      const pc = mpClient.getParkedCar()!;
-      parkedCar = {
-        x: pc.x / 4 + tSize / 2,
-        y: pc.z / 4 + tSize / 2,
-      };
-    }
-  }
+  const { player, parkedCar } = resolveAuthenticatedPlayerMapMarker({
+    playerLocationAuthorized,
+    runtime,
+    presenceReadout,
+    authenticatedUserId,
+  });
 
   const peers = Array.from(state.remoteRacers?.values() ?? []).map((r) => {
     let peerParked: { x: number; y: number } | null = null;
@@ -115,6 +222,7 @@ function OpenBusNetworkMiniMap({
     peers,
     player,
     parkedCar,
+    playerLocationAuthorized: Boolean(playerLocationAuthorized),
     width: WIDTH,
     height: HEIGHT,
     padding: 8,

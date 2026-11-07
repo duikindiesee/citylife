@@ -8,6 +8,19 @@ export interface RacePoint {
   y: number;
 }
 
+/** Spec 169 §3.2 — the racing character an AUTHORED signature route carries (makeSignatureTrack).
+ *  Absent on every BFS rally track, and driveCar treats absence as exactly the legacy behaviour, so
+ *  the founding island's rallies drive digit-for-digit as they always did. Not persisted anywhere:
+ *  RaceTrack lives only in runtime state, so no codec or schema is touched by this field. */
+export interface RacingProfile {
+  /** Half the drivable width in cells. The legacy off-track threshold 0.9 IS the width-1 case. */
+  halfWidthCells: number;
+  /** The route's speed ceiling (spec 169 §2 tier table; e.g. a highway-tier route at 11.5 ≈ 166 km/h). */
+  topSpeedCellsPerSec: number;
+  /** A_LAT for the §3.2 lateral-grip cap: ω ≤ A_LAT·gripScale / |v|. */
+  lateralGripCapCellsPerSec2: number;
+}
+
 export interface RaceTrack {
   checkpoints: RacePoint[];
   path: RacePoint[];
@@ -16,6 +29,7 @@ export interface RaceTrack {
   seed: number;
   roadsVersion: number;
   roadKinds: Record<string, RoadKind>;
+  racingProfile?: RacingProfile;
 }
 
 export interface RaceTrackOptions {

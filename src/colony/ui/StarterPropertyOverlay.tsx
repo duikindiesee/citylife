@@ -32,6 +32,7 @@ import {
   type EligibleNeighbourhood,
   type HomeTruth,
   type PurchaseOutcome,
+  type PurchaseHomeOptions,
 } from "../home/starterProperty";
 import { projectStarterHome } from "../home/starterHouseProjection";
 import type { PlayerWalletStatus } from "../wallet/playerWallet";
@@ -129,7 +130,12 @@ export function StarterPropertyOverlay({
     if (pending || (!relocateMode && owned) || !selected) return;
     const key = selected;
     setPending(true);
-    void postPurchaseHome(key, eligibleKeys).then((result) => {
+    const options: PurchaseHomeOptions = {
+      neighbourhoodKey: key,
+      ...(selectedChoice?.plotId ? { plotId: selectedChoice.plotId } : {}),
+      ...(selectedChoice?.layoutRevision ? { layoutRevision: selectedChoice.layoutRevision } : {}),
+    };
+    void postPurchaseHome(options, eligibleKeys).then((result) => {
       setOutcome(result);
       if (result.kind === "owned") {
         onWalletRefresh?.();

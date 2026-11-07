@@ -174,7 +174,12 @@ import {
   solMinutesFracSinceEpoch,
   solsSinceEpoch,
 } from "./sol";
-import { MultiplayerClient, type RemoteRacer } from "./multiplayer/multiplayerClient";
+import {
+  MultiplayerClient,
+  type RemoteRacer,
+  type PartyRaceState,
+  type PartyRaceCheckpoint,
+} from "./multiplayer/multiplayerClient";
 import {
   extractAuthoritativeNeighbourhoodKeys,
   validateAuthoritativeStarterManifest,
@@ -263,6 +268,7 @@ import {
   type NeighbourhoodAccessDeps,
 } from "./bot/neighbourhoodAccess";
 import { isHomeOwned, type HomeTruth } from "./home/starterProperty";
+import { homeTargetCell } from "./home/driveHome";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
 import {
@@ -3385,6 +3391,37 @@ export class ColonyRuntime {
     return this.authClient;
   }
 
+  getPartyRaceState(): PartyRaceState | null {
+    return this.multiplayerClient?.getPartyRaceState() ?? null;
+  }
+
+  invitePartyRace(options?: {
+    checkpoints?: PartyRaceCheckpoint[];
+    countdownMs?: number;
+  }): boolean {
+    return this.multiplayerClient?.invitePartyRace(options) ?? false;
+  }
+
+  joinPartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.joinPartyRace(raceId) ?? false;
+  }
+
+  setPartyRaceReady(ready: boolean, raceId?: string): boolean {
+    return this.multiplayerClient?.setPartyRaceReady(ready, raceId) ?? false;
+  }
+
+  startPartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.startPartyRace(raceId) ?? false;
+  }
+
+  cancelPartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.cancelPartyRace(raceId) ?? false;
+  }
+
+  leavePartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.leavePartyRace(raceId) ?? false;
+  }
+
   getMultiplayerClient(): MultiplayerClient | null {
     return this.multiplayerClient;
   }
@@ -4127,6 +4164,9 @@ export class ColonyRuntime {
           this.emitIfUiDue(modeChanged);
         }
       },
+      onPartyRaceState: () => {
+        this.emit();
+      },
       onSnapshot: (snapshot) => {
         const session = this.multiplayerClient?.getSessionInfo();
         if (!session || !session.sessionId || snapshot.sessionId !== session.sessionId) {
@@ -4708,12 +4748,72 @@ export class ColonyRuntime {
     this.emit();
   }
 
+  private authoritativeHomeTruth: HomeTruth | null = null;
+
+  setAuthoritativeHomeTruth(truth: HomeTruth | null): void {
+    this.authoritativeHomeTruth = truth;
+    this.emit();
+  }
+
+  getAuthoritativeHomeTruth(): HomeTruth | null {
+    return this.authoritativeHomeTruth;
+  }
+
+  /** Render-only readback of the operator's owned home driveway approach cells. */
+  getPlayerHomeDriveway(): {
+    plotId: string;
+    cells: readonly Cell[];
+    gate?: { x: number; y: number };
+    side?: number;
+  } | null {
+    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+      const truth = this.authoritativeHomeTruth;
+      if (truth.geometry?.driveway && truth.geometry.driveway.length > 0) {
+        return {
+          plotId: truth.plotId ?? (truth.geometry.plotId ?? "starter-home"),
+          cells: truth.geometry.driveway,
+          gate:
+            truth.geometry.door ??
+            (truth.geometry.houseZone
+              ? { x: truth.geometry.houseZone.x, y: truth.geometry.houseZone.y }
+              : undefined),
+        };
+      }
+    }
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId) return null;
+    const lot = this.neighborhood.lots.find(
+      (l) => l.ownerCitizenId === citizenId,
+    );
+    if (!lot || !lot.built || !lot.driveway || lot.driveway.length === 0) {
+      return null;
+    }
+    return {
+      plotId: lot.id,
+      cells: lot.driveway,
+      gate: lot.gate,
+      side: lot.side,
+    };
+  }
+
   getOperatorHomeTarget(): {
     x: number;
     y: number;
     lotId: string;
     name: string;
   } | null {
+    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+      const truth = this.authoritativeHomeTruth;
+      const target = homeTargetCell(truth);
+      if (target) {
+        return {
+          x: target.x,
+          y: target.y,
+          lotId: truth.plotId ?? "starter-home",
+          name: truth.plotId ? `Plot ${truth.plotId}` : "Starter Home",
+        };
+      }
+    }
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return null;
     const lot = this.neighborhood.lots.find(
@@ -4729,6 +4829,9 @@ export class ColonyRuntime {
   }
 
   hasOperatorHome(): boolean {
+    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+      return true;
+    }
     const target = this.getOperatorHomeTarget();
     if (!target) return false;
     const lot = this.neighborhood.lots.find((l) => l.id === target.lotId);
@@ -4745,6 +4848,7 @@ export class ColonyRuntime {
     const isTruthObject = Boolean(target && typeof target === "object");
     if (isTruthObject) {
       const truth = target as HomeTruth;
+      this.authoritativeHomeTruth = truth;
       // Authority-bound resolution: only an unambiguously owned truth may claim a starter home
       if (!isHomeOwned(truth)) {
         return false;

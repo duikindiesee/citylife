@@ -44,6 +44,19 @@ function loadServerComponents() {
   }
 
   const serverDir = findServerDir();
+  let serverGitHead = "unknown";
+  try {
+    serverGitHead = execSync("git rev-parse HEAD", { cwd: serverDir, encoding: "utf-8" }).trim();
+  } catch (e: any) {
+    serverGitHead = `error: ${e.message}`;
+  }
+  const appPathHash = fs.existsSync(path.join(serverDir, "dist/app.js"))
+    ? crypto.createHash("sha256").update(fs.readFileSync(path.join(serverDir, "dist/app.js"))).digest("hex")
+    : "missing";
+  const realtimePathHash = fs.existsSync(path.join(serverDir, "dist/realtime.js"))
+    ? crypto.createHash("sha256").update(fs.readFileSync(path.join(serverDir, "dist/realtime.js"))).digest("hex")
+    : "missing";
+  console.log(`[SERVER_EXECUTION_IDENTITY] serverDir=${serverDir} gitHead=${serverGitHead} appHash=${appPathHash} realtimeHash=${realtimePathHash}`);
   const jwtPath = path.join(serverDir, "node_modules/jsonwebtoken");
   const appPath = path.join(serverDir, "dist/app.js");
   const gameStatePath = path.join(serverDir, "dist/gameState.js");
@@ -1403,6 +1416,469 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       try {
         unauthWs?.terminate?.();
       } catch {}
+      realtime.dispose();
+      await fastifyApp.close();
+    }
+  });
+
+  test("two authenticated friends in a party complete invitation, join, ready, start countdown, checkpoint race, result, and reconnect against Fastify server", async () => {
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      WebSocket: ServerWebSocket,
+      CANONICAL_PHYSICAL_OBSTACLES_4242,
+      PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      computePhysicalCollidersContentHash,
+    } = loadServerComponents();
+
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyRuntime.captureWorldLayout(),
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const canonicalTransitAuthority = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    expect(canonicalTransitAuthority).not.toBeNull();
+
+    const physicalColliders = {
+      schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      frameId: surfaceFrame.id,
+      obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      contentHash: computePhysicalCollidersContentHash({
+        schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        frameId: surfaceFrame.id,
+        obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      }),
+    };
+
+    const STAGING_CELL = { x: 139, y: 265, heading: 0 };
+    const walkableCells = new Set<string>();
+    for (let x = 120; x <= 180; x++) {
+      for (let y = 250; y <= 280; y++) {
+        walkableCells.add(`${x},${y}`);
+      }
+    }
+    const walkability = {
+      schemaVersion: "citylife.walkability/v1",
+      frameId: surfaceFrame.id,
+      walkableCells,
+    };
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: STAGING_CELL,
+      physicalColliders,
+      walkability,
+      transit: canonicalTransitAuthority,
+    });
+
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        if (userId === "90001") {
+          return {
+            owned: true,
+            status: "OWNED",
+            vehicleKey: "karoo-vonk-11",
+            storage: "STREET",
+            onboardingState: "COMPLETE",
+          };
+        }
+        if (userId === "90002") {
+          return {
+            owned: true,
+            status: "OWNED",
+            vehicleKey: "karoo-vonk-11",
+            storage: "STREET",
+            onboardingState: "COMPLETE",
+          };
+        }
+        return {
+          owned: false,
+          status: null,
+          vehicleKey: null,
+          storage: null,
+          onboardingState: "NONE",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: false,
+      staleTimeoutMs: 30000,
+    });
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: ["https://citylife.kooker.co.za"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const baseUrl = serverAddr;
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+
+    const OriginalWebSocket = globalThis.WebSocket;
+    try {
+      const tokenA = jwt.sign(
+        { userId: 90001, id: 90001, sub: 90001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "AliceRacer" },
+        JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const cookieResA = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenA}`,
+          origin: "https://citylife.kooker.co.za",
+        },
+      });
+      expect(cookieResA.status).toBe(200);
+      const cookieHeaderA = (cookieResA.headers.get("set-cookie") || "").split(";")[0];
+
+      const tokenB = jwt.sign(
+        { userId: 90002, id: 90002, sub: 90002, type: "access", roles: ["CITYLIFE_PLAYER"], username: "BobRacer" },
+        JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const cookieResB = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenB}`,
+          origin: "https://citylife.kooker.co.za",
+        },
+      });
+      expect(cookieResB.status).toBe(200);
+      const cookieHeaderB = (cookieResB.headers.get("set-cookie") || "").split(";")[0];
+
+      class PrincipalAWebSocket extends ServerWebSocket {
+        constructor(url: string | URL, protocols?: any) {
+          super(url, protocols, {
+            headers: {
+              origin: "https://citylife.kooker.co.za",
+              cookie: cookieHeaderA,
+            },
+          });
+        }
+      }
+
+      class PrincipalBWebSocket extends ServerWebSocket {
+        constructor(url: string | URL, protocols?: any) {
+          super(url, protocols, {
+            headers: {
+              origin: "https://citylife.kooker.co.za",
+              cookie: cookieHeaderB,
+            },
+          });
+        }
+      }
+
+      const eventsA: Array<{ state: any; event?: string }> = [];
+      const eventsB: Array<{ state: any; event?: string }> = [];
+      const errorsA: any[] = [];
+      const errorsB: any[] = [];
+
+      const terrainSize = baseSurveyRuntime.sim.state.terrain.size;
+      const startX = (STAGING_CELL.x - terrainSize / 2) * 4;
+      const startZ1 = (STAGING_CELL.y - terrainSize / 2) * 4;
+      const startZ2 = (STAGING_CELL.y + 1 - terrainSize / 2) * 4;
+
+      (globalThis as any).WebSocket = PrincipalAWebSocket;
+      const clientA = new MultiplayerClient({
+        url: wsUrl,
+        userId: "90001",
+        username: "AliceRacer",
+        vehicleKey: "karoo-vonk-11",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => true,
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "PARTY-CUP-1",
+        autoCreate: true,
+        x: startX,
+        y: 0,
+        z: startZ1,
+        heading: 0,
+        speed: 0,
+        onPartyRaceState: (state, event) => eventsA.push({ state, event }),
+        onError: (err) => errorsA.push(err),
+      });
+
+      await clientA.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client A connect timeout")), 5000);
+        const check = () => {
+          if (clientA.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (clientA.getStatus() === "error") {
+            clearTimeout(timeout);
+            reject(new Error("Client A error"));
+          } else {
+            setTimeout(check, 25);
+          }
+        };
+        check();
+      });
+
+      (globalThis as any).WebSocket = PrincipalBWebSocket;
+      const clientB = new MultiplayerClient({
+        url: wsUrl,
+        userId: "90002",
+        username: "BobRacer",
+        vehicleKey: "karoo-vonk-11",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => true,
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "PARTY-CUP-1",
+        autoCreate: true,
+        x: startX,
+        y: 0,
+        z: startZ2,
+        heading: 0,
+        speed: 0,
+        onPartyRaceState: (state, event) => eventsB.push({ state, event }),
+        onError: (err) => errorsB.push(err),
+      });
+
+      await clientB.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client B connect timeout")), 5000);
+        const check = () => {
+          if (clientB.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (clientB.getStatus() === "error") {
+            clearTimeout(timeout);
+            reject(new Error("Client B error"));
+          } else {
+            setTimeout(check, 25);
+          }
+        };
+        check();
+      });
+
+      expect(clientA.getMode()).toBe("driving");
+      expect(clientB.getMode()).toBe("driving");
+
+      const midZ = (startZ1 + startZ2) / 2;
+      const checkpoints = [
+        { x: startX + 12, z: midZ, radiusMetres: 14, label: "Checkpoint 1" },
+        { x: startX + 24, z: midZ, radiusMetres: 14, label: "Finish Line" },
+      ];
+
+      // 1. Host (AliceRacer) invites party to race
+      expect(clientA.invitePartyRace({ countdownMs: 1000, checkpoints })).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Invite timeout")), 5000);
+        const check = () => {
+          if (clientA.getPartyRaceState()?.status === "lobby" && clientB.getPartyRaceState()?.status === "lobby") {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      const raceId = clientA.getPartyRaceState()!.raceId;
+      expect(raceId).toBeTruthy();
+      expect(clientB.getPartyRaceState()!.raceId).toBe(raceId);
+      expect(clientA.getPartyRaceState()!.entrants).toHaveLength(1);
+
+      // 2. Friend (BobRacer) joins party race
+      expect(clientB.joinPartyRace(raceId)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Join timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.entrants.length === 2 &&
+            clientB.getPartyRaceState()?.entrants.length === 2
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 3. Negative guards: start before ready fails with RACERS_NOT_READY, non-host start fails with NOT_RACE_HOST
+      clientA.startPartyRace(raceId);
+      clientB.startPartyRace(raceId);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Negative guard timeout")), 5000);
+        const check = () => {
+          if (
+            errorsA.some((e) => e.code === "RACERS_NOT_READY") &&
+            errorsB.some((e) => e.code === "NOT_RACE_HOST")
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 4. Friend marks ready
+      expect(clientB.setPartyRaceReady(true, raceId)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Ready timeout")), 5000);
+        const check = () => {
+          const state = clientA.getPartyRaceState();
+          if (state && state.entrants.every((e) => e.ready)) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 5. Host starts countdown
+      expect(clientA.startPartyRace(raceId)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Countdown timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.status === "countdown" &&
+            clientB.getPartyRaceState()?.status === "countdown"
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // Wait for countdown (1000ms) to elapse and step simulation -> racing
+      await new Promise((r) => setTimeout(r, 1100));
+      realtime.stepSimulation(0.05);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Racing transition timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.status === "active" &&
+            clientB.getPartyRaceState()?.status === "active"
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 6. Drive both racers forward along the corridor through Checkpoint 1 and Finish Line
+      for (let tick = 1; tick <= 80; tick++) {
+        clientA.sendDrivingInput({
+          seq: clientA.getNextInputSeq(),
+          epoch: clientA.getModeEpoch(),
+          throttle: 1,
+          steer: 0,
+          brake: false,
+          mode: "driving",
+        });
+        if (tick >= 4) {
+          clientB.sendDrivingInput({
+            seq: clientB.getNextInputSeq(),
+            epoch: clientB.getModeEpoch(),
+            throttle: 1,
+            steer: 0,
+            brake: false,
+            mode: "driving",
+          });
+        }
+        await new Promise((r) => setTimeout(r, 5));
+        realtime.stepSimulation(0.05);
+        if (clientA.getPartyRaceState()?.status === "finished") {
+          break;
+        }
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Finish timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.status === "finished" &&
+            clientB.getPartyRaceState()?.status === "finished"
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      const finalState = clientA.getPartyRaceState()!;
+      expect(finalState.status).toBe("finished");
+      expect(finalState.winnerUserId).toBe("90001");
+      const aliceEntrant = finalState.entrants.find((e) => e.userId === "90001")!;
+      const bobEntrant = finalState.entrants.find((e) => e.userId === "90002")!;
+      expect(aliceEntrant.place).toBe(1);
+      expect(aliceEntrant.elapsedMs).toBeGreaterThan(0);
+      expect(bobEntrant.place).toBe(2);
+      expect(bobEntrant.elapsedMs).toBeGreaterThanOrEqual(aliceEntrant.elapsedMs!);
+
+      // 7. Reconnect BobRacer and verify partyRace result is preserved on session_reconnected
+      (globalThis as any).WebSocket = PrincipalBWebSocket;
+      const rawWsB = (clientB as any).ws;
+      rawWsB.close();
+      await new Promise((r) => setTimeout(r, 80));
+      await clientB.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Reconnect B timeout")), 5000);
+        const check = () => {
+          if (clientB.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      expect(clientB.getPartyRaceState()?.raceId).toBe(raceId);
+      expect(clientB.getPartyRaceState()?.status).toBe("finished");
+      expect(clientB.getPartyRaceState()?.winnerUserId).toBe("90001");
+
+      clientA.disconnect();
+      clientB.disconnect();
+    } finally {
+      (globalThis as any).WebSocket = OriginalWebSocket;
       realtime.dispose();
       await fastifyApp.close();
     }

@@ -2726,6 +2726,12 @@ body.tv-mode .radio-iframe.is-visible {
   color: #8fb6d8;
   overflow-wrap: anywhere;
 }
+.geo-readout__meaning {
+  margin-top: 3px;
+  color: #ffd27a;
+  font-size: 9px;
+  font-weight: 700;
+}
 .geo-readout__coord {
   color: #cfe6f2;
 }

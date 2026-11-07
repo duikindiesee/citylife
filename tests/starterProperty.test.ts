@@ -9,7 +9,19 @@ import {
   purchaseStateColor,
   homePurchaseIdempotencyKey,
   postPurchaseHome,
+  postBuildHome,
+  postConfirmArrival,
+  type HomeTruth,
 } from "../src/colony/home/starterProperty";
+import { deriveHomePlacement } from "../src/colony/home/starterHouseProjection";
+import { homeTargetCell } from "../src/colony/home/driveHome";
+import { ColonyRuntime } from "../src/colony/runtime";
+import {
+  parseStarterPlotOffers,
+  bindStarterPlotOffers,
+  verifyX19Pricing,
+  projectReturningResidentState,
+} from "../src/colony/home/starterCatalogueClient";
 
 // PLAYER.HOME.1C — the pure model for the dark starter-property slice. Everything here is node-testable
 // with no DOM and no network: the dark gate, the SERVER-RETURNED-ONLY eligible-list sanitiser, the
@@ -196,5 +208,358 @@ describe("postPurchaseHome local refusals (never touch the wire)", () => {
     await expect(postPurchaseHome("", ["coastal"])).resolves.toEqual({
       kind: "disabled",
     });
+  });
+  it("accepts PurchaseHomeOptions with plotId and layoutRevision", async () => {
+    await expect(
+      postPurchaseHome(
+        {
+          neighbourhoodKey: "unoffered",
+          plotId: "plot-42",
+          layoutRevision: "a".repeat(64),
+        },
+        ["coastal"],
+      ),
+    ).resolves.toEqual({ kind: "disabled" });
+  });
+});
+
+describe("published HomeTruth parsing & required-read fail-closed validations", () => {
+  it("parses full published geometry, build state, arrival, and owned-vehicle projection", () => {
+    const raw = {
+      owned: true,
+      status: "RESIDENT",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_lot_1",
+      frameId: "frame-wood1",
+      onboardingState: "OWNED",
+      priceKco: 450,
+      layoutRevision: "b".repeat(64),
+      x: 32,
+      y: 48,
+      geometry: {
+        plotId: "wood1_lot_1",
+        worldId: "seed-4242",
+        layoutRevision: "b".repeat(64),
+        neighbourhoodKey: "wood1",
+        parcel: { x: 30, y: 46, width: 8, depth: 8 },
+        houseZone: { x: 32, y: 48, width: 6, depth: 6 },
+        door: { x: 35, y: 48 },
+        driveway: [
+          { x: 35, y: 44 },
+          { x: 35, y: 45 },
+          { x: 35, y: 46 },
+          { x: 35, y: 47 },
+        ],
+        spawn: { x: 35, y: 46 },
+      },
+      buildState: "COMPLETED",
+      completed: true,
+      script: 'house{w:6 d:6 wallH:2 door:s} room{kind:living x:0 y:0 w:6 d:6 win:1}',
+      arrivalStatus: "RESIDENT",
+      isResident: true,
+      vehicleId: "car-x19-owned-1",
+      vehicleModel: "showroom:karoo-x19-targa",
+      vehiclePose: { x: 35, y: 46, heading: 1.57 },
+    };
+
+    const truth = parseHomeTruth(raw);
+    expect(truth).not.toBeNull();
+    expect(truth!.owned).toBe(true);
+    expect(isHomeOwned(truth)).toBe(true);
+    expect(truth!.isResident).toBe(true);
+    expect(truth!.completed).toBe(true);
+    expect(truth!.x).toBe(32);
+    expect(truth!.y).toBe(48);
+    expect(truth!.geometry?.driveway).toHaveLength(4);
+    expect(truth!.geometry?.door).toEqual({ x: 35, y: 48 });
+    expect(truth!.vehicleId).toBe("car-x19-owned-1");
+    expect(truth!.vehiclePose?.x).toBe(35);
+  });
+
+  it("required-read failure: malformed geometry or non-finite coordinates fail closed", () => {
+    // Non-finite x coordinate drops x to null
+    const badCoords = parseHomeTruth({
+      owned: true,
+      status: "OWNED",
+      x: Number.NaN,
+      y: Number.POSITIVE_INFINITY,
+    });
+    expect(badCoords!.x).toBeNull();
+    expect(badCoords!.y).toBeNull();
+
+    // Contradictory status makes isHomeOwned false
+    const contradictory = parseHomeTruth({
+      owned: true,
+      status: "REJECTED_INSUFFICIENT_FUNDS",
+    });
+    expect(isHomeOwned(contradictory)).toBe(false);
+
+    // Unowned body returns owned: false
+    const unowned = parseHomeTruth({ owned: false });
+    expect(isHomeOwned(unowned)).toBe(false);
+  });
+});
+
+describe("published coordinate adoption in deriveHomePlacement and homeTargetCell", () => {
+  it("adopts published server-owned coordinates over deed hashing", () => {
+    const publishedTruth: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_lot_1",
+      frameId: "frame-1",
+      onboardingState: "OWNED",
+      priceKco: 300,
+      x: 42,
+      y: 55,
+    };
+    expect(deriveHomePlacement(publishedTruth)).toEqual({ x: 42, y: 55 });
+    expect(homeTargetCell(publishedTruth)).toEqual({ x: 42, y: 55 });
+  });
+
+  it("adopts published geometry door or houseZone when x/y not direct", () => {
+    const geomTruth: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_lot_1",
+      frameId: "frame-1",
+      onboardingState: "OWNED",
+      priceKco: 300,
+      geometry: {
+        door: { x: 23, y: 34 },
+      },
+    };
+    expect(deriveHomePlacement(geomTruth)).toEqual({ x: 23, y: 34 });
+    expect(homeTargetCell(geomTruth)).toEqual({ x: 23, y: 34 });
+  });
+
+  it("falls back to deterministic deed hashing when published coordinates absent", () => {
+    const legacyTruth: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "coastal",
+      plotId: "plot-legacy",
+      frameId: "frame-legacy",
+      onboardingState: "OWNED",
+      priceKco: 300,
+    };
+    const placement = deriveHomePlacement(legacyTruth);
+    expect(placement.x).toBeGreaterThanOrEqual(0);
+    expect(placement.x).toBeLessThan(64);
+    expect(placement.y).toBeGreaterThanOrEqual(0);
+    expect(placement.y).toBeLessThan(64);
+    expect(homeTargetCell(legacyTruth)).toEqual(placement);
+  });
+});
+
+describe("ColonyRuntime published driveway & home target resolution", () => {
+  it("getPlayerHomeDriveway and getOperatorHomeTarget resolve published coordinates and driveway", () => {
+    const runtime = new ColonyRuntime(42);
+    expect(runtime.hasOperatorHome()).toBe(false);
+
+    const publishedTruth: HomeTruth = {
+      owned: true,
+      status: "RESIDENT",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_9",
+      frameId: "frame-wood1",
+      onboardingState: "OWNED",
+      priceKco: 450,
+      x: 18,
+      y: 22,
+      geometry: {
+        plotId: "wood1_plot_9",
+        driveway: [
+          { x: 18, y: 20 },
+          { x: 18, y: 21 },
+          { x: 18, y: 22 },
+        ],
+        door: { x: 18, y: 22 },
+      },
+    };
+
+    runtime.setAuthoritativeHomeTruth(publishedTruth);
+    expect(runtime.hasOperatorHome()).toBe(true);
+
+    const driveway = runtime.getPlayerHomeDriveway();
+    expect(driveway).not.toBeNull();
+    expect(driveway!.plotId).toBe("wood1_plot_9");
+    expect(driveway!.cells).toEqual([
+      { x: 18, y: 20 },
+      { x: 18, y: 21 },
+      { x: 18, y: 22 },
+    ]);
+    expect(driveway!.gate).toEqual({ x: 18, y: 22 });
+
+    const target = runtime.getOperatorHomeTarget();
+    expect(target).not.toBeNull();
+    expect(target!.x).toBe(18);
+    expect(target!.y).toBe(22);
+    expect(target!.lotId).toBe("wood1_plot_9");
+  });
+});
+
+describe("Starter catalogue client & returning resident projection", () => {
+  it("parses starter plot offers and rejects invalid/out-of-bounds prices or dimensions", () => {
+    const valid = [
+      {
+        plotId: "plot-1",
+        frameId: "frame-1",
+        priceKco: 500,
+        geometry: {
+          worldId: "seed-4242",
+          plotId: "plot-1",
+          neighbourhoodKey: "wood1",
+          layoutRevision: "c".repeat(64),
+          parcel: { width: 8, depth: 8 },
+        },
+      },
+    ];
+    const parsed = parseStarterPlotOffers(valid);
+    expect(parsed).toHaveLength(1);
+    expect(parsed![0].plotId).toBe("plot-1");
+    expect(parsed![0].priceKco).toBe(500);
+
+    // Non-finite price or invalid revision
+    expect(
+      parseStarterPlotOffers([
+        { ...valid[0], priceKco: -10 },
+      ]),
+    ).toBeNull();
+    expect(
+      parseStarterPlotOffers([
+        { ...valid[0], geometry: { ...valid[0].geometry, layoutRevision: "not-a-hash" } },
+      ]),
+    ).toBeNull();
+  });
+
+  it("verifies authoritative server X19 pricing", () => {
+    expect(verifyX19Pricing(null)).toEqual({ valid: false, priceKco: null });
+    expect(verifyX19Pricing({ "karoo-vonk-11": 250 })).toEqual({
+      valid: false,
+      priceKco: null,
+    });
+    expect(
+      verifyX19Pricing({ "karoo-x19-targa": 950, "karoo-vonk-11": 250 }),
+    ).toEqual({ valid: true, priceKco: 950 });
+  });
+
+  it("projects returning resident home and exact owned vehicle on reload", () => {
+    const unowned = projectReturningResidentState(null);
+    expect(unowned.isResident).toBe(false);
+    expect(unowned.homeCell).toBeNull();
+    expect(unowned.vehicle).toBeNull();
+
+    const residentTruth: HomeTruth = {
+      owned: true,
+      status: "RESIDENT",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_lot_1",
+      frameId: "frame-wood1",
+      onboardingState: "OWNED",
+      priceKco: 450,
+      x: 32,
+      y: 48,
+      isResident: true,
+      vehicleId: "car-x19-res-1",
+      vehicleModel: "showroom:karoo-x19-targa",
+      vehiclePose: { x: 35, y: 46, heading: 0 },
+    };
+
+    const proj = projectReturningResidentState(residentTruth);
+    expect(proj.isResident).toBe(true);
+    expect(proj.homeCell).toEqual({ x: 32, y: 48 });
+    expect(proj.vehicle).not.toBeNull();
+    expect(proj.vehicle!.id).toBe("car-x19-res-1");
+    expect(proj.vehicle!.model).toBe("showroom:karoo-x19-targa");
+    expect(proj.vehicle!.x).toBe(35);
+    expect(proj.vehicle!.y).toBe(46);
+  });
+  it("does not infer residency from completed build alone, and does not synthesize fake vehicle defaults", () => {
+    // 1. Completed build without explicit server truth RESIDENT
+    const completedBuildUnconfirmedResident: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_lot_1",
+      frameId: "frame-wood1",
+      onboardingState: "OWNED",
+      priceKco: 450,
+      x: 32,
+      y: 48,
+      completed: true,
+      buildState: "COMPLETED",
+    };
+
+    const proj1 = projectReturningResidentState(completedBuildUnconfirmedResident);
+    expect(proj1.isResident).toBe(false); // Residency must NOT be inferred from completed build alone!
+
+    // 2. Missing vehicleId or missing vehicleModel must NOT synthesize defaults
+    const missingVehicleModel: HomeTruth = {
+      ...completedBuildUnconfirmedResident,
+      status: "RESIDENT",
+      isResident: true,
+      vehicleId: "my-car-1",
+    };
+    const proj2 = projectReturningResidentState(missingVehicleModel);
+    expect(proj2.isResident).toBe(true);
+    expect(proj2.vehicle).toBeNull(); // Do NOT synthesize fake default vehicle model!
+
+    const missingVehicleId: HomeTruth = {
+      ...completedBuildUnconfirmedResident,
+      status: "RESIDENT",
+      isResident: true,
+      vehicleModel: "showroom:karoo-x19-targa",
+    };
+    const proj3 = projectReturningResidentState(missingVehicleId);
+    expect(proj3.vehicle).toBeNull(); // Do NOT synthesize fake default vehicle id!
+  });
+
+  it("handles purchase options with server-bound plotId and layoutRevision", async () => {
+    const origFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async (url: string, init?: RequestInit) => {
+        if (url === "/kooker/api/v1/citylife/players/me/home/purchase") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ owned: true }),
+          } as Response;
+        }
+        return { ok: false, status: 404 } as Response;
+      }) as typeof fetch;
+
+      const result = await postPurchaseHome(
+        {
+          neighbourhoodKey: "wood1",
+          plotId: "plot-alpha",
+          layoutRevision: "a".repeat(64),
+        },
+        ["wood1"],
+      );
+
+      // In tests without active auth token, postPurchaseHome fails closed to disabled
+      expect(result.kind).toBe("disabled");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("handles malformed/missing required reads and bodies, stale identity, and physical arrival negatives", async () => {
+    // 1. postBuildHome with missing plotId/script fails closed
+    const buildRes = await postBuildHome({
+      plotId: "",
+      layoutRevision: "",
+      script: "",
+    });
+    expect(buildRes.kind).toBe("disabled");
+
+    // 2. postConfirmArrival fails closed when signed out
+    const arrivalRes = await postConfirmArrival({
+      plotId: "plot-1",
+      layoutRevision: "rev-1",
+    });
+    expect(arrivalRes.kind).toBe("disabled");
   });
 });

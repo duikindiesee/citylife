@@ -74,7 +74,16 @@ export function clampCell(cell: Cell, grid = STARTER_PLACEMENT_GRID): Cell {
 export function homeTargetCell(truth: HomeTruth | null): Cell | null {
   if (!isHomeOwned(truth)) return null;
   const t = truth as HomeTruth;
-  if (!t.frameId && !t.plotId && !t.neighbourhoodKey) return null;
+  if (
+    !t.frameId &&
+    !t.plotId &&
+    !t.neighbourhoodKey &&
+    !t.geometry &&
+    t.x === undefined &&
+    t.y === undefined
+  ) {
+    return null;
+  }
   return deriveHomePlacement(t);
 }
 

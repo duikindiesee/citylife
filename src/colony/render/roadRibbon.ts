@@ -47,6 +47,40 @@ export const edgeLineOffset = (half: number): number =>
 /** Painted line half-width (cells), shared by the ribbon edge lines and the cap kerb lines. */
 export const EDGE_LINE_HALF_WIDTH = 0.09;
 
+export const ROAD_MESH_NAME_ASPHALT = "RoadSurfaceAsphalt";
+export const ROAD_MESH_NAME_EDGE_LINES = "RoadEdgeLines";
+export const ROAD_MESH_NAME_DASHES = "RoadDashes";
+export const ROAD_MESH_NAME_JUNCTION_CAPS = "RoadJunctionCaps";
+export const ROAD_MESH_NAME_JUNCTION_PAINT = "RoadJunctionPaint";
+
+export function isRoadAsphaltMesh(obj: THREE.Object3D): obj is THREE.Mesh {
+  if (!(obj instanceof THREE.Mesh)) return false;
+  if (obj.name === ROAD_MESH_NAME_ASPHALT || obj.name === ROAD_MESH_NAME_JUNCTION_CAPS) return true;
+  const mat = obj.material as THREE.MeshStandardMaterial | undefined;
+  if (mat && mat.color) {
+    const hex = mat.color.getHex();
+    return hex === 0x595f6a || hex === 0x646b78;
+  }
+  return false;
+}
+
+export function isRoadPaintMesh(obj: THREE.Object3D): obj is THREE.Mesh {
+  if (!(obj instanceof THREE.Mesh)) return false;
+  if (
+    obj.name === ROAD_MESH_NAME_EDGE_LINES ||
+    obj.name === ROAD_MESH_NAME_DASHES ||
+    obj.name === ROAD_MESH_NAME_JUNCTION_PAINT
+  ) {
+    return true;
+  }
+  const mat = obj.material as THREE.MeshStandardMaterial | undefined;
+  if (mat && mat.color) {
+    const hex = mat.color.getHex();
+    return hex === 0xe8ecf2 || hex === 0xf2cf52;
+  }
+  return false;
+}
+
 function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
   const gx = Math.round(x),
     gy = Math.round(y);
@@ -561,20 +595,21 @@ export function buildRoadRibbons(
     if (!zones)
       crosswalks(pts, way.width / 2, opts, edge, nearJunction, skipPaint);
   }
-  const add = (arr: number[], mat: THREE.Material) => {
+  const add = (arr: number[], mat: THREE.Material, name?: string) => {
     if (arr.length === 0) return;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = name ?? "";
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     group.add(mesh);
   };
-  add(surf, streetMat);
-  add(surfA, avenueMat);
-  add(edge, edgeMat);
-  add(dash, dashMat);
+  add(surf, streetMat, ROAD_MESH_NAME_ASPHALT);
+  add(surfA, avenueMat, ROAD_MESH_NAME_ASPHALT);
+  add(edge, edgeMat, ROAD_MESH_NAME_EDGE_LINES);
+  add(dash, dashMat, ROAD_MESH_NAME_DASHES);
   return { group, cells };
 }
 

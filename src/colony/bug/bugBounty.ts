@@ -20,11 +20,9 @@
  *    unauthorised validator is refused when the record is read back.
  *  - It does NOT, on its own, prove that the caller IS the principal they name. That is an identity
  *    question and only the auth boundary can answer it. `setBugValidatorAuthority` is the seam where
- *    that boundary plugs in: the Task API already refuses operator-gated actions without a user JWT
- *    holding an admin role (see bridge docs/runbooks/2026-07-17-ledger-operator-report-backfill.md —
- *    unauthenticated operator-report returns HTTP 401 "requires a user JWT with an admin role").
- *    Until an authority is installed the default below is allowlist-only, which is why the gap is
- *    documented here rather than papered over.
+ *    that boundary plugs in: AuthClient installs the live CityLife boundary from the signed-in JWT's
+ *    server-derived user id and admin/operator role, so the browser path denies signed-out users,
+ *    players and bots before a validated-fix ledger entry or bounty signal can be minted.
  */
 
 /** What a validated fix pays. Operator decision: 100 KCO. Configuration, not a literal. */

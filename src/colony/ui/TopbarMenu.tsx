@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import type { ColonyRuntime } from "../runtime";
 
 type MenuPage = "profile" | "controls" | "friends" | "more";
 
 export interface TopbarMenuProps {
+  readonly runtime?: ColonyRuntime;
   readonly hasRealAccount: boolean;
   readonly playerId: string | null;
   readonly firstPersonActive: boolean;
@@ -22,6 +24,7 @@ const PAGES: { id: MenuPage; label: string }[] = [
 ];
 
 export function TopbarMenu({
+  runtime,
   hasRealAccount,
   playerId,
   firstPersonActive,
@@ -34,6 +37,15 @@ export function TopbarMenu({
 }: TopbarMenuProps) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<MenuPage>("profile");
+  const [roomInput, setRoomInput] = useState("");
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!open || !runtime) return;
+    return runtime.subscribe(() => {
+      setTick((t) => t + 1);
+    });
+  }, [open, runtime]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,6 +66,12 @@ export function TopbarMenu({
     setOpen(false);
     action?.();
   };
+
+  const mp = runtime?.getMultiplayerClient() ?? null;
+  const mpStatus = mp?.getStatus() ?? "disconnected";
+  const mpInfo = mp?.getSessionInfo() ?? null;
+  const partyPeers = Array.from(runtime?.sim?.state?.remoteRacers?.values() ?? []);
+  const partyRace = runtime?.getPartyRaceState() ?? null;
 
   return (
     <>
@@ -154,11 +172,76 @@ export function TopbarMenu({
               {page === "friends" && (
                 <section aria-label="Friends and lobby">
                   <h3>Friends</h3>
-                  <p>No friends are connected to this session.</p>
-                  <p className="player-pause-menu__note">
-                    Online multiplayer is not connected yet. City residents are
-                    not shown as player friends or on your map.
-                  </p>
+                  {mpStatus === "connected" ? (
+                    <>
+                      <p data-testid="friends-room-status">
+                        Party room <strong>{mpInfo?.inviteCode || "active"}</strong>
+                      </p>
+                      {partyPeers.length === 0 ? (
+                        <p>No friends are connected to this session.</p>
+                      ) : (
+                        <ul data-testid="friends-connected-list">
+                          {partyPeers.map((peer) => (
+                            <li
+                              key={peer.participantId}
+                              data-testid={`friend-peer-${peer.username}`}
+                            >
+                              {peer.username} ({peer.mode ?? "driving"})
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {partyRace && (
+                        <p data-testid="friends-party-race-summary">
+                          Party Race: <strong>{partyRace.status}</strong> (
+                          {partyRace.entrants.length} racers)
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p>No friends are connected to this session.</p>
+                      <p className="player-pause-menu__note">
+                        Online multiplayer is not connected yet. City residents are
+                        not shown as player friends or on your map.
+                      </p>
+                    </>
+                  )}
+                  {runtime && playerId !== null && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        marginTop: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        data-testid="party-room-input"
+                        placeholder="Party room code (e.g. PARTY1)"
+                        value={roomInput}
+                        onChange={(e) => setRoomInput(e.target.value)}
+                        style={{ flex: 1, padding: "4px 8px" }}
+                      />
+                      <button
+                        type="button"
+                        data-testid="party-room-join-btn"
+                        onClick={() => {
+                          const code = roomInput.trim() || "racing-cup";
+                          const wsUrl =
+                            typeof window !== "undefined"
+                              ? new URLSearchParams(window.location.search).get(
+                                  "ws",
+                                ) || (window as any).__customMultiplayerWsUrl
+                              : undefined;
+                          runtime.enableMultiplayer(code, wsUrl || undefined);
+                        }}
+                      >
+                        {mpStatus === "connected" ? "Switch Party" : "Join Party"}
+                      </button>
+                    </div>
+                  )}
                 </section>
               )}
               {page === "more" && (

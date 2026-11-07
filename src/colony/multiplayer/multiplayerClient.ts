@@ -51,12 +51,50 @@ export interface ServerSnapshotParticipant {
   lastInputSeq?: number;
 }
 
+export interface PartyRaceCheckpoint {
+  x: number;
+  z: number;
+  radiusMetres: number;
+  label?: string;
+}
+
+export interface PartyRaceEntrant {
+  userId: string;
+  participantId: string;
+  username: string;
+  vehicleKey: string | null;
+  ready: boolean;
+  checkpointIndex: number;
+  finishedAtMs: number | null;
+  elapsedMs: number | null;
+  place: number | null;
+  joinedAtMs: number;
+}
+
+export type PartyRaceStatus = "lobby" | "countdown" | "active" | "racing" | "finished" | "cancelled";
+
+export interface PartyRaceState {
+  raceId: string;
+  hostUserId: string;
+  hostParticipantId: string;
+  status: PartyRaceStatus;
+  createdAtMs: number;
+  countdownMs: number;
+  countdownEndsAtMs: number | null;
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+  winnerUserId: string | null;
+  checkpoints: PartyRaceCheckpoint[];
+  entrants: PartyRaceEntrant[];
+}
+
 export interface ServerSnapshot {
   type: "snapshot";
   sessionId: string;
   seq: number;
   timestamp: number;
   participants: ServerSnapshotParticipant[];
+  partyRace?: PartyRaceState | null;
 }
 
 export interface MultiplayerClientOptions {
@@ -104,6 +142,7 @@ export interface MultiplayerClientOptions {
     },
   ) => void;
   onSnapshot?: (snapshot: ServerSnapshot) => void;
+  onPartyRaceState?: (state: PartyRaceState | null, event?: string) => void;
   onSessionReady?: (sessionId: string, inviteCode: string, participantId: string, worldId?: string, neighbourhoodKey?: string) => void;
   onSelfAdmitted?: (placement: {
     participantId: string;
@@ -359,6 +398,7 @@ export class MultiplayerClient {
     speed?: number;
   };
   private lastSnapshotSeq = 0;
+  private partyRaceState: PartyRaceState | null = null;
   private lastPoseSentAt = 0;
   private lastSentMode: "driving" | "walking" | null = null;
   private pingInterval: any = null;
@@ -405,6 +445,10 @@ export class MultiplayerClient {
 
   public getParkedCar(): { x: number; y: number; z: number; heading: number; speed?: number } | undefined {
     return this.parkedCar ? { ...this.parkedCar } : undefined;
+  }
+
+  public getPartyRaceState(): PartyRaceState | null {
+    return this.partyRaceState;
   }
 
   public getLastSnapshotSeq(): number {
@@ -462,7 +506,10 @@ export class MultiplayerClient {
     this.currentMode = "driving";
   }
 
-  public connect(): Promise<void> {
+  public connect(roomCode?: string): Promise<void> {
+    if (roomCode !== undefined) {
+      this.options.roomCode = roomCode;
+    }
     if (this.pendingConnectPromise) {
       return this.pendingConnectPromise;
     }
@@ -515,7 +562,8 @@ export class MultiplayerClient {
       }
       if (!ensured) {
         console.warn("[Multiplayer] Failed to ensure cookie session before connect; connection aborted");
-        this.setStatus("error");
+        this.partyRaceState = null;
+    this.setStatus("error");
         if (this.options.onError) {
           this.options.onError({
             code: "UNAUTHORIZED",
@@ -528,7 +576,8 @@ export class MultiplayerClient {
 
     if (!token && !isCookieAuth) {
       console.warn("[Multiplayer] No auth token available; connection aborted");
-      this.setStatus("error");
+      this.partyRaceState = null;
+    this.setStatus("error");
       if (this.options.onError) {
         this.options.onError({ code: "UNAUTHORIZED", message: "Missing required auth token" });
       }
@@ -544,7 +593,8 @@ export class MultiplayerClient {
         `[Multiplayer] Rejected unapproved endpoint for authenticated WebSocket (${endpointResult.reason}):`,
         rawLogged,
       );
-      this.setStatus("error");
+      this.partyRaceState = null;
+    this.setStatus("error");
       if (this.options.onError) {
         this.options.onError({
           code: "UNAPPROVED_ENDPOINT",
@@ -562,7 +612,8 @@ export class MultiplayerClient {
       this.ws = ws;
     } catch {
       console.error("[Multiplayer] WebSocket creation error");
-      this.setStatus("error");
+      this.partyRaceState = null;
+    this.setStatus("error");
       return;
     }
 
@@ -633,7 +684,8 @@ export class MultiplayerClient {
       this.lastPoseSentAt = 0;
       this.lastSentMode = null;
       if (this.closedExplicitly) {
-        this.setStatus("disconnected");
+        this.partyRaceState = null;
+    this.setStatus("disconnected");
         return;
       }
 
@@ -646,7 +698,8 @@ export class MultiplayerClient {
           void this.connect();
         }, delayMs);
       } else {
-        this.setStatus("disconnected");
+        this.partyRaceState = null;
+    this.setStatus("disconnected");
       }
     };
 
@@ -655,7 +708,8 @@ export class MultiplayerClient {
         return;
       }
       console.error("[Multiplayer] WebSocket connection error");
-      this.setStatus("error");
+      this.partyRaceState = null;
+    this.setStatus("error");
     };
   }
 
@@ -688,6 +742,7 @@ export class MultiplayerClient {
     this.layoutRevision = null;
     this.neighbourhoodKey = null;
     this.lastSnapshotSeq = 0;
+    this.partyRaceState = null;
     this.setStatus("error");
     if (this.options.onError) {
       this.options.onError({ code, message });
@@ -844,6 +899,15 @@ export class MultiplayerClient {
           );
         }
 
+        if (msg.partyRace !== undefined) {
+          this.partyRaceState = msg.partyRace ?? null;
+          this.options.onPartyRaceState?.(this.partyRaceState, type);
+        } else {
+          this.partyRaceState = null;
+          if (type === "session_reconnected" || type === "session_created" || type === "session_joined") {
+            this.options.onPartyRaceState?.(null, type);
+          }
+        }
         if (Array.isArray(msg.participants)) {
           const selfPart = msg.participants.find((p: any) => p.participantId === this.participantId);
           if (selfPart && this.options.onSelfAdmitted) {
@@ -1327,6 +1391,11 @@ export class MultiplayerClient {
             speed: 0,
           };
         }
+        if (msg.partyRace !== undefined) {
+          snapshot.partyRace = msg.partyRace ?? null;
+          this.partyRaceState = snapshot.partyRace ?? null;
+          this.options.onPartyRaceState?.(this.partyRaceState, "snapshot");
+        }
         if (this.options.onSnapshot) {
           this.options.onSnapshot(snapshot);
         }
@@ -1354,6 +1423,25 @@ export class MultiplayerClient {
             }
           }
         }
+        break;
+      }
+
+      case "party_race_state": {
+        if (this.status !== "connected" || !this.sessionId) {
+          return;
+        }
+        if (
+          typeof msg.sessionId !== "string" ||
+          msg.sessionId.length === 0 ||
+          msg.sessionId !== this.sessionId
+        ) {
+          return;
+        }
+        this.partyRaceState = msg.partyRace ?? null;
+        this.options.onPartyRaceState?.(
+          this.partyRaceState,
+          typeof msg.event === "string" ? msg.event : "party_race_state",
+        );
         break;
       }
 
@@ -1466,7 +1554,8 @@ export class MultiplayerClient {
               ws.close(4400, msg.message || msg.error);
             } catch {}
           }
-          this.setStatus("error");
+          this.partyRaceState = null;
+    this.setStatus("error");
         }
         break;
       }
@@ -1699,6 +1788,102 @@ export class MultiplayerClient {
     }
   }
 
+  public invitePartyRace(options?: {
+    trackId?: string;
+    checkpoints?: PartyRaceCheckpoint[];
+    countdownMs?: number;
+  }): boolean {
+    if (this.status !== "connected" || !this.sessionId) return false;
+    return this.send({
+      type: "party_race_invite",
+      sessionId: this.sessionId,
+      ...(options?.trackId ? { trackId: options.trackId } : {}),
+      ...(options?.checkpoints ? { checkpoints: options.checkpoints } : {}),
+      ...(options?.countdownMs !== undefined ? { countdownMs: options.countdownMs } : {}),
+    });
+  }
+
+  public joinPartyRace(raceId?: string): boolean {
+    if (this.status !== "connected" || !this.sessionId) return false;
+    const targetRaceId =
+      typeof raceId === "string" && raceId.trim().length > 0
+        ? raceId.trim()
+        : typeof this.partyRaceState?.raceId === "string" && this.partyRaceState.raceId.trim().length > 0
+          ? this.partyRaceState.raceId.trim()
+          : null;
+    if (!targetRaceId) return false;
+    return this.send({
+      type: "party_race_join",
+      sessionId: this.sessionId,
+      raceId: targetRaceId,
+    });
+  }
+
+  public setPartyRaceReady(ready: boolean, raceId?: string): boolean {
+    if (this.status !== "connected" || !this.sessionId) return false;
+    const targetRaceId =
+      typeof raceId === "string" && raceId.trim().length > 0
+        ? raceId.trim()
+        : typeof this.partyRaceState?.raceId === "string" && this.partyRaceState.raceId.trim().length > 0
+          ? this.partyRaceState.raceId.trim()
+          : null;
+    if (!targetRaceId) return false;
+    return this.send({
+      type: "party_race_ready",
+      sessionId: this.sessionId,
+      raceId: targetRaceId,
+      ready: Boolean(ready),
+    });
+  }
+
+  public startPartyRace(raceId?: string): boolean {
+    if (this.status !== "connected" || !this.sessionId) return false;
+    const targetRaceId =
+      typeof raceId === "string" && raceId.trim().length > 0
+        ? raceId.trim()
+        : typeof this.partyRaceState?.raceId === "string" && this.partyRaceState.raceId.trim().length > 0
+          ? this.partyRaceState.raceId.trim()
+          : null;
+    if (!targetRaceId) return false;
+    return this.send({
+      type: "party_race_start",
+      sessionId: this.sessionId,
+      raceId: targetRaceId,
+    });
+  }
+
+  public cancelPartyRace(raceId?: string): boolean {
+    if (this.status !== "connected" || !this.sessionId) return false;
+    const targetRaceId =
+      typeof raceId === "string" && raceId.trim().length > 0
+        ? raceId.trim()
+        : typeof this.partyRaceState?.raceId === "string" && this.partyRaceState.raceId.trim().length > 0
+          ? this.partyRaceState.raceId.trim()
+          : null;
+    if (!targetRaceId) return false;
+    return this.send({
+      type: "party_race_cancel",
+      sessionId: this.sessionId,
+      raceId: targetRaceId,
+    });
+  }
+
+  public leavePartyRace(raceId?: string): boolean {
+    if (this.status !== "connected" || !this.sessionId) return false;
+    const targetRaceId =
+      typeof raceId === "string" && raceId.trim().length > 0
+        ? raceId.trim()
+        : typeof this.partyRaceState?.raceId === "string" && this.partyRaceState.raceId.trim().length > 0
+          ? this.partyRaceState.raceId.trim()
+          : null;
+    if (!targetRaceId) return false;
+    return this.send({
+      type: "party_race_leave",
+      sessionId: this.sessionId,
+      raceId: targetRaceId,
+    });
+  }
+
   private send(data: any): boolean {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
@@ -1767,6 +1952,7 @@ export class MultiplayerClient {
     this.seatIndex = null;
     this.parkedCar = undefined;
     this.hasNegotiatedNeighbourhood = false;
+    this.partyRaceState = null;
     this.setStatus("disconnected");
   }
 }

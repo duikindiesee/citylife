@@ -58,6 +58,105 @@ interface FpRuntimeBridge {
   setFirstPersonYaw?: (yaw: number) => void;
 }
 
+export function sampleFractionalRenderedTerrainY(
+  terrain: any,
+  terrainLevel: ReadonlyMap<number, number> | null | undefined,
+  gx: number,
+  gy: number,
+): number {
+  if (!terrain) return 0;
+  const bilinear = leveledWorldYAt(terrain, terrainLevel, gx, gy);
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const fx = gx - x0;
+  const fy = gy - y0;
+  const n = terrain.size ?? 0;
+  const clamp = (v: number) => Math.max(0, Math.min(n - 1, v));
+  const at = (x: number, y: number) =>
+    leveledWorldY(terrain, terrainLevel, clamp(x), clamp(y));
+  const h00 = at(x0, y0);
+  const h10 = at(x0 + 1, y0);
+  const h01 = at(x0, y0 + 1);
+  const h11 = at(x0 + 1, y0 + 1);
+  const facet1 =
+    fx + fy <= 1
+      ? h00 + (h10 - h00) * fx + (h01 - h00) * fy
+      : h11 + (h01 - h11) * (1 - fx) + (h10 - h11) * (1 - fy);
+  const facet2 =
+    fx <= fy
+      ? h00 + (h01 - h00) * fy + (h11 - h01) * fx
+      : h00 + (h10 - h00) * fx + (h11 - h10) * fy;
+  return Math.max(0, bilinear, facet1, facet2);
+}
+
+export function updateFirstPersonDrivingChaseCamera({
+  sim,
+  runtime,
+  camera,
+  rigidBody,
+  terrainLevel,
+}: {
+  sim?: any;
+  runtime?: FpRuntimeBridge | null;
+  camera: { position: { set: (x: number, y: number, z: number) => void }; lookAt: (x: number, y: number, z: number) => void };
+  rigidBody?: { current: { setTranslation: (pos: any, wake: boolean) => void; setLinvel: (vel: any, wake: boolean) => void } | null };
+  terrainLevel?: Map<number, number> | null;
+}): boolean {
+  const terrainSizeForGrid = sim?.state?.terrain?.size ?? 0;
+  const toWorldX = (gx: number) => (gx - terrainSizeForGrid / 2) * 4;
+  const toWorldZ = (gy: number) => (gy - terrainSizeForGrid / 2) * 4;
+
+  const driving = runtime?.getOwnedDrivePose?.();
+  if (driving && sim?.state?.terrain) {
+    const onRoad = sim.state.roadSet?.has?.(
+      `${Math.round(driving.x)},${Math.round(driving.y)}`,
+    );
+    const groundY = onRoad
+      ? Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
+        ROAD_RIBBON_LIFT
+      : sampleFractionalRenderedTerrainY(
+          sim.state.terrain,
+          terrainLevel,
+          driving.x,
+          driving.y,
+        ) + 0.02;
+    const wx = toWorldX(driving.x);
+    const wz = toWorldZ(driving.y);
+    if (rigidBody?.current) {
+      rigidBody.current.setTranslation(
+        { x: wx, y: groundY + 0.5, z: wz },
+        true,
+      );
+      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    }
+
+    // Dynamic arcade chase camera: smooth distance and FOV following vehicle heading
+    const chaseDist = 6.2;
+    const chaseHeight = 2.4 + Math.min(2.0, Math.abs(driving.speed) * 0.04);
+    const camX = wx - Math.cos(driving.heading) * chaseDist;
+    const camZ = wz - Math.sin(driving.heading) * chaseDist;
+    const camGridX = camX / 4 + sim.state.terrain.size / 2;
+    const camGridY = camZ / 4 + sim.state.terrain.size / 2;
+    const camTerrainY = sampleFractionalRenderedTerrainY(
+      sim.state.terrain,
+      terrainLevel,
+      camGridX,
+      camGridY,
+    );
+    const camY = Math.max(groundY + chaseHeight, camTerrainY + 1.2);
+
+    camera.position.set(camX, camY, camZ);
+    camera.lookAt(
+      wx + Math.cos(driving.heading) * 4,
+      groundY + 1.2,
+      wz + Math.sin(driving.heading) * 4,
+    );
+    if (runtime) runtime.fpCameraCell = { x: driving.x, y: driving.y };
+    return true;
+  }
+  return false;
+}
+
 export function FirstPersonController({
   sim,
   runtime,
@@ -237,45 +336,15 @@ export function FirstPersonController({
     const toWorldX = (gx: number) => (gx - terrainSizeForGrid / 2) * 4;
     const toWorldZ = (gy: number) => (gy - terrainSizeForGrid / 2) * 4;
 
-    const driving = runtime?.getOwnedDrivePose?.();
-    if (driving && sim?.state?.terrain) {
-      const onRoad = sim.state.roadSet.has(
-        `${Math.round(driving.x)},${Math.round(driving.y)}`,
-      );
-      const groundY = onRoad
-        ? Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
-          ROAD_RIBBON_LIFT
-        : Math.max(
-            0,
-            leveledWorldY(
-              sim.state.terrain,
-              terrainLevel,
-              Math.round(driving.x),
-              Math.round(driving.y),
-            ),
-          ) + 0.02;
-      const wx = toWorldX(driving.x);
-      const wz = toWorldZ(driving.y);
-      rigidBody.current.setTranslation(
-        { x: wx, y: groundY + 0.5, z: wz },
-        true,
-      );
-      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-
-      // Dynamic arcade chase camera: smooth distance and FOV following vehicle heading
-      const chaseDist = 6.2;
-      const chaseHeight = 2.4 + Math.min(2.0, Math.abs(driving.speed) * 0.04);
-      const camX = wx - Math.cos(driving.heading) * chaseDist;
-      const camZ = wz - Math.sin(driving.heading) * chaseDist;
-      const camY = groundY + chaseHeight;
-
-      camera.position.set(camX, camY, camZ);
-      camera.lookAt(
-        wx + Math.cos(driving.heading) * 4,
-        groundY + 1.2,
-        wz + Math.sin(driving.heading) * 4,
-      );
-      if (runtime) runtime.fpCameraCell = { x: driving.x, y: driving.y };
+    if (
+      updateFirstPersonDrivingChaseCamera({
+        sim,
+        runtime,
+        camera,
+        rigidBody,
+        terrainLevel,
+      })
+    ) {
       return;
     }
 
