@@ -114,16 +114,29 @@ export function StarterPropertyOverlay({
   }, []);
 
   const startHouseBuild = useCallback(async () => {
-    const startUserId =
-      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
+      setBuildError("Authenticated user and runtime operator mismatch; aborted.");
+      return;
+    }
+    const startUserId = startAuthUserId ?? startRuntimeUserId;
+    if (!startUserId) {
+      setBuildError("No active operator identity; aborted.");
+      return;
+    }
     setBuildError(null);
     setBuildPending(true);
     try {
       const session = await loadHouseBuild();
       if (!mountedRef.current) return;
-      const currentUserId =
-        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
-      if (!currentUserId || currentUserId !== startUserId) {
+      const currentAuthUserId = authClient.operator?.userId ?? null;
+      const currentRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+      if (runtime && (!currentAuthUserId || !currentRuntimeUserId || currentAuthUserId !== startUserId || currentRuntimeUserId !== startUserId)) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+      if (!currentAuthUserId || currentAuthUserId !== startUserId) {
         throw new Error("Account changed during house build; aborted.");
       }
       setBuildSession(session);
@@ -143,41 +156,78 @@ export function StarterPropertyOverlay({
 
   const finishHouseBuild = useCallback(async () => {
     if (!buildSession) return;
-    const startUserId =
-      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
+      setBuildConfirmed(false);
+      setBuildError("Authenticated user and runtime operator mismatch; aborted.");
+      return;
+    }
+    const startUserId = startAuthUserId ?? startRuntimeUserId;
+    if (!startUserId) {
+      setBuildConfirmed(false);
+      setBuildError("No active operator identity; aborted.");
+      return;
+    }
     const expectedPlotId = buildSession.context.plotId;
+    const expectedFrameId = buildSession.context.frameId;
+    const expectedRevision = buildSession.context.layoutRevision;
+
     setBuildError(null);
     setBuildPending(true);
     try {
       const receipt = await completeHouseBuild(buildSession, buildScript);
       if (!mountedRef.current) return;
-      const midUserId =
-        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
-      if (!midUserId || midUserId !== startUserId) {
+      const midAuthUserId = authClient.operator?.userId ?? null;
+      const midRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+      if (runtime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
         throw new Error("Account changed during house build; aborted.");
       }
+      if (!midAuthUserId || midAuthUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+
       const updatedTruth = await fetchHomeTruth();
       if (!mountedRef.current) return;
-      const endUserId =
-        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
-      if (!endUserId || endUserId !== startUserId) {
+      const endAuthUserId = authClient.operator?.userId ?? null;
+      const endRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+      if (runtime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
         throw new Error("Account changed during house build; aborted.");
       }
+      if (!endAuthUserId || endAuthUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+
       if (!updatedTruth) {
         throw new Error("Failed to re-read authoritative home truth after build.");
       }
-      const truthPlotId = (updatedTruth as any).plotId ?? homePlotRef(updatedTruth);
-      if (truthPlotId && truthPlotId !== expectedPlotId) {
-        throw new Error(`Home truth plot mismatch: expected ${expectedPlotId}, got ${truthPlotId}`);
+      const truthPlotId = updatedTruth.plotId ?? homePlotRef(updatedTruth);
+      if (!truthPlotId || truthPlotId !== expectedPlotId) {
+        throw new Error(`Home truth plot mismatch: expected ${expectedPlotId}, got ${truthPlotId ?? "null"}`);
       }
-      if ((updatedTruth as any).requiresBuild === true) {
-        throw new Error("Authoritative home truth indicates build is still required.");
+      const truthFrameId = updatedTruth.frameId ?? (updatedTruth.geometry as any)?.frameId ?? null;
+      if (expectedFrameId && truthFrameId && truthFrameId !== expectedFrameId) {
+        throw new Error(`Home truth frame mismatch: expected ${expectedFrameId}, got ${truthFrameId}`);
       }
+      const truthRevision = updatedTruth.layoutRevision ?? (updatedTruth.geometry as any)?.layoutRevision ?? null;
+      if (expectedRevision && truthRevision && truthRevision !== expectedRevision) {
+        throw new Error(`Home truth layout revision mismatch: expected ${expectedRevision}, got ${truthRevision}`);
+      }
+      if (updatedTruth.completed !== true || (updatedTruth as any).requiresBuild === true) {
+        throw new Error("Authoritative home truth indicates build is not completed or still required.");
+      }
+      if (!isHomeOwned(updatedTruth)) {
+        throw new Error("Authoritative home truth does not confirm home ownership.");
+      }
+
+      const claimOk = runtime?.claimStarterHome?.(updatedTruth);
+      if (claimOk === false) {
+        throw new Error("Runtime rejected starter home claim.");
+      }
+      runtime?.applyBlueprint?.(expectedPlotId, receipt.script);
       setBuildConfirmed(true);
       setTruth(updatedTruth);
-      const plotId = truthPlotId ?? expectedPlotId;
-      runtime?.claimStarterHome?.(updatedTruth, plotId);
-      runtime?.applyBlueprint?.(expectedPlotId, receipt.script);
       onHomePurchased?.(updatedTruth);
     } catch (err: any) {
       if (mountedRef.current) {

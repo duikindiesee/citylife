@@ -253,10 +253,46 @@ export function boundedArrivalEvidence(
   return { cell, withinBounds: isWithinArrivalBounds(cell, home, radius) };
 }
 
+/** Authoritative arrival receipt returned by DriveHomeArrivalController / User service. */
+export interface DriveHomeArrivalReceipt {
+  readonly plotId: string;
+  readonly frameId: string;
+  readonly homeGarageUnlocked: boolean;
+  readonly homeGarageUnlockedAt?: string | null;
+  readonly vehicleStorageLocation: string;
+  readonly onboardingState: string;
+  readonly alreadyArrived: boolean;
+}
+
+export function parseDriveHomeArrivalReceipt(raw: unknown): DriveHomeArrivalReceipt | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const plotId = typeof o.plotId === "string" && o.plotId.trim() ? o.plotId.trim() : null;
+  const frameId = typeof o.frameId === "string" && o.frameId.trim() ? o.frameId.trim() : null;
+  if (!plotId || !frameId) return null;
+  if (o.homeGarageUnlocked !== true) return null;
+  const storage =
+    typeof o.vehicleStorageLocation === "string" ? o.vehicleStorageLocation.trim() : null;
+  if (storage !== "HOME") return null;
+  return {
+    plotId,
+    frameId,
+    homeGarageUnlocked: true,
+    homeGarageUnlockedAt:
+      typeof o.homeGarageUnlockedAt === "string" ? o.homeGarageUnlockedAt : null,
+    vehicleStorageLocation: "HOME",
+    onboardingState:
+      typeof o.onboardingState === "string" && o.onboardingState.trim()
+        ? o.onboardingState.trim()
+        : "RESIDENT",
+    alreadyArrived: o.alreadyArrived === true,
+  };
+}
+
 /** The closed set of outcomes one arrival submission settles into — the overlay renders exactly one. */
 export type ArrivalOutcome =
-  | { kind: "confirmed" } // 200/201 — the server accepted the arrival and moved the player to RESIDENT
-  | { kind: "pending" } // 202/409 — accepted / an idempotent replay of an in-flight-or-settled arrival
+  | { kind: "confirmed"; receipt?: DriveHomeArrivalReceipt } // 200/201 — the server accepted the arrival and moved the player to RESIDENT
+  | { kind: "pending"; receipt?: DriveHomeArrivalReceipt } // 202/409 — accepted / an idempotent replay of an in-flight-or-settled arrival
   | { kind: "rejected" } // 422 — the authority rejected the evidence (not actually in the owned plot)
   | { kind: "disabled" } // 401/403/503 — signed out, feature off, or kill switch; never blind-retry
   | { kind: "error"; status?: number }; // anything else — a transient/unknown failure
@@ -495,7 +531,24 @@ export async function postHomeArrival(
         plotRef,
       }),
     });
-    return classifyArrivalStatus(resp.status);
+    if (resp.status === 200 || resp.status === 201) {
+      const data = await resp.json().catch(() => null);
+      const receipt = parseDriveHomeArrivalReceipt(data);
+      if (!receipt || receipt.plotId !== plotId || receipt.frameId !== frameId) {
+        return { kind: "rejected" };
+      }
+      return { kind: "confirmed", receipt };
+    }
+    if (resp.status === 202 || resp.status === 409) {
+      const data = await resp.json().catch(() => null);
+      const receipt = parseDriveHomeArrivalReceipt(data);
+      return { kind: "pending", receipt: receipt ?? undefined };
+    }
+    if (resp.status === 422) return { kind: "rejected" };
+    if (resp.status === 401 || resp.status === 403 || resp.status === 503) {
+      return { kind: "disabled" };
+    }
+    return { kind: "error", status: resp.status };
   } catch {
     return { kind: "error" };
   }

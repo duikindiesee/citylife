@@ -236,6 +236,20 @@ export function DriveHomeOverlay({
 
     const targetCell = physicalCarCell ?? cursor;
     if (!targetCell) return;
+
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
+      setOutcome({ kind: "rejected" });
+      return;
+    }
+    const startUserId = startAuthUserId ?? startRuntimeUserId;
+    if (!startUserId) {
+      setOutcome({ kind: "rejected" });
+      return;
+    }
+
     setPending(true);
 
     const carSpec = runtime?.getAuthoritativeCar?.() ?? null;
@@ -247,8 +261,6 @@ export function DriveHomeOverlay({
     const plotId = residency?.truth?.plotId ?? null;
     const frameId = residency?.truth?.frameId ?? null;
 
-    const startUserId =
-      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
     const startRevision =
       runtime?.getActiveLayoutRevisionId?.() ??
       residency?.truth?.layoutRevision ??
@@ -260,46 +272,71 @@ export function DriveHomeOverlay({
       vehicleKey,
     }).then(async (result) => {
       if (!mountedRef.current) return;
-      const midUserId =
-        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
-      if (!midUserId || midUserId !== startUserId) {
+      const midAuthUserId = authClient.operator?.userId ?? null;
+      const midRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+      if (runtime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
         setPending(false);
         setOutcome({ kind: "rejected" });
         return;
       }
-      setOutcome(result);
-      if (result.kind === "confirmed" || result.kind === "pending") {
-        try {
-          const fresh = await fetchHomeResidency();
-          if (!mountedRef.current) return;
-          const endUserId =
-            runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
-          const endRevision =
-            runtime?.getActiveLayoutRevisionId?.() ??
-            fresh?.truth?.layoutRevision ??
-            null;
-          if (!endUserId || endUserId !== startUserId) {
-            setOutcome({ kind: "rejected" });
-            return;
-          }
-          if (runtime && (!endRevision || endRevision !== startRevision)) {
-            setOutcome({ kind: "rejected" });
-            return;
-          }
-          if (fresh) {
-            const freshPlotId = fresh.truth?.plotId;
-            if (plotId && freshPlotId && freshPlotId !== plotId) {
-              setOutcome({ kind: "rejected" });
-              return;
-            }
-            setResidency(fresh);
-          }
-        } finally {
-          if (mountedRef.current) {
-            setPending(false);
-          }
+      if (!midAuthUserId || midAuthUserId !== startUserId) {
+        setPending(false);
+        setOutcome({ kind: "rejected" });
+        return;
+      }
+
+      if (result.kind !== "confirmed" && result.kind !== "pending") {
+        setPending(false);
+        setOutcome(result);
+        return;
+      }
+
+      try {
+        const fresh = await fetchHomeResidency();
+        if (!mountedRef.current) return;
+        const endAuthUserId = authClient.operator?.userId ?? null;
+        const endRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+        if (runtime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
+          setOutcome({ kind: "rejected" });
+          return;
         }
-      } else {
+        if (!endAuthUserId || endAuthUserId !== startUserId) {
+          setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        const endRevision =
+          runtime?.getActiveLayoutRevisionId?.() ??
+          fresh?.truth?.layoutRevision ??
+          null;
+        if (runtime && (!endRevision || endRevision !== startRevision)) {
+          setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        if (!fresh || fresh.resident !== true) {
+          setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        const freshPlotId = fresh.truth?.plotId;
+        if (!freshPlotId || (plotId && freshPlotId !== plotId)) {
+          setOutcome({ kind: "rejected" });
+          return;
+        }
+        const freshFrameId = fresh.truth?.frameId;
+        if (frameId && freshFrameId && freshFrameId !== frameId) {
+          setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        setResidency(fresh);
+        setOutcome(result);
+      } catch {
+        if (mountedRef.current) {
+          setOutcome({ kind: "rejected" });
+        }
+      } finally {
         if (mountedRef.current) {
           setPending(false);
         }

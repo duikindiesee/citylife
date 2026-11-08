@@ -21,6 +21,7 @@ import {
   isWithinArrivalBounds,
   arrivalButtonView,
   postHomeArrival,
+  parseDriveHomeArrivalReceipt,
   HOME_DEED_DRIVE_HOME_ARRIVAL_PATH,
   HOME_ARRIVAL_PATH,
 } from "../src/colony/home/driveHome";
@@ -1202,22 +1203,62 @@ describe("Starter catalogue client & returning resident projection", () => {
     };
     const switchMidContainer = (globalThis as any).document.createElement("div");
     const switchMidRoot = createRoot(switchMidContainer);
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    let switchMidBuildPostCount = 0;
+    let switchedDuringTruth = false;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/starter-catalogue")) {
         return new Response(JSON.stringify(catalogueManifest), { status: 200 });
       }
-      if (url.endsWith("/home/build") && !url.includes("complete")) {
-        return new Response(JSON.stringify({ plotId: "coast4_1", frameId: "frame-coast4-1", layoutRevision: layout.revision.contentHash, geometry: plotGeometry, completed: false, script: null }), { status: 200 });
-      }
-      if (url.endsWith("/home/build/complete")) {
-        return new Response(JSON.stringify({ completed: true, plotId: "coast4_1", script: validScript }), { status: 200 });
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          switchMidBuildPostCount++;
+          return new Response(
+            JSON.stringify({
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layout.revision.contentHash,
+              geometry: plotGeometry,
+              completed: true,
+              script: validScript,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+            completed: switchMidBuildPostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       }
       if (url.endsWith("/players/me/home")) {
-        if (switchMidRuntime.currentUserId === "user-alice") {
-          return new Response(JSON.stringify({ owned: false, status: "PLOT_OWNED", plotOwned: true, requiresBuild: true, plotId: "coast4_1", frameId: "frame-coast4-1", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+        if (switchMidBuildPostCount > 0) {
+          switchedDuringTruth = true;
+          switchMidRuntime.currentUserId = "user-mallory";
+          currentAuthUser = "user-mallory";
         }
-        return new Response(JSON.stringify({ owned: true, status: "OWNED", plotOwned: true, requiresBuild: false, plotId: "coast4_1", frameId: "frame-coast4-1", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            owned: true,
+            status: "OWNED",
+            plotOwned: true,
+            requiresBuild: false,
+            completed: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            neighbourhoodKey: "coast4",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       }
       return new Response(JSON.stringify({ neighbourhoods: [] }), { status: 200 });
     });
@@ -1239,21 +1280,12 @@ describe("Starter catalogue client & returning resident projection", () => {
     const switchMidConfirmBtn = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-submit");
     expect(switchMidConfirmBtn).not.toBeNull();
 
-    // Trigger account switch during the second await (fetchHomeTruth)
-    const origFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/players/me/home")) {
-        switchMidRuntime.currentUserId = "user-mallory";
-        currentAuthUser = "user-mallory";
-      }
-      return origFetch(input);
-    });
-
     await act(async () => {
       triggerNodeClick(switchMidConfirmBtn);
     });
 
+    expect(switchMidBuildPostCount, "Build POST must execute before truth readback").toBe(1);
+    expect(switchedDuringTruth, "Account switch must occur specifically during truth readback").toBe(true);
     const switchMidErrorNode = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
     expect(switchMidErrorNode, "Account switch during truth readback must display error").not.toBeNull();
     expect(switchMidRuntime.claimStarterHome).not.toHaveBeenCalled();
@@ -1267,20 +1299,74 @@ describe("Starter catalogue client & returning resident projection", () => {
     };
     const foreignContainer = (globalThis as any).document.createElement("div");
     const foreignRoot = createRoot(foreignContainer);
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    let foreignBuildPostCount = 0;
+    let foreignReadbackReached = false;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/starter-catalogue")) {
         return new Response(JSON.stringify(catalogueManifest), { status: 200 });
       }
-      if (url.endsWith("/home/build") && !url.includes("complete")) {
-        return new Response(JSON.stringify({ plotId: "coast4_1", frameId: "frame-coast4-1", layoutRevision: layout.revision.contentHash, geometry: plotGeometry, completed: false, script: null }), { status: 200 });
-      }
-      if (url.endsWith("/home/build/complete")) {
-        return new Response(JSON.stringify({ completed: true, plotId: "coast4_1", script: validScript }), { status: 200 });
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          foreignBuildPostCount++;
+          return new Response(
+            JSON.stringify({
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layout.revision.contentHash,
+              geometry: plotGeometry,
+              completed: true,
+              script: validScript,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+            completed: foreignBuildPostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       }
       if (url.endsWith("/players/me/home")) {
-        // Foreign plotId
-        return new Response(JSON.stringify({ owned: true, status: "OWNED", plotOwned: true, requiresBuild: false, plotId: "foreign_99", frameId: "frame-foreign-99", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+        if (foreignBuildPostCount > 0) {
+          foreignReadbackReached = true;
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              completed: true,
+              plotId: "foreign_99",
+              frameId: "frame-foreign-99",
+              neighbourhoodKey: "coast4",
+              layoutRevision: layout.revision.contentHash,
+              geometry: plotGeometry,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            neighbourhoodKey: "coast4",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       }
       return new Response(JSON.stringify({ neighbourhoods: [] }), { status: 200 });
     });
@@ -1303,9 +1389,207 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       triggerNodeClick(foreignConfirmBtn);
     });
+
+    expect(foreignBuildPostCount, "Build POST must succeed").toBe(1);
+    expect(foreignReadbackReached, "Foreign readback must be reached").toBe(true);
     const foreignErrorNode = findNode(foreignContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
     expect(foreignErrorNode, "Foreign plot mismatch must display error").not.toBeNull();
     expect(foreignRuntime.claimStarterHome).not.toHaveBeenCalled();
+
+    // Negative 4e: Empty {} truth returned on /players/me/home after build completion aborts
+    const emptyTruthRuntime: any = {
+      currentUserId: "user-alice",
+      getOperatorUserId() { return this.currentUserId; },
+      claimStarterHome: vi.fn(),
+      applyBlueprint: vi.fn(),
+    };
+    const emptyTruthContainer = (globalThis as any).document.createElement("div");
+    const emptyTruthRoot = createRoot(emptyTruthContainer);
+    let emptyTruthBuildPostCount = 0;
+    let emptyTruthReadbackReached = false;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifest), { status: 200 });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          emptyTruthBuildPostCount++;
+          return new Response(
+            JSON.stringify({
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layout.revision.contentHash,
+              geometry: plotGeometry,
+              completed: true,
+              script: validScript,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+            completed: emptyTruthBuildPostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (emptyTruthBuildPostCount > 0) {
+          emptyTruthReadbackReached = true;
+          return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            neighbourhoodKey: "coast4",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ neighbourhoods: [] }), { status: 200 });
+    });
+
+    currentAuthUser = "user-alice";
+    await act(async () => {
+      emptyTruthRoot.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: emptyTruthRuntime,
+        }),
+      );
+    });
+
+    const emptyStartBtn = findNode(emptyTruthContainer, (n) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(emptyStartBtn);
+    });
+    const emptyConfirmBtn = findNode(emptyTruthContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(emptyConfirmBtn);
+    });
+
+    expect(emptyTruthBuildPostCount, "Build POST must succeed").toBe(1);
+    expect(emptyTruthReadbackReached, "Empty truth final readback must be reached").toBe(true);
+    const emptyErrorNode = findNode(emptyTruthContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(emptyErrorNode, "Empty truth must display error").not.toBeNull();
+    expect(emptyTruthRuntime.claimStarterHome).not.toHaveBeenCalled();
+
+    // Negative 4f: Mismatched frameId returned from fetchHomeTruth() aborts
+    const frameMismatchRuntime: any = {
+      currentUserId: "user-alice",
+      getOperatorUserId() { return this.currentUserId; },
+      claimStarterHome: vi.fn(),
+      applyBlueprint: vi.fn(),
+    };
+    const frameMismatchContainer = (globalThis as any).document.createElement("div");
+    const frameMismatchRoot = createRoot(frameMismatchContainer);
+    let frameMismatchPostCount = 0;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifest), { status: 200 });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          frameMismatchPostCount++;
+          return new Response(
+            JSON.stringify({
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layout.revision.contentHash,
+              geometry: plotGeometry,
+              completed: true,
+              script: validScript,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+            completed: frameMismatchPostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (frameMismatchPostCount > 0) {
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              completed: true,
+              plotId: "coast4_1",
+              frameId: "frame-foreign-frame",
+              neighbourhoodKey: "coast4",
+              layoutRevision: layout.revision.contentHash,
+              geometry: plotGeometry,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            neighbourhoodKey: "coast4",
+            layoutRevision: layout.revision.contentHash,
+            geometry: plotGeometry,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ neighbourhoods: [] }), { status: 200 });
+    });
+
+    currentAuthUser = "user-alice";
+    await act(async () => {
+      frameMismatchRoot.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: frameMismatchRuntime,
+        }),
+      );
+    });
+
+    const frameStartBtn = findNode(frameMismatchContainer, (n) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(frameStartBtn);
+    });
+    const frameConfirmBtn = findNode(frameMismatchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(frameConfirmBtn);
+    });
+
+    expect(frameMismatchPostCount, "Build POST must succeed").toBe(1);
+    const frameErrorNode = findNode(frameMismatchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(frameErrorNode, "Frame mismatch must display error").not.toBeNull();
+    expect(frameMismatchRuntime.claimStarterHome).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });
@@ -1425,13 +1709,26 @@ describe("Starter catalogue client & returning resident projection", () => {
         arrivalPostUrl = url;
         arrivalPostPayload = JSON.parse(String(init?.body));
         isResidentConfirmed = true;
-        return new Response(JSON.stringify({ ok: true, resident: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            homeGarageUnlocked: true,
+            homeGarageUnlockedAt: "2026-11-08T10:00:00Z",
+            vehicleStorageLocation: "HOME",
+            onboardingState: "RESIDENT",
+            alreadyArrived: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       }
 
       if (url.endsWith("/players/me/home")) {
         return new Response(
           JSON.stringify({
             ...homeTruth,
+            resident: isResidentConfirmed,
+            isResident: isResidentConfirmed,
             onboardingState: isResidentConfirmed ? "RESIDENT" : "ONBOARDING",
             garageUnlocked: isResidentConfirmed,
             homeGarageUnlocked: isResidentConfirmed,
@@ -1586,6 +1883,87 @@ describe("Starter catalogue client & returning resident projection", () => {
     const mismatchArriveBtn = findNode(mismatchContainer, (n) => n.getAttribute?.("data-testid") === "drive-home-arrive");
     expect(mismatchArriveBtn, "Arrival button must render in ready phase").not.toBeNull();
     expect(mismatchArriveBtn.disabled, "Arrival button must remain disabled on layout revision mismatch").toBe(true);
+
+    // Negative 4e: Malformed arrival receipt (missing homeGarageUnlocked) is rejected
+    vi.stubGlobal("fetch", async () => {
+      return new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          homeGarageUnlocked: false,
+          vehicleStorageLocation: "HOME",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const malformedOutcome = await postHomeArrival({ x: 32, y: 48 }, homeTruth as any, {
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(malformedOutcome.kind, "Malformed arrival receipt must be rejected").toBe("rejected");
+
+    // Negative 4f: Mismatched vehicleStorageLocation is rejected
+    vi.stubGlobal("fetch", async () => {
+      return new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          homeGarageUnlocked: true,
+          vehicleStorageLocation: "DEALERSHIP",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const storageOutcome = await postHomeArrival({ x: 32, y: 48 }, homeTruth as any, {
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(storageOutcome.kind, "Mismatched vehicleStorageLocation must be rejected").toBe("rejected");
+
+    // Negative 4g: Mismatched plotId in receipt is rejected
+    vi.stubGlobal("fetch", async () => {
+      return new Response(
+        JSON.stringify({
+          plotId: "foreign_plot_99",
+          frameId: "frame-coast4-1",
+          homeGarageUnlocked: true,
+          vehicleStorageLocation: "HOME",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const plotMismatchOutcome = await postHomeArrival({ x: 32, y: 48 }, homeTruth as any, {
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(plotMismatchOutcome.kind, "Mismatched plotId in receipt must be rejected").toBe("rejected");
+
+    // Positive 4: Valid DriveHomeArrivalResponse confirms with parsed receipt
+    vi.stubGlobal("fetch", async () => {
+      return new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          homeGarageUnlocked: true,
+          homeGarageUnlockedAt: "2026-11-08T10:00:00Z",
+          vehicleStorageLocation: "HOME",
+          onboardingState: "RESIDENT",
+          alreadyArrived: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const validOutcome = await postHomeArrival({ x: 32, y: 48 }, homeTruth as any, {
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(validOutcome.kind).toBe("confirmed");
+    expect((validOutcome as any).receipt?.homeGarageUnlocked).toBe(true);
+    expect((validOutcome as any).receipt?.vehicleStorageLocation).toBe("HOME");
 
     vi.unstubAllGlobals();
   });

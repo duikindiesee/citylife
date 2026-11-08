@@ -6475,56 +6475,11 @@ export class ColonyRuntime {
   ): void {
     const terrain = this.preflightTerrain(terrainAuthority);
     if (this.seededPlacementSignatures === null) {
-      const signatures = new Set(
+      this.seededPlacementSignatures = new Set(
         this.runtimeZonedPlacements(surfaceFrameId).map((placement) =>
           this.placementSignature(placement),
         ),
       );
-      const lots = this.neighborhood.lots;
-      if (lots.length > 0) {
-        const lot1 = lots[0];
-        if (lot1 && lot1.gate && Array.isArray(lot1.driveway) && Array.isArray(lot1.fence)) {
-          const origDoorX = lot1.doorX;
-          const origDoorY = lot1.doorY;
-          const origGate = { ...lot1.gate };
-          const origDriveway = [...lot1.driveway];
-          const origFence = [...lot1.fence];
-          const joeStreet = streetDoorDir(lot1);
-          retargetParcelAccess(lot1, joeStreet);
-          for (const p of this.runtimeZonedPlacements(surfaceFrameId)) {
-            if (p.id === "placement:lot_1" || p.id === `placement:${lot1.id}`) {
-              signatures.add(this.placementSignature(p));
-            }
-          }
-          lot1.doorX = origDoorX;
-          lot1.doorY = origDoorY;
-          lot1.gate = origGate;
-          lot1.driveway = origDriveway;
-          lot1.fence = origFence;
-        }
-      }
-      if (lots.length > 1) {
-        const lot2 = lots[1];
-        if (lot2 && lot2.gate && Array.isArray(lot2.driveway) && Array.isArray(lot2.fence)) {
-          const origDoorX = lot2.doorX;
-          const origDoorY = lot2.doorY;
-          const origGate = { ...lot2.gate };
-          const origDriveway = [...lot2.driveway];
-          const origFence = [...lot2.fence];
-          retargetParcelAccess(lot2, "e");
-          for (const p of this.runtimeZonedPlacements(surfaceFrameId)) {
-            if (p.id === "placement:lot_2" || p.id === `placement:${lot2.id}`) {
-              signatures.add(this.placementSignature(p));
-            }
-          }
-          lot2.doorX = origDoorX;
-          lot2.doorY = origDoorY;
-          lot2.gate = origGate;
-          lot2.driveway = origDriveway;
-          lot2.fence = origFence;
-        }
-      }
-      this.seededPlacementSignatures = signatures;
     }
     const surfaceRoadCells = new Set(
       candidate.roads.map((road) => `${road.x},${road.y}`),
