@@ -2670,11 +2670,11 @@ describe("Starter catalogue client & returning resident projection", () => {
     const confirmedNode4 = findNode(containerBuilder, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
     expect(confirmedNode4, "Swapped runtime B must NOT show build confirmed").toBeNull();
 
-    // Part 5: Same-object operator switch while build is held
+    // Part 5A: True Auth-only switch (without runtime change or notification)
     currentAuthUser = "user-alice";
-    const builderRuntimeSameObj = createMockRuntime("user-alice", layoutRevPart4);
-    let builderPostCountPart5 = 0;
-    const deferredBuildPostPart5 = createDeferred<Response>();
+    const builderRuntimePart5A = createMockRuntime("user-alice", layoutRevPart4);
+    let builderPostCountPart5A = 0;
+    const deferredBuildPostPart5A = createDeferred<Response>();
 
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -2683,8 +2683,8 @@ describe("Starter catalogue client & returning resident projection", () => {
       }
       if (url.endsWith("/home/build")) {
         if (init?.method === "POST") {
-          builderPostCountPart5++;
-          return deferredBuildPostPart5.promise;
+          builderPostCountPart5A++;
+          return deferredBuildPostPart5A.promise;
         }
         return new Response(
           JSON.stringify({
@@ -2699,7 +2699,7 @@ describe("Starter catalogue client & returning resident projection", () => {
         );
       }
       if (url.endsWith("/players/me/home")) {
-        if (builderPostCountPart5 > 0) {
+        if (builderPostCountPart5A > 0) {
           return new Response(
             JSON.stringify({
               owned: true,
@@ -2732,38 +2732,36 @@ describe("Starter catalogue client & returning resident projection", () => {
       return new Response("{}", { status: 200 });
     });
 
-    const containerPart5 = (globalThis as any).document.createElement("div");
-    const rootPart5 = createRoot(containerPart5);
+    const containerPart5A = (globalThis as any).document.createElement("div");
+    const rootPart5A = createRoot(containerPart5A);
 
     await act(async () => {
-      rootPart5.render(
+      rootPart5A.render(
         React.createElement(StarterPropertyOverlay, {
           onClose: () => {},
-          runtime: builderRuntimeSameObj as any,
+          runtime: builderRuntimePart5A as any,
         }),
       );
     });
 
-    const startBuildBtn5 = findNode(containerPart5, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
-    expect(startBuildBtn5).not.toBeNull();
+    const startBuildBtn5A = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBuildBtn5A).not.toBeNull();
     await act(async () => {
-      triggerNodeClick(startBuildBtn5);
+      triggerNodeClick(startBuildBtn5A);
     });
 
-    const submitBuildBtn5 = findNode(containerPart5, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
-    expect(submitBuildBtn5).not.toBeNull();
+    const submitBuildBtn5A = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtn5A).not.toBeNull();
     await act(async () => {
-      triggerNodeClick(submitBuildBtn5);
+      triggerNodeClick(submitBuildBtn5A);
     });
-    expect(builderPostCountPart5).toBe(1);
+    expect(builderPostCountPart5A).toBe(1);
 
-    // Switch Auth user only (without runtime notification)
+    // True Auth-only switch: runtime object and operator user remain "user-alice", no notify called
     currentAuthUser = "user-mallory";
-    builderRuntimeSameObj.setUserId("user-mallory");
-    builderRuntimeSameObj.notify();
 
     // Release held build POST with success
-    deferredBuildPostPart5.resolve(
+    deferredBuildPostPart5A.resolve(
       new Response(
         JSON.stringify({
           plotId: "coast4_1",
@@ -2780,9 +2778,122 @@ describe("Starter catalogue client & returning resident projection", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
 
-    expect(builderRuntimeSameObj.claimStarterHome, "Operator switch on same runtime must NOT allow claimStarterHome").not.toHaveBeenCalled();
-    const confirmedNode5 = findNode(containerPart5, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
-    expect(confirmedNode5, "Operator switch must fail closed without confirming build").toBeNull();
+    expect(builderRuntimePart5A.claimStarterHome, "Auth-only switch must NOT allow claimStarterHome").not.toHaveBeenCalled();
+    const confirmedNode5A = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNode5A, "Auth-only switch must fail closed without confirming build").toBeNull();
+
+    // Part 5B: Same-object operator switch where runtime operator changes without notify()
+    currentAuthUser = "user-alice";
+    const builderRuntimePart5B = createMockRuntime("user-alice", layoutRevPart4);
+    let builderPostCountPart5B = 0;
+    const deferredBuildPostPart5B = createDeferred<Response>();
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          builderPostCountPart5B++;
+          return deferredBuildPostPart5B.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: true,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (builderPostCountPart5B > 0) {
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              neighbourhoodKey: "coast4",
+              layoutRevision: layoutRevPart4,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const containerPart5B = (globalThis as any).document.createElement("div");
+    const rootPart5B = createRoot(containerPart5B);
+
+    await act(async () => {
+      rootPart5B.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: builderRuntimePart5B as any,
+        }),
+      );
+    });
+
+    const startBuildBtn5B = findNode(containerPart5B, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBuildBtn5B).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBuildBtn5B);
+    });
+
+    const submitBuildBtn5B = findNode(containerPart5B, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtn5B).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBuildBtn5B);
+    });
+    expect(builderPostCountPart5B).toBe(1);
+
+    // Operator switch on same runtime object without notify()
+    builderRuntimePart5B.setUserId("user-mallory");
+    // Do NOT call builderRuntimePart5B.notify(); Auth user remains "user-alice"
+
+    // Release held build POST with success
+    deferredBuildPostPart5B.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          layoutRevision: layoutRevPart4,
+          geometry: builderPlotGeometry,
+          completed: true,
+          script: validScript,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(builderRuntimePart5B.claimStarterHome, "Operator switch on same runtime must NOT allow claimStarterHome").not.toHaveBeenCalled();
+    const confirmedNode5B = findNode(containerPart5B, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNode5B, "Operator switch must fail closed without confirming build").toBeNull();
 
     // Part 6: Older-finally protection — older operation completion cannot clear newer pending
     currentAuthUser = "user-alice";
@@ -2932,10 +3043,9 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       triggerNodeClick(arriveBtnSameRev);
     });
-    // Revision changes on same runtime object
+    // Revision changes on same runtime object without notification
     await act(async () => {
       runtimeSameRev.setRev("rev-coast4-v2");
-      runtimeSameRev.notify();
     });
     // Held arrival resolves with 422 denial
     deferredArrivalDenial.resolve(
@@ -3016,10 +3126,9 @@ describe("Starter catalogue client & returning resident projection", () => {
     });
     expect(buildErrPostCount, "Builder POST must have been called").toBe(1);
 
-    // Revision changes on same runtime
+    // Revision changes on same runtime without notification
     await act(async () => {
       runtimeSameBuildRev.setRev("rev-coast4-v2");
-      runtimeSameBuildRev.notify();
     });
     // Held builder rejects with error
     deferredBuildErr.reject(new Error("Network 500 error"));
@@ -3552,6 +3661,7 @@ describe("Starter catalogue client & returning resident projection", () => {
         ],
       },
     };
+    actualColonyRuntime.setStarterCatalogueManifest(catalogueManifestE.manifest as any);
 
     let producerPostCount = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -3635,6 +3745,44 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(actualColonyRuntime.hasOperatorHome(), "ColonyRuntime must record operator home").toBe(true);
     const assignedLotE = actualColonyRuntime.lots().find((l) => l.id === realPlot.plotId);
     expect(assignedLotE?.blueprint).toBe(validScriptE);
+
+    // Assert actualColonyRuntime.getOperatorHomeTarget() returns exact canonical target
+    const opTargetE = actualColonyRuntime.getOperatorHomeTarget();
+    expect(opTargetE, "Actual ColonyRuntime getOperatorHomeTarget must return valid target").not.toBeNull();
+    expect(opTargetE).toEqual({
+      x: Math.round(realPlot.spawn.x),
+      y: Math.round(realPlot.spawn.y),
+      lotId: realPlot.plotId,
+      name: `Plot ${realPlot.plotId}`,
+    });
+
+    // Assert driveway resolves for 10-field truth without synthetic geometry
+    const drivewayE = actualColonyRuntime.getPlayerHomeDriveway();
+    expect(drivewayE, "Actual ColonyRuntime getPlayerHomeDriveway must resolve lot driveway").not.toBeNull();
+    expect(drivewayE?.plotId).toBe(realPlot.plotId);
+    expect(drivewayE?.cells.length).toBeGreaterThan(0);
+
+    // Negative tests for getOperatorHomeTarget:
+    // 1. Foreign layout revision returns null:
+    const origTruthE = (actualColonyRuntime as any).authoritativeHomeTruth;
+    (actualColonyRuntime as any).authoritativeHomeTruth = {
+      ...origTruthE,
+      layoutRevision: "foreign-rev-99999",
+    };
+    expect(actualColonyRuntime.getOperatorHomeTarget(), "Foreign revision must return null from getOperatorHomeTarget").toBeNull();
+
+    // 2. Unknown plotId returns null (fail closed, never legacy hash fallback):
+    (actualColonyRuntime as any).authoritativeHomeTruth = {
+      ...origTruthE,
+      plotId: "nonexistent-plot-999",
+    };
+    expect(actualColonyRuntime.getOperatorHomeTarget(), "Unknown plotId must fail closed and return null from getOperatorHomeTarget").toBeNull();
+
+    // Restore original authoritative truth
+    (actualColonyRuntime as any).authoritativeHomeTruth = origTruthE;
+
+    // Assert canonical grid size comes from sim terrain
+    expect(actualColonyRuntime.getWorldGridSize()).toBe(actualColonyRuntime.sim.state.terrain.size);
 
     // Also mount DriveHomeOverlay with actualColonyRuntime
     actualColonyRuntime.setOperatorUserId("user-alice");

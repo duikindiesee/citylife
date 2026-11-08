@@ -95,6 +95,8 @@ export function DriveHomeOverlay({
     getStarterCatalogueManifest?(): any;
     plotGeometry?: { get: (id: string) => any };
     getOperatorHomeTarget?(): { x: number; y: number; lotId: string } | null;
+    getWorldGridSize?(): number;
+    sim?: any;
   };
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
@@ -315,7 +317,10 @@ export function DriveHomeOverlay({
       frameId,
       vehicleKey,
       authority: expectedRuntime,
-      grid: expectedRuntime ? 608 : undefined,
+      grid:
+        (expectedRuntime as any)?.getWorldGridSize?.() ??
+        (expectedRuntime as any)?.sim?.state?.terrain?.size ??
+        (expectedRuntime ? 608 : undefined),
     }).then(async (result) => {
       try {
         if (!isCurrent()) return;

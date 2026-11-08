@@ -267,7 +267,11 @@ import {
   type AccessDecision,
   type NeighbourhoodAccessDeps,
 } from "./bot/neighbourhoodAccess";
-import { isHomeOwned, type HomeTruth } from "./home/starterProperty";
+import {
+  isHomeOwned,
+  layoutRevisionsMatch,
+  type HomeTruth,
+} from "./home/starterProperty";
 import { homeTargetCell } from "./home/driveHome";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
@@ -4889,6 +4893,23 @@ export class ColonyRuntime {
               : undefined),
         };
       }
+      if (truth.plotId) {
+        const lot = this.neighborhood.lots.find(
+          (l) =>
+            l &&
+            (l.id === truth.plotId ||
+              l.id === `lot-${truth.plotId}` ||
+              l.id === `lot_${truth.plotId}`),
+        );
+        if (lot && lot.driveway && lot.driveway.length > 0) {
+          return {
+            plotId: lot.id,
+            cells: lot.driveway,
+            gate: lot.gate,
+            side: lot.side,
+          };
+        }
+      }
     }
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return null;
@@ -4914,7 +4935,12 @@ export class ColonyRuntime {
   } | null {
     if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
       const truth = this.authoritativeHomeTruth;
-      const target = homeTargetCell(truth);
+      if (truth.layoutRevision && this.getActiveLayoutRevisionId()) {
+        if (!layoutRevisionsMatch(truth.layoutRevision, this.getActiveLayoutRevisionId())) {
+          return null;
+        }
+      }
+      const target = homeTargetCell(truth, this);
       if (target) {
         return {
           x: target.x,
@@ -4923,6 +4949,7 @@ export class ColonyRuntime {
           name: truth.plotId ? `Plot ${truth.plotId}` : "Starter Home",
         };
       }
+      return null;
     }
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return null;
@@ -4940,12 +4967,16 @@ export class ColonyRuntime {
 
   hasOperatorHome(): boolean {
     if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
-      return true;
+      return this.getOperatorHomeTarget() !== null;
     }
     const target = this.getOperatorHomeTarget();
     if (!target) return false;
     const lot = this.neighborhood.lots.find((l) => l.id === target.lotId);
     return !!(lot && lot.built);
+  }
+
+  getWorldGridSize(): number {
+    return this.sim?.state?.terrain?.size ?? 608;
   }
 
   claimStarterHome(target?: string | HomeTruth): boolean {

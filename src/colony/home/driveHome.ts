@@ -28,6 +28,7 @@ import { getAuthClient } from "../authClient";
 import {
   HOME_TRUTH_PATH,
   isHomeOwned,
+  layoutRevisionsMatch,
   parseHomeTruth,
   type HomeTruth,
 } from "./starterProperty";
@@ -73,6 +74,36 @@ export function clampCell(cell: Cell, grid = STARTER_PLACEMENT_GRID): Cell {
 /** The owned-home target cell — the SAME deterministic placement the house projects to, so the drive
  *  destination is server-derived truth (a pure function of the deed), never a client-authored point.
  *  Null unless the truth is unambiguously OWNED, so no destination exists until the server grants one. */
+/**
+ * Helper to determine canonical grid size from authority or fallback.
+ * Derives from authority.getWorldGridSize() or authority.sim.state.terrain.size when present.
+ * Defaults to 608 for canonical wide coordinates, or STARTER_PLACEMENT_GRID (64) for legacy plots.
+ */
+function resolveGridSize(authorityOrGrid?: any, home?: Cell | null): number {
+  if (typeof authorityOrGrid === "number" && authorityOrGrid > 0) {
+    return authorityOrGrid;
+  }
+  if (authorityOrGrid && typeof authorityOrGrid === "object") {
+    if (typeof authorityOrGrid.getWorldGridSize === "function") {
+      const s = authorityOrGrid.getWorldGridSize();
+      if (typeof s === "number" && s > 0) return s;
+    }
+    if (
+      typeof authorityOrGrid.sim?.state?.terrain?.size === "number" &&
+      authorityOrGrid.sim.state.terrain.size > 0
+    ) {
+      return authorityOrGrid.sim.state.terrain.size;
+    }
+  }
+  if (home && (home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID)) {
+    return 608;
+  }
+  return STARTER_PLACEMENT_GRID;
+}
+
+/** The server-authoritative grid cell the player's home occupies. Pure and deterministic — the
+ *  destination is server-derived truth (a pure function of the deed), never a client-authored point.
+ *  Null unless the truth is unambiguously OWNED, so no destination exists until the server grants one. */
 export function homeTargetCell(
   truth: HomeTruth | null,
   authority?: any,
@@ -89,87 +120,144 @@ export function homeTargetCell(
   ) {
     return null;
   }
-  if (authority && t.plotId) {
-    if (typeof authority.lots === "function") {
-      const allLots = authority.lots();
-      if (Array.isArray(allLots)) {
-        const lot = allLots.find(
-          (l: any) =>
-            l &&
-            (l.id === t.plotId ||
-              l.id === `lot-${t.plotId}` ||
-              l.id === `lot_${t.plotId}`),
+  // Direct published coordinates or geometry on truth take precedence when present
+  if (
+    typeof t.x === "number" &&
+    typeof t.y === "number" &&
+    Number.isFinite(t.x) &&
+    Number.isFinite(t.y)
+  ) {
+    return { x: Math.round(t.x), y: Math.round(t.y) };
+  }
+  if (
+    t.geometry?.door &&
+    Number.isFinite(t.geometry.door.x) &&
+    Number.isFinite(t.geometry.door.y)
+  ) {
+    return { x: Math.round(t.geometry.door.x), y: Math.round(t.geometry.door.y) };
+  }
+  if (
+    t.geometry?.spawn &&
+    Number.isFinite(t.geometry.spawn.x) &&
+    Number.isFinite(t.geometry.spawn.y)
+  ) {
+    return { x: Math.round(t.geometry.spawn.x), y: Math.round(t.geometry.spawn.y) };
+  }
+  if (
+    t.geometry?.houseZone &&
+    Number.isFinite(t.geometry.houseZone.x) &&
+    Number.isFinite(t.geometry.houseZone.y)
+  ) {
+    const hz = t.geometry.houseZone;
+    const w = (hz as any).width ?? (hz as any).w ?? 1;
+    const d = (hz as any).depth ?? (hz as any).d ?? 1;
+    return {
+      x: Math.round(hz.x + (w - 1) / 2),
+      y: Math.round(hz.y + (d - 1) / 2),
+    };
+  }
+
+  // If authority is provided and truth lacks coordinates/geometry (10-field wire DTO), resolve via authority
+  if (authority) {
+    if (t.layoutRevision && typeof authority.getActiveLayoutRevisionId === "function") {
+      const authRev = authority.getActiveLayoutRevisionId();
+      if (authRev && !layoutRevisionsMatch(t.layoutRevision, authRev)) {
+        return null;
+      }
+    }
+    if (t.plotId) {
+      if (typeof authority.getStarterCatalogueManifest === "function") {
+        const manifest = authority.getStarterCatalogueManifest();
+        const plot = manifest?.plots?.find?.(
+          (p: any) => p && (p.plotId === t.plotId || p.id === t.plotId),
         );
-        if (lot) {
-          if (lot.spawn && Number.isFinite(lot.spawn.x) && Number.isFinite(lot.spawn.y)) {
-            return { x: Math.round(lot.spawn.x), y: Math.round(lot.spawn.y) };
+        if (plot) {
+          if (t.frameId && plot.frameId && plot.frameId !== t.frameId) {
+            return null;
           }
-          if (
-            lot.doorX !== undefined &&
-            lot.doorY !== undefined &&
-            Number.isFinite(lot.doorX) &&
-            Number.isFinite(lot.doorY)
-          ) {
-            return { x: Math.round(lot.doorX), y: Math.round(lot.doorY) };
-          }
-          if (
-            lot.houseZone &&
-            Number.isFinite(lot.houseZone.x) &&
-            Number.isFinite(lot.houseZone.y)
-          ) {
-            const w = lot.houseZone.width ?? lot.houseZone.w ?? 1;
-            const d = lot.houseZone.depth ?? lot.houseZone.d ?? 1;
+          if (plot?.geometry?.spawn) {
             return {
-              x: Math.round(lot.houseZone.x + (w - 1) / 2),
-              y: Math.round(lot.houseZone.y + (d - 1) / 2),
+              x: Math.round(plot.geometry.spawn.x),
+              y: Math.round(plot.geometry.spawn.y),
+            };
+          }
+          if (plot?.geometry?.houseZone) {
+            const hz = plot.geometry.houseZone;
+            const w = hz.width ?? 1;
+            const d = hz.depth ?? 1;
+            return {
+              x: Math.round(hz.x + (w - 1) / 2),
+              y: Math.round(hz.y + (d - 1) / 2),
+            };
+          }
+        }
+      }
+      if (typeof authority.lots === "function") {
+        const allLots = authority.lots();
+        if (Array.isArray(allLots)) {
+          const lot = allLots.find(
+            (l: any) =>
+              l &&
+              (l.id === t.plotId ||
+                l.id === `lot-${t.plotId}` ||
+                l.id === `lot_${t.plotId}`),
+          );
+          if (lot) {
+            if (t.frameId && lot.frameId && lot.frameId !== t.frameId) {
+              return null;
+            }
+            if (lot.spawn && Number.isFinite(lot.spawn.x) && Number.isFinite(lot.spawn.y)) {
+              return { x: Math.round(lot.spawn.x), y: Math.round(lot.spawn.y) };
+            }
+            if (
+              lot.doorX !== undefined &&
+              lot.doorY !== undefined &&
+              Number.isFinite(lot.doorX) &&
+              Number.isFinite(lot.doorY)
+            ) {
+              return { x: Math.round(lot.doorX), y: Math.round(lot.doorY) };
+            }
+            if (
+              lot.houseZone &&
+              Number.isFinite(lot.houseZone.x) &&
+              Number.isFinite(lot.houseZone.y)
+            ) {
+              const w = lot.houseZone.width ?? lot.houseZone.w ?? 1;
+              const d = lot.houseZone.depth ?? lot.houseZone.d ?? 1;
+              return {
+                x: Math.round(lot.houseZone.x + (w - 1) / 2),
+                y: Math.round(lot.houseZone.y + (d - 1) / 2),
+              };
+            }
+          }
+        }
+      }
+      if (authority.plotGeometry && typeof authority.plotGeometry.get === "function") {
+        const geom = authority.plotGeometry.get(t.plotId);
+        if (geom) {
+          if (t.frameId && geom.frameId && geom.frameId !== t.frameId) {
+            return null;
+          }
+          if (geom?.spawn) {
+            return {
+              x: Math.round(geom.spawn.x),
+              y: Math.round(geom.spawn.y),
+            };
+          }
+          if (geom?.houseZone) {
+            const hz = geom.houseZone;
+            const w = hz.width ?? 1;
+            const d = hz.depth ?? 1;
+            return {
+              x: Math.round(hz.x + (w - 1) / 2),
+              y: Math.round(hz.y + (d - 1) / 2),
             };
           }
         }
       }
     }
-    if (typeof authority.getStarterCatalogueManifest === "function") {
-      const manifest = authority.getStarterCatalogueManifest();
-      const plot = manifest?.plots?.find?.((p: any) => p && p.plotId === t.plotId);
-      if (plot?.geometry?.spawn) {
-        return {
-          x: Math.round(plot.geometry.spawn.x),
-          y: Math.round(plot.geometry.spawn.y),
-        };
-      }
-      if (plot?.geometry?.houseZone) {
-        const hz = plot.geometry.houseZone;
-        const w = hz.width ?? 1;
-        const d = hz.depth ?? 1;
-        return {
-          x: Math.round(hz.x + (w - 1) / 2),
-          y: Math.round(hz.y + (d - 1) / 2),
-        };
-      }
-    }
-    if (authority.plotGeometry && typeof authority.plotGeometry.get === "function") {
-      const geom = authority.plotGeometry.get(t.plotId);
-      if (geom?.spawn) {
-        return {
-          x: Math.round(geom.spawn.x),
-          y: Math.round(geom.spawn.y),
-        };
-      }
-      if (geom?.houseZone) {
-        const hz = geom.houseZone;
-        const w = hz.width ?? 1;
-        const d = hz.depth ?? 1;
-        return {
-          x: Math.round(hz.x + (w - 1) / 2),
-          y: Math.round(hz.y + (d - 1) / 2),
-        };
-      }
-    }
-    if (typeof authority.getOperatorHomeTarget === "function") {
-      const target = authority.getOperatorHomeTarget();
-      if (target && (target.lotId === t.plotId || target.lotId === "starter-home")) {
-        return { x: target.x, y: target.y };
-      }
-    }
+    // Fail closed if authority is present but plot is not found in authority
+    return null;
   }
   return deriveHomePlacement(t);
 }
@@ -194,12 +282,7 @@ export function dealershipStartCell(
   const home = homeTargetCell(truth, authority);
   if (!home) return null;
   const off = DEALERSHIP_OFFSET_CELLS;
-  const effectiveGrid =
-    typeof authorityOrGrid === "number" && authorityOrGrid > 0
-      ? authorityOrGrid
-      : home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID
-        ? 608
-        : STARTER_PLACEMENT_GRID;
+  const effectiveGrid = resolveGridSize(authorityOrGrid, home);
   // Offset toward whichever side has room to stay in-grid; the fixed magnitude keeps it outside the
   // arrival radius (a real drive) without ever leaving the bounded grid.
   const dx = home.x >= off ? -off : off;
@@ -349,14 +432,9 @@ export function boundedArrivalEvidence(
   current: Cell,
   home: Cell,
   radius = ARRIVAL_RADIUS_CELLS,
-  grid?: number,
+  gridOrAuthority?: number | any,
 ): ArrivalEvidence {
-  const effectiveGrid =
-    typeof grid === "number" && grid > 0
-      ? grid
-      : home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID
-        ? 608
-        : STARTER_PLACEMENT_GRID;
+  const effectiveGrid = resolveGridSize(gridOrAuthority, home);
   const cell = clampCell(current, effectiveGrid);
   return { cell, withinBounds: isWithinArrivalBounds(cell, home, radius) };
 }
@@ -608,12 +686,10 @@ export async function postHomeArrival(
   const home = homeTargetCell(truth, options?.authority);
   const plotRef = homePlotRef(truth);
   if (!home || !plotRef) return { kind: "disabled" };
-  const effectiveGrid =
-    typeof options?.grid === "number" && options.grid > 0
-      ? options.grid
-      : home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID
-        ? 608
-        : STARTER_PLACEMENT_GRID;
+  const effectiveGrid = resolveGridSize(
+    options?.grid ?? options?.authority,
+    home,
+  );
   const evidence = boundedArrivalEvidence(
     current,
     home,
