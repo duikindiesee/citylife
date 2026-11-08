@@ -120,12 +120,20 @@ export function StarterPropertyOverlay({
     setBuildError(null);
     setBuildPending(true);
     try {
-      await completeHouseBuild(buildSession, buildScript);
-      await postBuildHome({
+      const res = await postBuildHome({
         plotId: buildSession.context.plotId,
         layoutRevision: buildSession.context.layoutRevision,
         script: buildScript,
       });
+      if (res.kind !== "confirmed") {
+        throw new Error(
+          res.kind === "rejected"
+            ? (res.reason ?? "House build rejected by server")
+            : res.kind === "disabled"
+              ? "House building is currently disabled"
+              : "Failed to confirm house build with server",
+        );
+      }
       setBuildConfirmed(true);
       const fresh = await fetchHomeTruth();
       if (fresh) {
@@ -153,9 +161,9 @@ export function StarterPropertyOverlay({
       setTruth(home);
       if (elig === null) {
         setChoices([]);
-        // If the player already owns a home, an eligible-list miss is not an error — we go straight to
+        // If the player already owns a home or secured plot, an eligible-list miss is not an error — we go straight to
         // the owned projection. Otherwise it is a genuine read failure the player can retry.
-        setPhase(isHomeOwned(home) ? "ready" : "error");
+        setPhase(isHomeOwned(home) || Boolean((home as any)?.plotOwned || (home as any)?.requiresBuild || (home as any)?.status === "PLOT_OWNED") ? "ready" : "error");
         return;
       }
       setChoices(elig);
@@ -168,6 +176,12 @@ export function StarterPropertyOverlay({
   }, [reloadToken]);
 
   const owned = isHomeOwned(truth);
+  const hasPlot = Boolean(
+    owned ||
+    truth?.plotOwned ||
+    truth?.requiresBuild ||
+    truth?.status === "PLOT_OWNED",
+  );
   // EXACTLY ONE deterministic, identity-bound house — a pure function of the authoritative truth, so a
   // refresh / re-login / second device all converge on this same projection.
   const projected = useMemo(() => projectStarterHome(truth), [truth]);
@@ -176,7 +190,7 @@ export function StarterPropertyOverlay({
   const selectedChoice = choices.find((c) => c.key === selected) ?? null;
 
   const purchase = useCallback(() => {
-    if (pending || (!relocateMode && owned) || !selected) return;
+    if (pending || (!relocateMode && hasPlot) || !selected) return;
     const key = selected;
     setPending(true);
     const options: PurchaseHomeOptions = {
@@ -204,7 +218,7 @@ export function StarterPropertyOverlay({
     });
   }, [
     pending,
-    owned,
+    hasPlot,
     relocateMode,
     selected,
     eligibleKeys,
@@ -213,7 +227,7 @@ export function StarterPropertyOverlay({
   ]);
 
   const view = purchaseButtonView(
-    relocateMode ? false : owned,
+    relocateMode ? false : hasPlot,
     !!selected,
     pending,
     outcome,
@@ -338,7 +352,7 @@ export function StarterPropertyOverlay({
         </div>
       )}
 
-      {phase === "error" && !owned && (
+      {phase === "error" && !hasPlot && (
         <div
           data-testid="home-error"
           style={{ ...panelStyle, marginTop: 10, padding: 16, fontSize: 13 }}
@@ -357,14 +371,14 @@ export function StarterPropertyOverlay({
         </div>
       )}
 
-      {/* OWNED — the deterministic, identity-bound house projection */}
-      {owned && projected && (
+      {/* OWNED OR SECURED PLOT — the deterministic, identity-bound house projection or paid builder */}
+      {hasPlot && (
         <div
           data-testid="home-owned"
-          data-plot-id={projected.plotId ?? ""}
-          data-frame-id={projected.frameId ?? ""}
-          data-house-seed={String(projected.seed)}
-          data-placement={`${projected.placement.x},${projected.placement.y}`}
+          data-plot-id={projected?.plotId ?? truth?.plotId ?? ""}
+          data-frame-id={projected?.frameId ?? truth?.frameId ?? ""}
+          data-house-seed={projected ? String(projected.seed) : ""}
+          data-placement={projected ? `${projected.placement.x},${projected.placement.y}` : ""}
           style={{
             ...panelStyle,
             marginTop: 10,
@@ -375,17 +389,31 @@ export function StarterPropertyOverlay({
             gap: 8,
           }}
         >
-          <span style={{ color: "#9fd4a6", fontWeight: 700, fontSize: 15 }}>
-            ✓ Your home is yours
-          </span>
-          <span style={{ color: "#c8dff0" }}>
-            A {projected.spec.character} {projected.spec.floors}-storey home
-            {truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
-          </span>
-          <span style={{ color: "#7ab0d0", fontSize: 11 }}>
-            Placed at {projected.placement.x},{projected.placement.y} · the same
-            on every device.
-          </span>
+          {projected ? (
+            <>
+              <span style={{ color: "#9fd4a6", fontWeight: 700, fontSize: 15 }}>
+                ✓ Your home is yours
+              </span>
+              <span style={{ color: "#c8dff0" }}>
+                A {projected.spec.character} {projected.spec.floors}-storey home
+                {truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
+              </span>
+              <span style={{ color: "#7ab0d0", fontSize: 11 }}>
+                Placed at {projected.placement.x},{projected.placement.y} · the same
+                on every device.
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ color: "#9fd4a6", fontWeight: 700, fontSize: 15 }}>
+                ✓ Plot Secured
+              </span>
+              <span style={{ color: "#c8dff0" }}>
+                Your plot is secured{truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
+                Build your house to complete your starter home.
+              </span>
+            </>
+          )}
           <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
             <button
               type="button"
@@ -494,7 +522,7 @@ export function StarterPropertyOverlay({
       )}
 
       {/* SELECT — server-eligible choices only */}
-      {(!owned || relocateMode) && phase === "ready" && (
+      {(!hasPlot || relocateMode) && phase === "ready" && (
         <div
           style={{
             marginTop: 10,

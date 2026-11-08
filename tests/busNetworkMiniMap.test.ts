@@ -1212,5 +1212,36 @@ describe("mounted consumer chain: ColonyApp -> BusNetworkMiniMap -> DOM (#544)",
       findNode(container3, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker"),
     ).not.toBeNull();
   });
+
+  it("mounts BusNetworkMiniMap using normal ColonyRuntime presenceReadout and validates player location marker", async () => {
+    setupTestDOM();
+    const runtime = new ColonyRuntime(42);
+    runtime.setOperatorUserId("user-alice");
+    (runtime as any).operatorCitizenId = () => "cit-alice";
+    (runtime as any).fpCitizenId = "cit-alice";
+    (runtime as any).fpCameraCell = { x: 25, y: 35 };
+
+    const liveReadout = runtime.presenceReadout();
+    expect(liveReadout.stamp.worldSeed).toBe(42);
+
+    const container = (globalThis as any).document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(BusNetworkMiniMap, {
+          runtime,
+          walletLabel: "Alice Wallet",
+          presenceReadout: liveReadout,
+          open: true,
+          onClose: () => {},
+          playerLocationAuthorized: true,
+          authenticatedUserId: "user-alice",
+        }),
+      );
+    });
+
+    const marker = findNode(container, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker");
+    expect(marker).not.toBeNull();
+  });
 });
 

@@ -30,7 +30,12 @@ export default defineConfig({
                   "--use-angle=d3d11",
                 ],
               }
-            : undefined,
+            : {
+                args: [
+                  "--use-gl=angle",
+                  "--use-angle=swiftshader",
+                ],
+              },
       },
     },
   ],

@@ -520,6 +520,7 @@ export function projectReturningResidentState(
   }
   const homeCell = homeTargetCell(truth);
   const isResident =
+    truth.onboardingState === "RESIDENT" ||
     truth.isResident === true ||
     truth.status === "RESIDENT" ||
     truth.arrivalStatus === "RESIDENT";
@@ -534,34 +535,41 @@ export function projectReturningResidentState(
     typeof truth.vehicleModel === "string" &&
     truth.vehicleModel.trim()
   ) {
-    const x =
-      truth.vehiclePose && Number.isFinite(truth.vehiclePose.x)
-        ? truth.vehiclePose.x
-        : spawn && Number.isFinite(spawn.x)
-          ? spawn.x
-          : homeCell && Number.isFinite(homeCell.x)
-            ? homeCell.x
-            : null;
-    const y =
-      truth.vehiclePose && Number.isFinite(truth.vehiclePose.y)
-        ? truth.vehiclePose.y
-        : spawn && Number.isFinite(spawn.y)
-          ? spawn.y
-          : homeCell && Number.isFinite(homeCell.y)
-            ? homeCell.y
-            : null;
-    const heading: number =
-      truth.vehiclePose && typeof truth.vehiclePose.heading === "number" && Number.isFinite(truth.vehiclePose.heading)
-        ? truth.vehiclePose.heading
-        : 0;
-
-    if (x !== null && y !== null) {
+    if (truth.vehiclePose) {
+      const { x, y, heading } = truth.vehiclePose;
+      const validHeading = typeof heading === "number" && Number.isFinite(heading);
+      if (
+        typeof x === "number" &&
+        Number.isFinite(x) &&
+        typeof y === "number" &&
+        Number.isFinite(y) &&
+        validHeading
+      ) {
+        vehicle = {
+          id: truth.vehicleId.trim(),
+          model: truth.vehicleModel.trim(),
+          x,
+          y,
+          heading,
+        };
+      } else {
+        // Atomic rejection: malformed (NaN/Infinity) vehiclePose rejects with null projection.
+        // Never mix coordinates across sources or invent heading 0.
+        vehicle = null;
+      }
+    } else if (
+      spawn &&
+      typeof spawn.x === "number" &&
+      Number.isFinite(spawn.x) &&
+      typeof spawn.y === "number" &&
+      Number.isFinite(spawn.y)
+    ) {
       vehicle = {
         id: truth.vehicleId.trim(),
         model: truth.vehicleModel.trim(),
-        x,
-        y,
-        heading,
+        x: spawn.x,
+        y: spawn.y,
+        heading: 0,
       };
     }
   }

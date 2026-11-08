@@ -172,6 +172,8 @@ export interface HomeTruth {
   /** Published server-owned plot geometry, foundations and driveway cells. */
   readonly geometry?: HomeTruthParcelGeometry | null;
   /** Durable house-builder completion state and blueprint design. */
+  readonly plotOwned?: boolean;
+  readonly requiresBuild?: boolean;
   readonly buildState?: string | null;
   readonly completed?: boolean;
   readonly script?: string | null;
@@ -267,15 +269,14 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
   }
 
   const vPoseRaw = asRecord(o.vehiclePose);
-  const vehiclePose: HomeTruthVehiclePose | null =
-    vPoseRaw && typeof vPoseRaw.x === "number" && Number.isFinite(vPoseRaw.x) && typeof vPoseRaw.y === "number" && Number.isFinite(vPoseRaw.y)
-      ? {
-          x: vPoseRaw.x as number,
-          y: vPoseRaw.y as number,
-          z: num(vPoseRaw.z) ?? undefined,
-          heading: num(vPoseRaw.heading) ?? undefined,
-        }
-      : null;
+  const vehiclePose: HomeTruthVehiclePose | null = vPoseRaw
+    ? {
+        x: typeof vPoseRaw.x === "number" ? vPoseRaw.x : NaN,
+        y: typeof vPoseRaw.y === "number" ? vPoseRaw.y : NaN,
+        z: num(vPoseRaw.z) ?? undefined,
+        heading: typeof vPoseRaw.heading === "number" ? vPoseRaw.heading : NaN,
+      }
+    : null;
 
   const statusStr = str(o.status);
   const isResident =
@@ -283,9 +284,13 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
     str(o.arrivalStatus) === "RESIDENT" ||
     statusStr === "RESIDENT";
   const completed = o.completed === true || str(o.buildState) === "COMPLETED";
+  const plotOwned = o.plotOwned === true || statusStr === "PLOT_OWNED";
+  const requiresBuild = o.requiresBuild === true || (plotOwned && !completed);
 
   return {
     owned: o.owned === true,
+    plotOwned,
+    requiresBuild,
     status: statusStr,
     neighbourhoodKey: str(o.neighbourhoodKey),
     plotId: str(o.plotId),
@@ -348,6 +353,23 @@ export function classifyPurchaseStatus(status: number, body?: unknown): Purchase
   if (status === 401 || status === 403 || status === 503)
     return { kind: "disabled" };
   return { kind: "error", status };
+}
+
+export type BuildOutcome =
+  | { kind: "confirmed" }
+  | { kind: "rejected"; reason?: string }
+  | { kind: "disabled" }
+  | { kind: "error" };
+
+export function classifyBuildStatus(status: number, body?: unknown): BuildOutcome {
+  if (status === 200 || status === 201) return { kind: "confirmed" };
+  if (status === 422) {
+    const o = asRecord(body);
+    const reason = typeof o?.reason === "string" ? o.reason : undefined;
+    return { kind: "rejected", reason };
+  }
+  if (status === 401 || status === 403 || status === 503) return { kind: "disabled" };
+  return { kind: "error" };
 }
 
 /** The rendered shape of the purchase control, derived purely from ownership + selection + in-flight +
@@ -537,7 +559,7 @@ export async function postBuildHome(request: {
   plotId: string;
   layoutRevision: string;
   script: string;
-}): Promise<PurchaseOutcome> {
+}): Promise<BuildOutcome> {
   const auth = getAuthClient();
   const token = await auth.getValidToken();
   if (!token) return { kind: "disabled" };
@@ -551,7 +573,7 @@ export async function postBuildHome(request: {
       body: JSON.stringify(request),
     });
     const body: unknown = await resp.json().catch(() => null);
-    return classifyPurchaseStatus(resp.status, body);
+    return classifyBuildStatus(resp.status, body);
   } catch {
     return { kind: "error" };
   }

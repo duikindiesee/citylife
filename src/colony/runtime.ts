@@ -4373,6 +4373,7 @@ export class ColonyRuntime {
               racer.worldY = p.y;
               racer.heading = p.heading;
               racer.speed = p.speed;
+              racer.lastSeen = Date.now();
               racer.isPedestrian = isPed;
               racer.mode = p.mode;
               racer.seatedBusId = p.seatedBusId ?? null;
@@ -4411,6 +4412,15 @@ export class ColonyRuntime {
               ) {
                 modeChanged = true;
               }
+            }
+          }
+        }
+        if (this.sim.state.remoteRacers && this.sim.state.remoteRacers.size > 0) {
+          const now = Date.now();
+          for (const [id, r] of this.sim.state.remoteRacers.entries()) {
+            if (typeof r.lastSeen === "number" && now - r.lastSeen > 15_000) {
+              this.sim.state.remoteRacers.delete(id);
+              modeChanged = true;
             }
           }
         }
@@ -4778,10 +4788,19 @@ export class ColonyRuntime {
       typeof vehicle.y === "number" &&
       Number.isFinite(vehicle.y)
     ) {
-      this.authoritativeCar = {
-        id: vehicle.id,
-        model: vehicle.model,
-      } as any;
+      const carSpec =
+        resolveOwnedCar([vehicle.model, vehicle.id]) ??
+        resolveOwnedCar([vehicle.model]) ??
+        resolveOwnedCar([vehicle.id]);
+      if (carSpec) {
+        this.authoritativeCar = carSpec;
+        const citizenId = this.operatorCitizenId();
+        if (citizenId) {
+          const stored = hasStoredCar(citizenId) ? loadCar(citizenId) : null;
+          if (!stored || stored.id !== carSpec.id) saveCar(citizenId, carSpec);
+        }
+        this.updateOperatorCar();
+      }
       this.ownedDrivePose = {
         x: vehicle.x,
         y: vehicle.y,
@@ -4800,6 +4819,10 @@ export class ColonyRuntime {
       return { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
     }
     return null;
+  }
+
+  getAuthoritativeCar(): CarSpec | null {
+    return this.authoritativeCar;
   }
 
   setAuthoritativeHomeTruth(truth: HomeTruth | null): void {
@@ -7166,7 +7189,12 @@ export class ColonyRuntime {
     }));
 
     if (this.sim.state.remoteRacers && this.sim.state.remoteRacers.size > 0) {
-      for (const racer of this.sim.state.remoteRacers.values()) {
+      const now = Date.now();
+      for (const [id, racer] of [...this.sim.state.remoteRacers.entries()]) {
+        if (typeof racer.lastSeen === "number" && now - racer.lastSeen > 15_000) {
+          this.sim.state.remoteRacers.delete(id);
+          continue;
+        }
         subjects.push({
           subjectId: `peer:${racer.participantId}`,
           displayName: racer.username,

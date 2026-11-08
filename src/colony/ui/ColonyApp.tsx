@@ -814,17 +814,13 @@ export function ColonyApp({
         const projection = projectReturningResidentState(truth, initialInventory);
         if (projection.isResident && projection.vehicle) {
           runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
-        } else {
-          runtime.setAuthoritativeOwnedVehicle(null);
         }
       } else {
         runtime.setAuthoritativeHomeTruth(null);
-        runtime.setAuthoritativeOwnedVehicle(null);
       }
     }).catch(() => {
       if (active) {
         runtime.setAuthoritativeHomeTruth(null);
-        runtime.setAuthoritativeOwnedVehicle(null);
       }
     });
     return () => {

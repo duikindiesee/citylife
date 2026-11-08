@@ -598,9 +598,123 @@ describe("Starter catalogue client & returning resident projection", () => {
       script: "wall(0, 0, 4, 0); door(2, 0);",
     });
     expect(confirm.kind).toBe("disabled");
+
+    // 3. Paid-plot player (PLOT_OWNED) retains plotOwned and requiresBuild
+    const paidPlotTruth = parseHomeTruth({
+      owned: false,
+      status: "PLOT_OWNED",
+      plotOwned: true,
+      requiresBuild: true,
+      plotId: "plot-alpha-1",
+      frameId: "frame-alpha-1",
+      neighbourhoodKey: "coastal",
+    });
+    expect(paidPlotTruth).not.toBeNull();
+    expect(paidPlotTruth!.plotOwned).toBe(true);
+    expect(paidPlotTruth!.requiresBuild).toBe(true);
+    expect(paidPlotTruth!.owned).toBe(false);
+    expect(isHomeOwned(paidPlotTruth)).toBe(false);
   });
 
-  it("P4: discriminating negative: arrival is rejected when UI cursor is at home but physical vehicle is elsewhere", () => {
+  it("P3: returning resident residency authority, atomic pose validation, and genuine CarSpec resolution", () => {
+    // 1. Onboarding state RESIDENT recognized as resident
+    const residentTruth = parseHomeTruth({
+      owned: true,
+      status: "OWNED",
+      onboardingState: "RESIDENT",
+      plotId: "plot-1",
+      frameId: "frame-1",
+      neighbourhoodKey: "coastal",
+      geometry: {
+        spawn: { x: 10, y: 20 },
+      },
+      vehicleId: "karoo-x19-targa",
+      vehicleModel: "karoo-x19-targa",
+      vehiclePose: { x: 50, y: 60, heading: 1.57 },
+    });
+    const proj = projectReturningResidentState(residentTruth);
+    expect(proj.isResident).toBe(true);
+    expect(proj.vehicle).toEqual({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 50,
+      y: 60,
+      heading: 1.57,
+    });
+
+    // 2. Appendix F atomic whole-pose validation: malformed x rejects atomically with null
+    const malformedXTruth = parseHomeTruth({
+      owned: true,
+      status: "RESIDENT",
+      plotId: "plot-1",
+      geometry: { spawn: { x: 10, y: 20 } },
+      vehicleId: "karoo-x19-targa",
+      vehicleModel: "karoo-x19-targa",
+      vehiclePose: { x: NaN, y: 800, heading: 0 },
+    });
+    const malformedXProj = projectReturningResidentState(malformedXTruth);
+    expect(malformedXProj.isResident).toBe(true);
+    expect(malformedXProj.vehicle).toBeNull(); // Never mixes fallback spawn x: 10 with y: 800!
+
+    // 3. Malformed y rejects atomically with null
+    const malformedYTruth = parseHomeTruth({
+      owned: true,
+      status: "RESIDENT",
+      plotId: "plot-1",
+      geometry: { spawn: { x: 10, y: 20 } },
+      vehicleId: "karoo-x19-targa",
+      vehicleModel: "karoo-x19-targa",
+      vehiclePose: { x: 50, y: Infinity, heading: 0 },
+    });
+    expect(projectReturningResidentState(malformedYTruth).vehicle).toBeNull();
+
+    // 4. Malformed heading rejects atomically with null
+    const malformedHeadingTruth = parseHomeTruth({
+      owned: true,
+      status: "RESIDENT",
+      plotId: "plot-1",
+      geometry: { spawn: { x: 10, y: 20 } },
+      vehicleId: "karoo-x19-targa",
+      vehicleModel: "karoo-x19-targa",
+      vehiclePose: { x: 50, y: 60, heading: NaN },
+    });
+    expect(projectReturningResidentState(malformedHeadingTruth).vehicle).toBeNull();
+
+    // 5. Absent vehiclePose adopts whole authorized spawn
+    const absentPoseTruth = parseHomeTruth({
+      owned: true,
+      status: "RESIDENT",
+      plotId: "plot-1",
+      geometry: { spawn: { x: 10, y: 20 } },
+      vehicleId: "karoo-x19-targa",
+      vehicleModel: "karoo-x19-targa",
+    });
+    const absentProj = projectReturningResidentState(absentPoseTruth);
+    expect(absentProj.vehicle).toEqual({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 10,
+      y: 20,
+      heading: 0,
+    });
+
+    // 6. Genuine CarSpec resolution in ColonyRuntime (no partial cast)
+    const runtime = new ColonyRuntime(1234, { surveyOnly: true });
+    runtime.setOperatorUserId("user-bob");
+    runtime.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 25,
+      y: 35,
+      heading: 1.57,
+    });
+    expect(runtime.getAuthoritativeCar()).not.toBeNull();
+    expect(runtime.getAuthoritativeCar()?.id).toBe("showroom:karoo-x19-targa");
+    expect(runtime.getPhysicalCarPosition()).toEqual({ x: 25, y: 35 });
+    expect(runtime.getParkedCarPose()).toEqual({ x: 25, y: 35, heading: 1.57 });
+  });
+
+  it("P4: discriminating negative: physical vehicle authority governs arrival eligibility", () => {
     const home = { x: 32, y: 48 };
     const cursorAtHome = { x: 32, y: 48 };
     const vehicleAtDealership = { x: 10, y: 10 };
@@ -611,17 +725,17 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(cursorWithinBounds).toBe(true);
     expect(physicalWithinBounds).toBe(false);
 
-    // Button view with physical vehicle away must be disabled
-    const buttonViewAway = arrivalButtonView(false, cursorWithinBounds && physicalWithinBounds, false, undefined);
+    // Negative: vehicle away at dealership must disable arrival even if cursor is at home
+    const buttonViewAway = arrivalButtonView(false, physicalWithinBounds, false, undefined);
     expect(buttonViewAway.disabled).toBe(true);
     expect(buttonViewAway.label).toBe("Drive to your home plot");
 
-    // Once physical vehicle is also at home
+    // Positive: physical car at home must enable arrival even if cursor is away
     const vehicleAtHome = { x: 32, y: 48 };
     const physicalArrived = isWithinArrivalBounds(vehicleAtHome, home);
     expect(physicalArrived).toBe(true);
 
-    const buttonViewArrived = arrivalButtonView(false, cursorWithinBounds && physicalArrived, false, undefined);
+    const buttonViewArrived = arrivalButtonView(false, physicalArrived, false, undefined);
     expect(buttonViewArrived.disabled).toBe(false);
     expect(buttonViewArrived.label).toBe("Pull into your home");
   });

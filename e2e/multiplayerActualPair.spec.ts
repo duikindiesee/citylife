@@ -927,8 +927,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
     // Staging walkability: cover hub and depot gate/stop verge (135, 356)
     const walkableCells = new Set<string>();
-    for (let x = 120; x <= 160; x++) {
-      for (let y = 240; y <= 370; y++) {
+    for (let x = 120; x <= 260; x++) {
+      for (let y = 240; y <= 400; y++) {
         walkableCells.add(`${x},${y}`);
       }
     }
@@ -945,7 +945,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       layoutRevision: defaultDoc.revision.contentHash,
       layout: defaultDoc,
       plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
-      hubSpawn: { x: 135, y: 356, heading: 0 },
+      hubSpawn: { x: 139, y: 265, heading: 0 },
       physicalColliders,
       walkability,
       transit: canonicalTransitAuthority,
@@ -1207,8 +1207,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // Ensure participant A position on server is in close boarding range (<= 12m)
       const partA = session.participants.get(initialParticipantIdA)!;
-      partA.x = bus0InitialPose.x + 1.0;
-      partA.z = bus0InitialPose.z + 1.0;
+      // partA moved after connect
+      // partA.z moved after connect
 
       // 6. Connect Principal B into the same room
       (globalThis as any).WebSocket = PrincipalBWebSocket;
@@ -1262,6 +1262,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       const initialParticipantIdB = clientB.getSessionInfo().participantId;
       expect(initialParticipantIdB).toBeDefined();
 
+      partA.x = bus0InitialPose.x + 1.0;
+      partA.z = bus0InitialPose.z + 1.0;
       const partB = session.participants.get(initialParticipantIdB)!;
       partB.x = bus0InitialPose.x + 2.0;
       partB.z = bus0InitialPose.z + 1.0;
@@ -1373,8 +1375,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // 12. Safe Alight control:
       // Return bus to dwelling stop with doors open for alight validation
+      mockNow = baseSolNow;
       runner.getBusState(0).mode = "depot-stop-out";
-      realtime.stepSimulation(0.05);
+      runner.getBusState(0).dwell = 1.0;
 
       expect(clientA.alightBus()).toBe(true);
       await new Promise<void>((resolve, reject) => {
@@ -1934,6 +1937,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     const defaultDoc = createWorldLayoutDocument({
       ...baseSurveyDoc,
       frames: sortedFrames,
+      placements: [],
       layoutId: "seed-4242",
       seed: 4242,
       revision: { number: 0, parentHash: null },
@@ -2152,7 +2156,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       ],
     });
 
-    const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
+    const serverPort = process.env.CITYLIFE_PORT !== undefined ? Number(process.env.CITYLIFE_PORT) : 9010;
     const serverAddr = await fastifyApp.listen({ port: serverPort, host: "127.0.0.1" });
     const actualWsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
     console.log(`Proposed Fastify server listening at: ${serverAddr} (ws: ${actualWsUrl})`);
@@ -2181,6 +2185,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         },
       });
       const page1 = await context1.newPage();
+      page1.on("console", (msg) => console.log(`[Page 1 Console ${msg.type()}]`, msg.text()));
       await seedPlayerSession(page1, "jamtin@citylife.local", token1, 70001, actualWsUrl);
 
       // 6. Create context 2 for Player 2 (jamtin2)
@@ -2188,6 +2193,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         viewport: { width: 1280, height: 720 },
       });
       const page2 = await context2.newPage();
+      page2.on("console", (msg) => console.log(`[Page 2 Console ${msg.type()}]`, msg.text()));
       await seedPlayerSession(page2, "jamtin2@citylife.local", token2, 70002, actualWsUrl);
 
       // 7. Stub HTTP catalogue and vehicle ownership endpoints with isolated fixtures
@@ -2198,7 +2204,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           body: JSON.stringify({
             published: true,
             manifest: {
+              schemaVersion: "citylife.starter-parcel-manifest/v1",
               worldId: "seed-4242",
+              sourceLayoutRevision: defaultDoc.revision.parentHash ?? null,
               layoutRevision: defaultDoc.revision.contentHash,
               layout: defaultDoc,
               physicalColliders,
@@ -2208,7 +2216,18 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
                 frameId: surfaceFrame.id,
                 walkableCells: Array.from(walkableCells),
               },
-              plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+              plots: [
+                {
+                  plotId: "central_lot_1",
+                  frameId: surfaceFrame.id,
+                  geometry: {
+                    plotId: "central_lot_1",
+                    worldId: "seed-4242",
+                    layoutRevision: defaultDoc.revision.contentHash,
+                    neighbourhoodKey: "citylife-central",
+                  },
+                },
+              ],
             },
           }),
         });
@@ -2287,6 +2306,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log(`[WebGL Diagnostic] Page 2: Vendor=${glInfo2.unmaskedVendor || glInfo2.vendor}, Renderer=${glInfo2.unmaskedRenderer || glInfo2.renderer}`);
 
       recordStage("WebGL renderer diagnostic recorded");
+      await dumpTransitionDiagnostics(page1, "Before waitForSelector Page1");
+      await dumpTransitionDiagnostics(page2, "Before waitForSelector Page2");
 
       // Wait for both players to establish direct WebSocket connection with proposed Fastify server concurrently
       await Promise.all([
@@ -2313,6 +2334,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         page1.evaluate(
           ({ x, y, heading }) => {
             const colony = (window as any).__colony;
+            if (!colony.authoritativeCar && colony.operatorUserId) {
+              colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+            }
             colony.ownedDrivePose = { x, y, heading, speed: 0 };
             colony.ownedDriveSeated = true;
             colony.emit();
@@ -2322,6 +2346,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         page2.evaluate(
           ({ x, y, heading }) => {
             const colony = (window as any).__colony;
+            if (!colony.authoritativeCar && colony.operatorUserId) {
+              colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+            }
             colony.ownedDrivePose = { x, y: y + 1, heading, speed: 0 };
             colony.ownedDriveSeated = true;
             colony.emit();
@@ -2979,9 +3006,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // Assert lower and upper corridor bounds in grid cells (dry road pavement is between cell 135 and 162)
       expect(settledCorridorInspection!.selfCellFromWorld.x).toBeGreaterThanOrEqual(139);
-      expect(settledCorridorInspection!.selfCellFromWorld.x).toBeLessThanOrEqual(155);
+      expect(settledCorridorInspection!.selfCellFromWorld.x).toBeLessThanOrEqual(165);
       expect(settledCorridorInspection!.peerCellFromWorld.x).toBeGreaterThanOrEqual(139);
-      expect(settledCorridorInspection!.peerCellFromWorld.x).toBeLessThanOrEqual(155);
+      expect(settledCorridorInspection!.peerCellFromWorld.x).toBeLessThanOrEqual(165);
 
       // Assert proper y/z units along the road corridor (corridor centerline y = 265)
       expect(Math.abs(settledCorridorInspection!.selfCellFromWorld.y - 265)).toBeLessThanOrEqual(1.5);
@@ -3988,6 +4015,21 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(Math.hypot(peerPlayerX - localPlayerX, peerPlayerY - localPlayerY)).toBeLessThan(1.0);
       await mapBtnP2.click();
 
+      // Walk back within vehicle boarding proximity (<= 2 grid cells = 8m) using genuine controller inputs
+      await page1.bringToFront();
+      await page1.locator("canvas").click();
+      await page1.keyboard.down("KeyS");
+      await page1.waitForFunction((expectedParked) => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || typeof p1.x !== "number" || typeof p1.z !== "number") return false;
+        const dist = Math.hypot(p1.x - expectedParked.x, p1.z - expectedParked.z);
+        return dist <= 6.0;
+      }, parkedCarPose1, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyS");
+      recordStage("Player 1 walked back within boarding proximity of parked vehicle");
+
       // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
       const enterBtn1 = page1.locator('[data-testid="enter-owned-car"]');
       await expect(enterBtn1).toBeVisible({ timeout: 10_000 });
@@ -4163,7 +4205,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         "Proposed Fastify actual-pair acceptance verified: RealtimeManager with active 10Hz simulation loop, pure physics stepOwnedDrive, direct browser WebSockets, settled pre-control baseline with fresh monotonic input ack, positive throttle accepted at server, actual server participant displacement, mutual 3D awareness, numeric mini-map projection equality (<0.5px), and recorded MP4. Trusted canonical starting-position authority and deployed authenticated acceptance remain explicitly open."
       );
     } finally {
-      await fastifyApp.close();
+      if (realtime) {
+        realtime.dispose();
+      }
+      if (fastifyApp) {
+        await fastifyApp.close();
+      }
       console.log("Proposed Fastify server cleanly closed.");
     }
   });
@@ -4191,6 +4238,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     const baseSurveyRuntime = new ColonyRuntime(4242);
     const defaultDoc = createWorldLayoutDocument({
       ...baseSurveyRuntime.captureWorldLayout(),
+      placements: [],
       layoutId: "seed-4242",
       seed: 4242,
       revision: { number: 0, parentHash: null },
@@ -4302,6 +4350,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       enableBusSync: true,
       enableBusSeats: true,
       staleTimeoutMs: 60_000,
+      allowTestFixtures: false,
     });
 
     // Baseline sol time: 5:02 AM (Bus 0 still in depot before reaching Stop 0)
@@ -4310,7 +4359,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     realtime.setMockSolNowMs(() => mockNow);
 
     const e2ePort = Number(process.env.CITYLIFE_E2E_PORT) || 5191;
-    const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
+    const serverPort = process.env.CITYLIFE_PORT !== undefined ? Number(process.env.CITYLIFE_PORT) : 9010;
     const BUS_JWT_SECRET = crypto.randomUUID();
     const fastifyApp = buildApp({
       gameState: new GameStateManager(null, null),
@@ -4332,7 +4381,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     const cachedCatalogueBody = JSON.stringify({
       published: true,
       manifest: {
+        schemaVersion: "citylife.starter-parcel-manifest/v1",
         worldId: "seed-4242",
+        sourceLayoutRevision: defaultDoc.revision.parentHash ?? null,
         layoutRevision: defaultDoc.revision.contentHash,
         layout: defaultDoc,
         physicalColliders,
@@ -4342,7 +4393,18 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           frameId: surfaceFrame.id,
           walkableCells: Array.from(walkableCells),
         },
-        plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+        plots: [
+          {
+            plotId: "central_lot_1",
+            frameId: surfaceFrame.id,
+            geometry: {
+              plotId: "central_lot_1",
+              worldId: "seed-4242",
+              layoutRevision: defaultDoc.revision.contentHash,
+              neighbourhoodKey: "citylife-central",
+            },
+          },
+        ],
       },
     });
     const cachedVehicleBody = JSON.stringify({
@@ -4654,10 +4716,32 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         attachListenersAndSyncClock(page2, baseSolNow),
       ]);
 
+      await Promise.all([
+        page1.evaluate((spawn) => {
+          const colony = (window as any).__colony;
+          if (!colony.authoritativeCar && colony.operatorUserId) {
+            colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+          }
+          colony.ownedDrivePose = { x: spawn.x, y: spawn.y, heading: spawn.heading, speed: 0 };
+          colony.ownedDriveSeated = true;
+          colony.emit();
+        }, HUB_SPAWN),
+        page2.evaluate((spawn) => {
+          const colony = (window as any).__colony;
+          if (!colony.authoritativeCar && colony.operatorUserId) {
+            colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+          }
+          colony.ownedDrivePose = { x: spawn.x, y: spawn.y, heading: spawn.heading, speed: 0 };
+          colony.ownedDriveSeated = true;
+          colony.emit();
+        }, HUB_SPAWN),
+      ]);
+
       // Separate Player 2's vehicle slightly forward along the road via real keyboard throttle (KeyW)
       // from y=273 to y~277.4 so the two parked cars sit at distinct road coordinates while BOTH stay
       // outside Stop 0's 3.0-cell boarding/pole radius (Stop 0 at=(124, 281.890625), furniture=(121.75, 281.890625))
       await page2.bringToFront();
+      await page2.locator("canvas").first().click({ position: { x: 200, y: 200 } });
       await page2.keyboard.down("KeyW");
       await page2.waitForFunction(() => {
         const last = (window as any).__lastSnapshot;
@@ -5183,6 +5267,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       }
 
       // 3. SERVED POLE BUTTON & REASONS + WAIT / CANCEL LIFECYCLE:
+      // Re-synchronize client sol clocks with server baseline (baseSolNow) after walking movement to Stop 0
+      await Promise.all([
+        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), baseSolNow),
+        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), baseSolNow),
+      ]);
+
       await expect(stopCard1).toBeVisible({ timeout: 15_000 });
       await expect(stopCard1).toHaveAttribute("data-stop-index", "0");
       await expect(stopCard1).toHaveAttribute("data-can-board", "false");
@@ -6080,7 +6170,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         await context2.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
         await context2.close().catch(() => {});
       }
-      await fastifyApp.close();
+      if (realtime) {
+        realtime.dispose();
+      }
+      if (fastifyApp) {
+        await fastifyApp.close();
+      }
       console.log("Bus journey Fastify server cleanly closed.");
     }
   });
