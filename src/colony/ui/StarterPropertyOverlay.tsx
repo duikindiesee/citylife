@@ -31,6 +31,7 @@ import {
   purchaseButtonView,
   purchaseStateColor,
   isHomeOwned,
+  layoutRevisionsMatch,
   type EligibleNeighbourhood,
   type HomeTruth,
   type PurchaseOutcome,
@@ -115,9 +116,13 @@ export function StarterPropertyOverlay({
 
   const buildOpSeqRef = useRef(0);
   const currentRuntimeRef = useRef(runtime);
+  const lastOperatorRef = useRef(runtime?.getOperatorUserId?.() ?? null);
+  const lastRevRef = useRef(runtime?.getActiveLayoutRevisionId?.() ?? null);
 
   useEffect(() => {
     currentRuntimeRef.current = runtime;
+    lastOperatorRef.current = runtime?.getOperatorUserId?.() ?? null;
+    lastRevRef.current = runtime?.getActiveLayoutRevisionId?.() ?? null;
     buildOpSeqRef.current += 1;
     setBuildPending(false);
     setBuildError(null);
@@ -125,17 +130,42 @@ export function StarterPropertyOverlay({
     setBuildSession(null);
   }, [runtime]);
 
+  // Subscribe to runtime state changes so same-object operator/revision changes immediately invalidate build operations
+  useEffect(() => {
+    if (!runtime || typeof runtime.subscribe !== "function") return;
+    const unsub = runtime.subscribe(() => {
+      const curOp = runtime.getOperatorUserId?.() ?? null;
+      const curRev = runtime.getActiveLayoutRevisionId?.() ?? null;
+      if (curOp !== lastOperatorRef.current || curRev !== lastRevRef.current) {
+        lastOperatorRef.current = curOp;
+        lastRevRef.current = curRev;
+        buildOpSeqRef.current += 1;
+        setBuildPending(false);
+        setBuildError(null);
+        setBuildConfirmed(false);
+        setBuildSession(null);
+      }
+    });
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [runtime]);
+
   const startHouseBuild = useCallback(async () => {
     const opId = ++buildOpSeqRef.current;
     const expectedRuntime = runtime;
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    const startRuntimeRev =
+      typeof runtime?.getActiveLayoutRevisionId === "function"
+        ? runtime.getActiveLayoutRevisionId()
+        : null;
+
     const isCurrent = () =>
       mountedRef.current &&
       buildOpSeqRef.current === opId &&
       currentRuntimeRef.current === expectedRuntime;
-
-    const authClient = getAuthClient();
-    const startAuthUserId = authClient.operator?.userId ?? null;
-    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
     if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
       setBuildError("Authenticated user and runtime operator mismatch; aborted.");
       return;
@@ -179,14 +209,19 @@ export function StarterPropertyOverlay({
     if (!buildSession) return;
     const opId = ++buildOpSeqRef.current;
     const expectedRuntime = runtime;
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    const startRuntimeRev =
+      typeof runtime?.getActiveLayoutRevisionId === "function"
+        ? runtime.getActiveLayoutRevisionId()
+        : null;
+
     const isCurrent = () =>
       mountedRef.current &&
       buildOpSeqRef.current === opId &&
       currentRuntimeRef.current === expectedRuntime;
 
-    const authClient = getAuthClient();
-    const startAuthUserId = authClient.operator?.userId ?? null;
-    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
     if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
       setBuildConfirmed(false);
       setBuildError("Authenticated user and runtime operator mismatch; aborted.");
@@ -201,10 +236,6 @@ export function StarterPropertyOverlay({
     const expectedPlotId = buildSession.context.plotId;
     const expectedFrameId = buildSession.context.frameId;
     const expectedRevision = buildSession.context.layoutRevision;
-    const startRuntimeRev =
-      typeof runtime?.getActiveLayoutRevisionId === "function"
-        ? runtime.getActiveLayoutRevisionId()
-        : null;
 
     setBuildError(null);
     setBuildPending(true);
@@ -243,7 +274,7 @@ export function StarterPropertyOverlay({
         throw new Error(`Home truth frame mismatch or missing frameId: expected ${expectedFrameId}, got ${truthFrameId ?? "null"}`);
       }
       const truthRevision = updatedTruth.layoutRevision ?? (updatedTruth.geometry as any)?.layoutRevision ?? null;
-      if (!truthRevision || (expectedRevision && truthRevision !== expectedRevision)) {
+      if (!truthRevision || (expectedRevision && !layoutRevisionsMatch(truthRevision, expectedRevision))) {
         throw new Error(`Home truth layout revision mismatch or missing layoutRevision: expected ${expectedRevision}, got ${truthRevision ?? "null"}`);
       }
 
@@ -254,7 +285,7 @@ export function StarterPropertyOverlay({
       if (startRuntimeRev && (!currentRuntimeRev || currentRuntimeRev !== startRuntimeRev)) {
         throw new Error("Runtime layout revision changed during house build; aborted.");
       }
-      if (currentRuntimeRev && expectedRevision && currentRuntimeRev !== expectedRevision) {
+      if (currentRuntimeRev && expectedRevision && !layoutRevisionsMatch(currentRuntimeRev, expectedRevision)) {
         throw new Error("Runtime layout revision does not match expected build session revision; aborted.");
       }
 

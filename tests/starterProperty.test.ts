@@ -2002,34 +2002,33 @@ describe("Starter catalogue client & returning resident projection", () => {
       return { promise, resolve, reject };
     }
 
-    // Part 1: Arrival held response with runtime swap A-to-B
-    const deferredPost = createDeferred<Response>();
-    let arrivalPostCount = 0;
-
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
-        arrivalPostCount++;
-        return deferredPost.promise;
-      }
-      if (url.endsWith("/players/me/home")) {
-        return new Response(JSON.stringify(homeTruth), { status: 200, headers: { "Content-Type": "application/json" } });
-      }
-      return new Response("{}", { status: 200 });
-    });
-
     const createMockRuntime = (userId: string, rev = "rev-coast4") => {
       const subs = new Set<() => void>();
+      let curUserId = userId;
+      let curRev = rev;
       return {
-        userId,
-        rev,
+        get userId() {
+          return curUserId;
+        },
+        get rev() {
+          return curRev;
+        },
+        setUserId: (newId: string) => {
+          curUserId = newId;
+        },
+        setRev: (newRev: string) => {
+          curRev = newRev;
+        },
+        notify: () => {
+          for (const l of Array.from(subs)) l();
+        },
         claimStarterHome: vi.fn().mockReturnValue(true),
         applyBlueprint: vi.fn().mockReturnValue(true),
         focusSurveyCell: vi.fn(),
         getOwnedDrivePose: () => ({ x: 32, y: 48 }),
         getPhysicalCarPosition: () => ({ x: 32, y: 48 }),
-        getActiveLayoutRevisionId: () => rev,
-        getOperatorUserId: () => userId,
+        getActiveLayoutRevisionId: () => curRev,
+        getOperatorUserId: () => curUserId,
         getAuthoritativeCar: () => ({ id: "showroom:karoo-x19-targa" }),
         subscribe: (l: () => void) => {
           subs.add(l);
@@ -2037,6 +2036,42 @@ describe("Starter catalogue client & returning resident projection", () => {
         },
       };
     };
+
+    // Part 1: Arrival held response with runtime swap A-to-B
+    // Must return legitimate matching resident final readback so guard is not masked by nonresident fixture
+    let arrivalPostCount = 0;
+    let finalReadReachedPart1 = false;
+    let homeTruthFetchCountPart1 = 0;
+    const deferredFinalResidencyPart1 = createDeferred<Response>();
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        arrivalPostCount++;
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            homeGarageUnlocked: true,
+            vehicleStorageLocation: "HOME",
+            onboardingState: "RESIDENT",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        homeTruthFetchCountPart1++;
+        // Call 1 is runtimeA initial mount load.
+        // Call 2 is runtimeA post-arrival authoritative residency readback (held).
+        // Call 3+ is runtimeB initial mount load.
+        if (homeTruthFetchCountPart1 === 2) {
+          finalReadReachedPart1 = true;
+          return deferredFinalResidencyPart1.promise;
+        }
+        return new Response(JSON.stringify(homeTruth), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("{}", { status: 200 });
+    });
 
     const runtimeA = createMockRuntime("user-alice");
     const runtimeB = createMockRuntime("user-alice");
@@ -2061,8 +2096,9 @@ describe("Starter catalogue client & returning resident projection", () => {
       triggerNodeClick(arriveBtn);
     });
     expect(arrivalPostCount).toBe(1);
+    expect(finalReadReachedPart1, "Authoritative post-arrival residency readback must be reached and held").toBe(true);
 
-    // Rerender overlay with runtime B while POST is held
+    // Rerender overlay with runtime B while post-arrival residency read is held
     await act(async () => {
       root.render(
         React.createElement(DriveHomeOverlay, {
@@ -2072,31 +2108,37 @@ describe("Starter catalogue client & returning resident projection", () => {
       );
     });
 
-    // Release runtime A's response
-    deferredPost.resolve(
+    // Release runtime A's residency readback with genuine resident confirmation
+    deferredFinalResidencyPart1.resolve(
       new Response(
         JSON.stringify({
-          plotId: "coast4_1",
-          frameId: "frame-coast4-1",
-          homeGarageUnlocked: true,
-          vehicleStorageLocation: "HOME",
+          ...homeTruth,
+          resident: true,
           onboardingState: "RESIDENT",
+          status: "OWNED",
+          homeGarageUnlocked: true,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 20));
     });
 
+    expect(arrivalPostCount).toBe(1);
+    expect(finalReadReachedPart1, "Authoritative post-arrival residency readback must be reached").toBe(true);
     const portal = findNode(container, (n: any) => n.getAttribute?.("data-testid") === "home-garage-portal");
-    expect(portal, "Old arrival in runtime A must NOT unlock garage portal in runtime B").toBeNull();
+    expect(portal, "Old arrival in runtime A must NOT unlock garage portal in runtime B despite valid resident readback").toBeNull();
 
     // Part 2: Held arrival response followed by unmount
     const deferredPostUnmount = createDeferred<Response>();
+    let unmountArrivalPostCount = 0;
+    let onCloseFiredPart2 = false;
+
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        unmountArrivalPostCount++;
         return deferredPostUnmount.promise;
       }
       if (url.endsWith("/players/me/home")) {
@@ -2111,15 +2153,19 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       rootC.render(
         React.createElement(DriveHomeOverlay, {
-          onClose: () => {},
+          onClose: () => {
+            onCloseFiredPart2 = true;
+          },
           runtime: runtimeC as any,
         }),
       );
     });
     const arriveBtnC = findNode(containerC, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    expect(arriveBtnC).not.toBeNull();
     await act(async () => {
       triggerNodeClick(arriveBtnC);
     });
+    expect(unmountArrivalPostCount).toBe(1);
 
     await act(async () => {
       rootC.unmount();
@@ -2136,16 +2182,21 @@ describe("Starter catalogue client & returning resident projection", () => {
       ),
     );
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 20));
     });
+    expect(onCloseFiredPart2, "Unmounted arrival overlay must not trigger callback on deferred release").toBe(false);
 
     // Part 3: Auth-only switch while runtime still reports A
     currentAuthUser = "user-alice";
     const runtimeD = createMockRuntime("user-alice");
-    const deferredResidencyAuth = createDeferred<Response>();
+    let authArrivalPostCount = 0;
+    let finalResidencyFetchedPart3 = false;
+    const deferredFinalResidency = createDeferred<Response>();
+
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        authArrivalPostCount++;
         return new Response(
           JSON.stringify({
             plotId: "coast4_1",
@@ -2157,22 +2208,23 @@ describe("Starter catalogue client & returning resident projection", () => {
         );
       }
       if (url.endsWith("/players/me/home")) {
-        return deferredResidencyAuth.promise;
+        if (authArrivalPostCount > 0) {
+          finalResidencyFetchedPart3 = true;
+          return deferredFinalResidency.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            ...homeTruth,
+            onboardingState: "ONBOARDING",
+          }),
+          { status: 200 },
+        );
       }
       return new Response("{}", { status: 200 });
     });
 
     const containerD = (globalThis as any).document.createElement("div");
     const rootD = createRoot(containerD);
-    deferredResidencyAuth.resolve(
-      new Response(
-        JSON.stringify({
-          ...homeTruth,
-          onboardingState: "ONBOARDING",
-        }),
-        { status: 200 },
-      ),
-    );
     await act(async () => {
       rootD.render(
         React.createElement(DriveHomeOverlay, {
@@ -2185,30 +2237,14 @@ describe("Starter catalogue client & returning resident projection", () => {
     const arriveBtnD = findNode(containerD, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
     expect(arriveBtnD).not.toBeNull();
 
-    const deferredFinalResidency = createDeferred<Response>();
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/home-deed/drive-home-arrival")) {
-        return new Response(
-          JSON.stringify({
-            plotId: "coast4_1",
-            frameId: "frame-coast4-1",
-            homeGarageUnlocked: true,
-            vehicleStorageLocation: "HOME",
-          }),
-          { status: 200 },
-        );
-      }
-      if (url.endsWith("/players/me/home")) {
-        return deferredFinalResidency.promise;
-      }
-      return new Response("{}", { status: 200 });
-    });
-
     await act(async () => {
       triggerNodeClick(arriveBtnD);
     });
 
+    expect(authArrivalPostCount, "Arrival POST must succeed before residency fetch").toBe(1);
+    expect(finalResidencyFetchedPart3, "Residency fetch must be reached and held").toBe(true);
+
+    // Switch auth identity mid-await
     currentAuthUser = "user-eve";
     deferredFinalResidency.resolve(
       new Response(
@@ -2222,11 +2258,351 @@ describe("Starter catalogue client & returning resident projection", () => {
       ),
     );
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 20));
     });
 
     const portalD = findNode(containerD, (n: any) => n.getAttribute?.("data-testid") === "home-garage-portal");
     expect(portalD, "Auth-only switch must fail closed and refuse garage portal").toBeNull();
+
+    // Part 4: Builder held operation across runtime swap A-to-B
+    currentAuthUser = "user-alice";
+    const transformR1 = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } };
+    const builderLayoutR1 = createWorldLayoutDocument({
+      layoutId: "seed-4242",
+      worldId: "seed-4242",
+      seed: 4242,
+      revision: { number: 1, parentHash: "a".repeat(64) },
+      frames: [
+        { id: "surface", address: "spatial://citylife/surface", kind: "region", layer: "surface", transform: transformR1 },
+        { id: "frame-coast4-1", address: "spatial://citylife/surface/region/parcel", kind: "region", layer: "surface", parentId: "surface", transform: transformR1 },
+      ],
+      placements: [],
+      roads: [],
+      ways: [],
+      terrainEdits: [],
+      portals: [],
+    });
+    const layoutRevPart4 = builderLayoutR1.revision.contentHash;
+
+    const builderPlotGeometry: StarterParcelGeometry = {
+      plotId: "coast4_1",
+      worldId: "seed-4242",
+      layoutRevision: layoutRevPart4,
+      neighbourhoodKey: "coast4",
+      parcel: { x: 10, y: 10, width: 10, depth: 10 },
+      houseZone: { x: 12, y: 12, width: 6, depth: 5 },
+      driveway: [{ x: 15, y: 18 }, { x: 15, y: 17 }],
+      roadCells: [{ x: 15, y: 19 }],
+      spawn: { x: 10, y: 20 },
+    };
+    const validScript =
+      "house{w:6 d:5 wallH:2 door:s} room{kind:living x:0 y:0 w:4 d:3 win:1} room{kind:bedroom x:4 y:0 w:2 d:3 win:1} room{kind:patio x:0 y:3 w:6 d:2 win:0}";
+    const catalogueManifestPart4 = {
+      published: true,
+      manifest: {
+        schemaVersion: "citylife.starter-parcel-manifest/v1",
+        worldId: "seed-4242",
+        layoutRevision: layoutRevPart4,
+        sourceLayoutRevision: "a".repeat(64),
+        layout: builderLayoutR1,
+        plots: [
+          {
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            geometry: builderPlotGeometry,
+          },
+        ],
+      },
+    };
+
+    let builderPostCountPart4 = 0;
+    const deferredBuildPostPart4 = createDeferred<Response>();
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          builderPostCountPart4++;
+          return deferredBuildPostPart4.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: false,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            completed: false,
+            geometry: builderPlotGeometry,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const builderRuntimeA = createMockRuntime("user-alice", layoutRevPart4);
+    const builderRuntimeB = createMockRuntime("user-alice", layoutRevPart4);
+
+    const containerBuilder = (globalThis as any).document.createElement("div");
+    const rootBuilder = createRoot(containerBuilder);
+
+    await act(async () => {
+      rootBuilder.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: builderRuntimeA as any,
+        }),
+      );
+    });
+
+    const startBuildBtn4 = findNode(containerBuilder, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBuildBtn4).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBuildBtn4);
+    });
+
+    const submitBuildBtn4 = findNode(containerBuilder, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtn4).not.toBeNull();
+
+    await act(async () => {
+      triggerNodeClick(submitBuildBtn4);
+    });
+    expect(builderPostCountPart4).toBe(1);
+
+    // Swap runtime prop to builderRuntimeB while build is held
+    await act(async () => {
+      rootBuilder.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: builderRuntimeB as any,
+        }),
+      );
+    });
+
+    // Release held build POST with success
+    deferredBuildPostPart4.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          layoutRevision: "rev-coast4",
+          geometry: builderPlotGeometry,
+          completed: true,
+          script: validScript,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(builderRuntimeB.claimStarterHome, "Swapped runtime B must NOT have claimStarterHome called").not.toHaveBeenCalled();
+    const confirmedNode4 = findNode(containerBuilder, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNode4, "Swapped runtime B must NOT show build confirmed").toBeNull();
+
+    // Part 5: Same-object operator switch while build is held
+    currentAuthUser = "user-alice";
+    const builderRuntimeSameObj = createMockRuntime("user-alice", layoutRevPart4);
+    let builderPostCountPart5 = 0;
+    const deferredBuildPostPart5 = createDeferred<Response>();
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          builderPostCountPart5++;
+          return deferredBuildPostPart5.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: false,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            completed: false,
+            geometry: builderPlotGeometry,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const containerPart5 = (globalThis as any).document.createElement("div");
+    const rootPart5 = createRoot(containerPart5);
+
+    await act(async () => {
+      rootPart5.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: builderRuntimeSameObj as any,
+        }),
+      );
+    });
+
+    const startBuildBtn5 = findNode(containerPart5, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBuildBtn5).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBuildBtn5);
+    });
+
+    const submitBuildBtn5 = findNode(containerPart5, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtn5).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBuildBtn5);
+    });
+    expect(builderPostCountPart5).toBe(1);
+
+    // Switch operator on the same runtime object and notify subscribers
+    currentAuthUser = "user-mallory";
+    builderRuntimeSameObj.setUserId("user-mallory");
+    builderRuntimeSameObj.notify();
+
+    // Release held build POST with success
+    deferredBuildPostPart5.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          layoutRevision: layoutRevPart4,
+          geometry: builderPlotGeometry,
+          completed: true,
+          script: validScript,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(builderRuntimeSameObj.claimStarterHome, "Operator switch on same runtime must NOT allow claimStarterHome").not.toHaveBeenCalled();
+    const confirmedNode5 = findNode(containerPart5, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNode5, "Operator switch must fail closed without confirming build").toBeNull();
+
+    // Part 6: Older-finally protection — older operation completion cannot clear newer pending
+    currentAuthUser = "user-alice";
+    const runtimeFinallyA = createMockRuntime("user-alice", "rev-coast4");
+    const runtimeFinallyB = createMockRuntime("user-alice", "rev-coast4");
+    const deferredArrivalOp1 = createDeferred<Response>();
+    const deferredArrivalOp2 = createDeferred<Response>();
+    let arrivalCallCount = 0;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        arrivalCallCount++;
+        return arrivalCallCount === 1 ? deferredArrivalOp1.promise : deferredArrivalOp2.promise;
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(JSON.stringify(homeTruth), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const containerFinally = (globalThis as any).document.createElement("div");
+    const rootFinally = createRoot(containerFinally);
+    await act(async () => {
+      rootFinally.render(
+        React.createElement(DriveHomeOverlay, {
+          onClose: () => {},
+          runtime: runtimeFinallyA as any,
+        }),
+      );
+    });
+
+    const arriveBtnFinally = findNode(containerFinally, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    expect(arriveBtnFinally).not.toBeNull();
+
+    // Start Op 1
+    await act(async () => {
+      triggerNodeClick(arriveBtnFinally);
+    });
+    expect(arrivalCallCount).toBe(1);
+    expect(arriveBtnFinally.disabled).toBe(true);
+
+    // Rerender with runtimeFinallyB (invalidates Op 1, resets pending for B)
+    await act(async () => {
+      rootFinally.render(
+        React.createElement(DriveHomeOverlay, {
+          onClose: () => {},
+          runtime: runtimeFinallyB as any,
+        }),
+      );
+    });
+
+    // Start Op 2 on runtimeFinallyB
+    const arriveBtnFinally2 = findNode(containerFinally, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    expect(arriveBtnFinally2).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(arriveBtnFinally2);
+    });
+    expect(arrivalCallCount).toBe(2);
+    expect(arriveBtnFinally2.disabled).toBe(true);
+
+    // Reject Op 1
+    deferredArrivalOp1.reject(new Error("Op 1 network failure"));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    // Op 2 must STILL be pending because Op 1's finally must NOT clear Op 2's pending!
+    expect(arriveBtnFinally2.disabled, "Older operation finally block must NOT clear newer operation's pending state").toBe(true);
+
+    // Clean up Op 2
+    deferredArrivalOp2.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          homeGarageUnlocked: true,
+          vehicleStorageLocation: "HOME",
+        }),
+        { status: 200 },
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
 
     vi.unstubAllGlobals();
   });
@@ -2547,6 +2923,195 @@ describe("Starter catalogue client & returning resident projection", () => {
     const builderErrorNode = findNode(containerD, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
     expect(builderErrorNode, "Missing frameId in final truth must display error").not.toBeNull();
     expect(builderRuntime.claimStarterHome).not.toHaveBeenCalled();
+
+    // Subtest R2-E: Real Production Producer Positive
+    // Runtime exposes formatted CAS token `wl:v1:1:${layoutRevR1}`
+    // Catalogue manifest exposes bare content hash `${layoutRevR1}`
+    // Server returns the EXACT 10-field HomeTruthResponse from CitylifeHomePurchaseController.java:
+    // (owned: true, status: "OWNED", plotOwned: true, requiresBuild: false, layoutRevision: layoutRevR1, etc.)
+    // WITHOUT injecting client-only fields (completed: true, geometry, etc.)
+    let producerPostCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifest), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") producerPostCount++;
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevR1,
+            geometry: builderPlotGeometry,
+            completed: producerPostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (producerPostCount > 0) {
+          // Exact 10-field HomeTruthResponse record from CitylifeHomePurchaseController.java
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              neighbourhoodKey: "coast4",
+              plotId: "coast4_1",
+              onboardingState: "RESIDENT",
+              plotOwned: true,
+              requiresBuild: false,
+              frameId: "frame-coast4-1",
+              layoutRevision: layoutRevR1,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            neighbourhoodKey: "coast4",
+            plotId: "coast4_1",
+            onboardingState: "ONBOARDING",
+            plotOwned: true,
+            requiresBuild: true,
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevR1,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const realProducerRuntime: any = {
+      getOperatorUserId: () => "user-alice",
+      getActiveLayoutRevisionId: () => `wl:v1:1:${layoutRevR1}`,
+      claimStarterHome: vi.fn().mockReturnValue(true),
+      applyBlueprint: vi.fn().mockReturnValue(true),
+      subscribe: () => () => {},
+    };
+    const containerE = (globalThis as any).document.createElement("div");
+    const rootE = createRoot(containerE);
+    await act(async () => {
+      rootE.render(React.createElement(StarterPropertyOverlay, { onClose: () => {}, runtime: realProducerRuntime }));
+    });
+    const startBuildBtnE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBuildBtnE).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBuildBtnE);
+    });
+    const submitBuildBtnE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtnE).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBuildBtnE);
+    });
+
+    expect(producerPostCount).toBe(1);
+    expect(realProducerRuntime.claimStarterHome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plotId: "coast4_1",
+        completed: true,
+        requiresBuild: false,
+        owned: true,
+      }),
+    );
+    expect(realProducerRuntime.applyBlueprint).toHaveBeenCalledWith("coast4_1", validScript);
+    const confirmedNodeE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNodeE, "Real production producer 10-field response must confirm build").not.toBeNull();
+    const errorNodeE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(errorNodeE).toBeNull();
+
+    // Subtest R2-F: Discriminating negative for contradictory requiresBuild: true
+    let negativePostCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifest), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") negativePostCount++;
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevR1,
+            geometry: builderPlotGeometry,
+            completed: negativePostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (negativePostCount > 0) {
+          // Contradictory: owned=true and plotOwned=true, but requiresBuild=true
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "PLOT_OWNED",
+              neighbourhoodKey: "coast4",
+              plotId: "coast4_1",
+              onboardingState: "ONBOARDING",
+              plotOwned: true,
+              requiresBuild: true,
+              frameId: "frame-coast4-1",
+              layoutRevision: layoutRevR1,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            neighbourhoodKey: "coast4",
+            plotId: "coast4_1",
+            onboardingState: "ONBOARDING",
+            plotOwned: true,
+            requiresBuild: true,
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevR1,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const negativeProducerRuntime: any = {
+      getOperatorUserId: () => "user-alice",
+      getActiveLayoutRevisionId: () => `wl:v1:1:${layoutRevR1}`,
+      claimStarterHome: vi.fn(),
+      applyBlueprint: vi.fn(),
+      subscribe: () => () => {},
+    };
+    const containerF = (globalThis as any).document.createElement("div");
+    const rootF = createRoot(containerF);
+    await act(async () => {
+      rootF.render(React.createElement(StarterPropertyOverlay, { onClose: () => {}, runtime: negativeProducerRuntime }));
+    });
+    const startBuildBtnF = findNode(containerF, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBuildBtnF).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBuildBtnF);
+    });
+    const submitBuildBtnF = findNode(containerF, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtnF).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBuildBtnF);
+    });
+
+    expect(negativePostCount).toBe(1);
+    expect(negativeProducerRuntime.claimStarterHome).not.toHaveBeenCalled();
+    const errorNodeF = findNode(containerF, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(errorNodeF, "Contradictory requiresBuild: true must display error").not.toBeNull();
 
     vi.unstubAllGlobals();
   });

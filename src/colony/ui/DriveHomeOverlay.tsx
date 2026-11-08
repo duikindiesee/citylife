@@ -41,6 +41,7 @@ import {
 } from "../home/driveHome";
 import { serverVehicleKeyOf } from "../car/carAcquisition";
 import { getAuthClient } from "../authClient";
+import { layoutRevisionsMatch } from "../home/starterProperty";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -110,19 +111,32 @@ export function DriveHomeOverlay({
 
   const operationSeqRef = useRef(0);
   const currentRuntimeRef = useRef(runtime);
+  const lastOperatorRef = useRef(runtime?.getOperatorUserId?.() ?? null);
+  const lastRevRef = useRef(runtime?.getActiveLayoutRevisionId?.() ?? null);
 
   useEffect(() => {
     currentRuntimeRef.current = runtime;
+    lastOperatorRef.current = runtime?.getOperatorUserId?.() ?? null;
+    lastRevRef.current = runtime?.getActiveLayoutRevisionId?.() ?? null;
     operationSeqRef.current += 1;
     setPending(false);
     setOutcome(undefined);
   }, [runtime]);
 
-  // Subscribe to runtime state changes so physical vehicle movement re-renders guidance and arrival
+  // Subscribe to runtime state changes so physical vehicle movement re-renders guidance, and same-object
+  // operator/revision changes immediately invalidate pending arrival operations
   useEffect(() => {
     if (!runtime || typeof runtime.subscribe !== "function") return;
     const unsub = runtime.subscribe(() => {
       setRuntimeTick((t) => t + 1);
+      const curOp = runtime.getOperatorUserId?.() ?? null;
+      const curRev = runtime.getActiveLayoutRevisionId?.() ?? null;
+      if (curOp !== lastOperatorRef.current || curRev !== lastRevRef.current) {
+        lastOperatorRef.current = curOp;
+        lastRevRef.current = curRev;
+        operationSeqRef.current += 1;
+        setPending(false);
+      }
       setOutcome(undefined);
     });
     return () => {
@@ -178,7 +192,7 @@ export function DriveHomeOverlay({
     ? Boolean(
         runtimeLayoutRevision &&
           truthLayoutRevision &&
-          runtimeLayoutRevision === truthLayoutRevision,
+          layoutRevisionsMatch(runtimeLayoutRevision, truthLayoutRevision),
       )
     : true;
   const isOperatorAuthed = runtime
@@ -260,6 +274,11 @@ export function DriveHomeOverlay({
       return;
     }
 
+    const startRevision =
+      runtime?.getActiveLayoutRevisionId?.() ??
+      residency?.truth?.layoutRevision ??
+      null;
+
     const opId = ++operationSeqRef.current;
     const expectedRuntime = runtime;
     const isCurrent = () =>
@@ -277,11 +296,6 @@ export function DriveHomeOverlay({
         : null;
     const plotId = residency?.truth?.plotId ?? null;
     const frameId = residency?.truth?.frameId ?? null;
-
-    const startRevision =
-      runtime?.getActiveLayoutRevisionId?.() ??
-      residency?.truth?.layoutRevision ??
-      null;
 
     void postHomeArrival(targetCell, residency?.truth ?? null, {
       plotId,
@@ -335,7 +349,7 @@ export function DriveHomeOverlay({
         }
 
         const freshTruthRev = fresh?.truth?.layoutRevision ?? null;
-        if (!freshTruthRev || (startRevision && freshTruthRev !== startRevision)) {
+        if (!freshTruthRev || (startRevision && !layoutRevisionsMatch(freshTruthRev, startRevision))) {
           if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }

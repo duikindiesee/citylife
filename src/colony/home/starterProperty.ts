@@ -283,9 +283,16 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
     o.isResident === true ||
     str(o.arrivalStatus) === "RESIDENT" ||
     statusStr === "RESIDENT";
-  const completed = o.completed === true || str(o.buildState) === "COMPLETED";
   const plotOwned = o.plotOwned === true || statusStr === "PLOT_OWNED";
-  const requiresBuild = o.requiresBuild === true || (plotOwned && !completed);
+  const serverRequiresBuild = typeof o.requiresBuild === "boolean" ? o.requiresBuild : undefined;
+  const completed =
+    o.completed === true ||
+    str(o.buildState) === "COMPLETED" ||
+    (o.owned === true && plotOwned && serverRequiresBuild === false);
+  const requiresBuild =
+    serverRequiresBuild !== undefined
+      ? serverRequiresBuild
+      : plotOwned && !completed;
 
   return {
     owned: o.owned === true,
@@ -600,5 +607,32 @@ export async function postConfirmArrival(request: {
   } catch {
     return { kind: "error" };
   }
+}
+
+/**
+ * Extract the 64-hex content hash from a revision identifier, handling both formatted CAS tokens
+ * (`wl:v1:<number>:<contentHash>`) and bare 64-hex hashes.
+ */
+export function extractLayoutContentHash(rev: string | null | undefined): string | null {
+  if (!rev || typeof rev !== "string") return null;
+  const trimmed = rev.trim();
+  const match = /^wl:v1:\d+:([0-9a-fA-F]{64})$/.exec(trimmed);
+  if (match) return match[1];
+  return trimmed;
+}
+
+/**
+ * Compare two layout revision identifiers. Returns true if both are non-empty and either exactly
+ * match or resolve to the same underlying content hash.
+ */
+export function layoutRevisionsMatch(
+  revA: string | null | undefined,
+  revB: string | null | undefined,
+): boolean {
+  if (!revA || !revB) return false;
+  if (revA === revB) return true;
+  const hashA = extractLayoutContentHash(revA);
+  const hashB = extractLayoutContentHash(revB);
+  return Boolean(hashA && hashB && hashA === hashB);
 }
 
