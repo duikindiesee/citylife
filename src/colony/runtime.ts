@@ -4910,6 +4910,7 @@ export class ColonyRuntime {
           };
         }
       }
+      return null;
     }
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return null;

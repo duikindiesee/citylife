@@ -2670,11 +2670,12 @@ describe("Starter catalogue client & returning resident projection", () => {
     const confirmedNode4 = findNode(containerBuilder, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
     expect(confirmedNode4, "Swapped runtime B must NOT show build confirmed").toBeNull();
 
-    // Part 5A: True Auth-only switch (without runtime change or notification)
+    // Part 5A: True Auth-only switch with legitimately completing helper, held overlay readback, and error suppression
     currentAuthUser = "user-alice";
     const builderRuntimePart5A = createMockRuntime("user-alice", layoutRevPart4);
     let builderPostCountPart5A = 0;
-    const deferredBuildPostPart5A = createDeferred<Response>();
+    let truthReadbackCount5A = 0;
+    const deferredTruthReadbackPart5A = createDeferred<Response>();
 
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -2684,7 +2685,6 @@ describe("Starter catalogue client & returning resident projection", () => {
       if (url.endsWith("/home/build")) {
         if (init?.method === "POST") {
           builderPostCountPart5A++;
-          return deferredBuildPostPart5A.promise;
         }
         return new Response(
           JSON.stringify({
@@ -2699,30 +2699,37 @@ describe("Starter catalogue client & returning resident projection", () => {
         );
       }
       if (url.endsWith("/players/me/home")) {
-        if (builderPostCountPart5A > 0) {
+        truthReadbackCount5A++;
+        if (truthReadbackCount5A === 1) {
+          // Initial mount truth: PLOT_OWNED, requiresBuild: true
           return new Response(
             JSON.stringify({
-              owned: true,
-              status: "OWNED",
+              owned: false,
+              status: "PLOT_OWNED",
               plotOwned: true,
-              requiresBuild: false,
+              requiresBuild: true,
               plotId: "coast4_1",
               frameId: "frame-coast4-1",
-              neighbourhoodKey: "coast4",
               layoutRevision: layoutRevPart4,
               priceKco: 10000,
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
         }
+        // Call 2 is finishHouseBuild's post-build final truth readback (held!)
+        if (truthReadbackCount5A === 2) {
+          return deferredTruthReadbackPart5A.promise;
+        }
+        // Subsequent calls return completed truth
         return new Response(
           JSON.stringify({
-            owned: false,
-            status: "PLOT_OWNED",
+            owned: true,
+            status: "OWNED",
             plotOwned: true,
-            requiresBuild: true,
+            requiresBuild: false,
             plotId: "coast4_1",
             frameId: "frame-coast4-1",
+            neighbourhoodKey: "coast4",
             layoutRevision: layoutRevPart4,
             priceKco: 10000,
           }),
@@ -2748,28 +2755,33 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(startBuildBtn5A).not.toBeNull();
     await act(async () => {
       triggerNodeClick(startBuildBtn5A);
+      await new Promise((r) => setTimeout(r, 20));
     });
 
     const submitBuildBtn5A = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
     expect(submitBuildBtn5A).not.toBeNull();
     await act(async () => {
       triggerNodeClick(submitBuildBtn5A);
+      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(builderPostCountPart5A).toBe(1);
+    expect(builderPostCountPart5A, "Helper POST must have succeeded").toBe(1);
+    expect(truthReadbackCount5A, "Final overlay-owned truth readback must be reached").toBe(2);
 
     // True Auth-only switch: runtime object and operator user remain "user-alice", no notify called
     currentAuthUser = "user-mallory";
 
-    // Release held build POST with success
-    deferredBuildPostPart5A.resolve(
+    // Release held overlay-owned truth readback with valid completed truth
+    deferredTruthReadbackPart5A.resolve(
       new Response(
         JSON.stringify({
+          owned: true,
+          status: "OWNED",
+          plotOwned: true,
+          requiresBuild: false,
           plotId: "coast4_1",
           frameId: "frame-coast4-1",
           layoutRevision: layoutRevPart4,
-          geometry: builderPlotGeometry,
-          completed: true,
-          script: validScript,
+          priceKco: 10000,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -2781,6 +2793,35 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(builderRuntimePart5A.claimStarterHome, "Auth-only switch must NOT allow claimStarterHome").not.toHaveBeenCalled();
     const confirmedNode5A = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
     expect(confirmedNode5A, "Auth-only switch must fail closed without confirming build").toBeNull();
+    const errNode5A = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(errNode5A, "Overlay Auth fence must suppress error rendering into new owner context").toBeNull();
+
+    // Current-owner recovery: Switch Auth back to Alice and execute fresh build to completion
+    currentAuthUser = "user-alice";
+    await act(async () => {
+      rootPart5A.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: builderRuntimePart5A as any,
+        }),
+      );
+    });
+    const startBuildBtn5ARecover = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    if (startBuildBtn5ARecover) {
+      await act(async () => {
+        triggerNodeClick(startBuildBtn5ARecover);
+        await new Promise((r) => setTimeout(r, 20));
+      });
+    }
+    const submitBuildBtn5ARecover = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBuildBtn5ARecover, "Recovered current owner must see builder submit control").not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBuildBtn5ARecover);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(builderRuntimePart5A.claimStarterHome, "Recovered Alice must claim starter home").toHaveBeenCalledTimes(1);
+    const confirmedNode5ARecovered = findNode(containerPart5A, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNode5ARecovered, "Recovered Alice must show build confirmed").not.toBeNull();
 
     // Part 5B: Same-object operator switch where runtime operator changes without notify()
     currentAuthUser = "user-alice";
@@ -3019,13 +3060,15 @@ describe("Starter catalogue client & returning resident projection", () => {
     // held arrival resolves with 422 denial. Old denial must NOT write data-arrival-state="rejected"!
     const runtimeSameRev = createMockRuntime("user-alice", "rev-coast4-v1");
     const deferredArrivalDenial = createDeferred<Response>();
+    let arrivalSameRevPostCount = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        arrivalSameRevPostCount++;
         return deferredArrivalDenial.promise;
       }
       if (url.endsWith("/players/me/home")) {
-        return new Response(JSON.stringify(homeTruth), { status: 200 });
+        return new Response(JSON.stringify({ ...homeTruth, layoutRevision: "rev-coast4-v1" }), { status: 200 });
       }
       return new Response("{}", { status: 200 });
     });
@@ -3043,6 +3086,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       triggerNodeClick(arriveBtnSameRev);
     });
+    expect(arrivalSameRevPostCount, "Arrival POST must have fired before revision change").toBe(1);
     // Revision changes on same runtime object without notification
     await act(async () => {
       runtimeSameRev.setRev("rev-coast4-v2");
@@ -3274,7 +3318,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     // Op 2 must still be pending!
     expect(submitBuildBtnFinB.disabled, "Older build finally block must NOT clear newer build pending state").toBe(true);
 
-    // Clean up Op 2
+    // Clean up Op 2 and verify successful completion for Runtime B
     deferredBuildOp2Post.resolve(
       new Response(
         JSON.stringify({
@@ -3291,6 +3335,255 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
+    expect(runtimeBuildFinallyB.claimStarterHome, "Op 2 on Runtime B must claim starter home").toHaveBeenCalled();
+    const confirmedNodeFinB = findNode(containerBuildFinally, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNodeFinB, "Op 2 on Runtime B must show build confirmed").not.toBeNull();
+
+    // Part 7: Held startHouseBuild / loadHouseBuild across context change, followed by current-owner recovery
+    currentAuthUser = "user-alice";
+    const runtimePart7A = createMockRuntime("user-alice", layoutRevPart4);
+    const runtimePart7B = createMockRuntime("user-bob", layoutRevPart4);
+    const deferredLoadBuild = createDeferred<Response>();
+    let loadBuildCallCount = 0;
+    let part7PostCount = 0;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          part7PostCount++;
+          return new Response(
+            JSON.stringify({
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layoutRevPart4,
+              geometry: builderPlotGeometry,
+              completed: true,
+              script: validScript,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        loadBuildCallCount++;
+        if (loadBuildCallCount === 1) {
+          // Op 1 GET /home/build is held!
+          return deferredLoadBuild.promise;
+        }
+        // Op 2 returns valid session context (completed: false before POST, completed: true after POST)
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: part7PostCount > 0,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (loadBuildCallCount >= 2) {
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layoutRevPart4,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const containerPart7 = (globalThis as any).document.createElement("div");
+    const rootPart7 = createRoot(containerPart7);
+    await act(async () => {
+      rootPart7.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: runtimePart7A as any,
+        }),
+      );
+    });
+
+    const startBtn7A = findNode(containerPart7, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBtn7A).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBtn7A);
+    });
+    expect(loadBuildCallCount).toBe(1);
+
+    // Context changes: runtime swaps to runtimePart7B and currentAuthUser switches to user-bob
+    currentAuthUser = "user-bob";
+    await act(async () => {
+      rootPart7.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: runtimePart7B as any,
+        }),
+      );
+    });
+
+    // Op 1's held loadHouseBuild now resolves
+    deferredLoadBuild.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          layoutRevision: layoutRevPart4,
+          geometry: builderPlotGeometry,
+          completed: false,
+          script: validScript,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    // Stale Op 1 must NOT have opened build session into Bob's context or set error
+    const submitBtn7Stale = findNode(containerPart7, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBtn7Stale, "Stale loadHouseBuild must NOT open build session for swapped runtime").toBeNull();
+    const errNode7 = findNode(containerPart7, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(errNode7, "Stale loadHouseBuild must NOT write error").toBeNull();
+
+    // Current-owner recovery: Bob initiates startHouseBuild cleanly
+    const startBtn7B = findNode(containerPart7, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(startBtn7B).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(startBtn7B);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(loadBuildCallCount).toBe(2);
+
+    const submitBtn7B = findNode(containerPart7, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBtn7B, "Recovered current owner Bob must be able to open builder and submit").not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBtn7B);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(runtimePart7B.claimStarterHome, "Current owner Bob must claim home on clean recovery").toHaveBeenCalled();
+
+    // Part 8: Headers-arrived / body-stalled JSON consumption fixture
+    currentAuthUser = "user-alice";
+    const runtimePart8 = createMockRuntime("user-alice", layoutRevPart4);
+    const deferredBodyJson = createDeferred<any>();
+    let postCallCountPart8 = 0;
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          postCallCountPart8++;
+          // Return a Response whose headers have arrived (status 200), but response.json() awaits deferredBodyJson
+          const mockResponse = new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+          mockResponse.json = () => deferredBodyJson.promise;
+          return mockResponse;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: true,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const containerPart8 = (globalThis as any).document.createElement("div");
+    const rootPart8 = createRoot(containerPart8);
+    await act(async () => {
+      rootPart8.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: runtimePart8 as any,
+        }),
+      );
+    });
+
+    const startBtn8 = findNode(containerPart8, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(startBtn8);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    const submitBtn8 = findNode(containerPart8, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBtn8).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(submitBtn8);
+    });
+    expect(postCallCountPart8).toBe(1);
+
+    // Headers have arrived! But body parsing is stalled.
+    // Auth changes while body is stalled:
+    currentAuthUser = "user-mallory";
+
+    // Now resolve stalled body JSON
+    deferredBodyJson.resolve({
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      layoutRevision: layoutRevPart4,
+      geometry: builderPlotGeometry,
+      completed: true,
+      script: validScript,
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    // Stalled body consumption must be rejected by helper, and overlay must suppress error and confirmed in Mallory's context
+    expect(runtimePart8.claimStarterHome, "Stalled body completion under changed Auth must NOT claim home").not.toHaveBeenCalled();
+    const confirmedNode8 = findNode(containerPart8, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(confirmedNode8, "Stalled body completion under changed Auth must NOT confirm build").toBeNull();
+    const errNode8 = findNode(containerPart8, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(errNode8, "Stalled body completion under changed Auth must NOT write error into new owner context").toBeNull();
 
     vi.unstubAllGlobals();
   });
@@ -3777,6 +4070,15 @@ describe("Starter catalogue client & returning resident projection", () => {
       plotId: "nonexistent-plot-999",
     };
     expect(actualColonyRuntime.getOperatorHomeTarget(), "Unknown plotId must fail closed and return null from getOperatorHomeTarget").toBeNull();
+    expect(actualColonyRuntime.getPlayerHomeDriveway(), "Unknown plotId must return null from getPlayerHomeDriveway").toBeNull();
+    expect(actualColonyRuntime.hasOperatorHome(), "Unknown plotId must return false from hasOperatorHome").toBe(false);
+
+    // 3. Mismatched frameId returns null:
+    (actualColonyRuntime as any).authoritativeHomeTruth = {
+      ...origTruthE,
+      frameId: "foreign-frame-99999",
+    };
+    expect(actualColonyRuntime.getOperatorHomeTarget(), "Mismatched frameId must return null from getOperatorHomeTarget").toBeNull();
 
     // Restore original authoritative truth
     (actualColonyRuntime as any).authoritativeHomeTruth = origTruthE;
