@@ -14,6 +14,7 @@ import {
   isHomeOwned,
 } from "./starterProperty";
 import { homeTargetCell } from "./driveHome";
+import { resolveOwnedCar } from "../car/ownedCar";
 
 export const STARTER_CATALOGUE_TIMEOUT_MS = 10_000;
 export const AVAILABLE_PLOTS_PATH = "/kooker/api/v1/citylife/players/me/home/available-plots";
@@ -514,10 +515,37 @@ export interface ReturningResidentProjection {
 export function projectReturningResidentState(
   truth: HomeTruth | null,
   inventory?: PublishedPlayerInventory,
+  ownedVehicleKeys?: readonly string[] | null,
 ): ReturningResidentProjection {
   if (!truth || !isHomeOwned(truth)) {
     return { isResident: false, homeCell: null, vehicle: null };
   }
+
+  // 1. When inventory is provided, validate explicit layoutRevision, plotId, and frameId fail-closed
+  if (inventory) {
+    if (
+      truth.layoutRevision !== undefined &&
+      truth.layoutRevision !== null &&
+      truth.layoutRevision !== inventory.layoutRevision
+    ) {
+      return { isResident: false, homeCell: null, vehicle: null };
+    }
+    if (truth.plotId) {
+      if (
+        !inventory.plotIds.includes(truth.plotId) ||
+        !inventory.plotGeometry.has(truth.plotId)
+      ) {
+        return { isResident: false, homeCell: null, vehicle: null };
+      }
+      if (
+        truth.frameId &&
+        inventory.plotFrames.get(truth.plotId) !== truth.frameId
+      ) {
+        return { isResident: false, homeCell: null, vehicle: null };
+      }
+    }
+  }
+
   const homeCell = homeTargetCell(truth);
   const isResident =
     truth.onboardingState === "RESIDENT" ||
@@ -526,51 +554,89 @@ export function projectReturningResidentState(
     truth.arrivalStatus === "RESIDENT";
 
   let vehicle: ReturningResidentProjection["vehicle"] = null;
-  const geom = truth.plotId && inventory ? inventory.plotGeometry.get(truth.plotId) : truth.geometry;
-  const spawn = geom?.spawn ?? (geom?.driveway && geom.driveway.length > 1 ? geom.driveway[1] : null);
+  const geom =
+    truth.plotId && inventory
+      ? inventory.plotGeometry.get(truth.plotId)
+      : truth.geometry;
+  const spawn = geom?.spawn ?? null;
 
-  if (
-    typeof truth.vehicleId === "string" &&
-    truth.vehicleId.trim() &&
-    typeof truth.vehicleModel === "string" &&
-    truth.vehicleModel.trim()
-  ) {
-    if (truth.vehiclePose) {
-      const { x, y, heading } = truth.vehiclePose;
-      const validHeading = typeof heading === "number" && Number.isFinite(heading);
-      if (
-        typeof x === "number" &&
-        Number.isFinite(x) &&
-        typeof y === "number" &&
-        Number.isFinite(y) &&
-        validHeading
-      ) {
-        vehicle = {
-          id: truth.vehicleId.trim(),
-          model: truth.vehicleModel.trim(),
-          x,
-          y,
-          heading,
-        };
+  // 2. Resolve vehicle identity when isResident is true
+  if (isResident) {
+    let resolvedVehicleId: string | null = null;
+    let resolvedVehicleModel: string | null = null;
+
+    const hasExplicitVehicle =
+      typeof truth.vehicleId === "string" &&
+      truth.vehicleId.trim().length > 0 &&
+      typeof truth.vehicleModel === "string" &&
+      truth.vehicleModel.trim().length > 0;
+
+    if (hasExplicitVehicle) {
+      const explicitId = truth.vehicleId!.trim();
+      const explicitModel = truth.vehicleModel!.trim();
+      if (ownedVehicleKeys !== undefined && ownedVehicleKeys !== null) {
+        const matches = ownedVehicleKeys.some(
+          (k) =>
+            k === explicitId ||
+            k.replace(/^showroom:/, "") === explicitId.replace(/^showroom:/, ""),
+        );
+        if (matches) {
+          resolvedVehicleId = explicitId;
+          resolvedVehicleModel = explicitModel;
+        }
       } else {
-        // Atomic rejection: malformed (NaN/Infinity) vehiclePose rejects with null projection.
-        // Never mix coordinates across sources or invent heading 0.
-        vehicle = null;
+        resolvedVehicleId = explicitId;
+        resolvedVehicleModel = explicitModel;
       }
-    } else if (
-      spawn &&
-      typeof spawn.x === "number" &&
-      Number.isFinite(spawn.x) &&
-      typeof spawn.y === "number" &&
-      Number.isFinite(spawn.y)
-    ) {
-      vehicle = {
-        id: truth.vehicleId.trim(),
-        model: truth.vehicleModel.trim(),
-        x: spawn.x,
-        y: spawn.y,
-        heading: 0,
-      };
+    } else if (ownedVehicleKeys && ownedVehicleKeys.length > 0) {
+      const carSpec = resolveOwnedCar(ownedVehicleKeys);
+      if (carSpec) {
+        resolvedVehicleId = carSpec.id;
+        resolvedVehicleModel = carSpec.id;
+      }
+    }
+
+    // 3. Resolve vehicle pose when isResident is true
+    if (resolvedVehicleId && resolvedVehicleModel) {
+      if (truth.vehiclePose !== undefined && truth.vehiclePose !== null) {
+        const { x, y, heading } = truth.vehiclePose;
+        const validHeading =
+          typeof heading === "number" && Number.isFinite(heading);
+        if (
+          typeof x === "number" &&
+          Number.isFinite(x) &&
+          typeof y === "number" &&
+          Number.isFinite(y) &&
+          validHeading
+        ) {
+          vehicle = {
+            id: resolvedVehicleId,
+            model: resolvedVehicleModel,
+            x,
+            y,
+            heading,
+          };
+        } else {
+          // Atomic rejection: malformed (NaN/Infinity) vehiclePose rejects with null projection.
+          // Never mix coordinates across sources or invent heading 0.
+          vehicle = null;
+        }
+      } else if (
+        spawn &&
+        typeof spawn.x === "number" &&
+        Number.isFinite(spawn.x) &&
+        typeof spawn.y === "number" &&
+        Number.isFinite(spawn.y)
+      ) {
+        const h = (spawn as any).heading;
+        vehicle = {
+          id: resolvedVehicleId,
+          model: resolvedVehicleModel,
+          x: spawn.x,
+          y: spawn.y,
+          heading: typeof h === "number" && Number.isFinite(h) ? h : 0,
+        };
+      }
     }
   }
 

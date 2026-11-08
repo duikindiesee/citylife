@@ -3,6 +3,7 @@ import { ColonyRuntime } from "../src/colony/runtime";
 import { roadRibbonRenderPath } from "../src/colony/render/roadRibbon";
 import { solDebugOffsetMs, setSolDebugOffsetMs } from "../src/colony/solRuntimeClock";
 import { inCorridor } from "../src/colony/transit/busFleet";
+import { busLoopPath, lanePose } from "../src/colony/transit/path";
 
 // BUS.ROUTE.GEOMETRY.1 — buses must stay on the paved carriageway through turns.
 //
@@ -189,5 +190,99 @@ describe("bus footprint stays on the carriageway through turns", () => {
       worstCornerExcess = Math.max(worstCornerExcess, ptMinDist);
     }
     expect(worstCornerExcess, "oriented corner swings off-road outside paved carriageway").toBeGreaterThan(0.5);
+  });
+
+  it("verifies doc.roads and canonical transit on seed 4242 satisfy swept isFootprintPaved across 0..loop.total including arc 916.0", () => {
+    const rt = new ColonyRuntime(4242);
+    const doc = rt.captureWorldLayout();
+    const transit = rt.exportCanonicalTransitAuthority(doc);
+    expect(transit, "transit authority must export successfully").not.toBeNull();
+    expect(transit!.route.loop.length).toBeGreaterThan(0);
+
+    const roadSet = new Set(
+      doc.roads.flatMap((r) => r.cells.map((c) => `${c.x},${c.y}`)),
+    );
+    const depotPad = transit!.depot.site;
+    const loop = busLoopPath(transit!.route.loop as any);
+    const cellMetres = 4.0;
+    const busLaneOffsetCells = 1.0;
+    const minOffset = Math.min(0, busLaneOffsetCells - 1.8);
+    const maxOffset = Math.max(0, busLaneOffsetCells);
+
+    const isFootprintPaved = (
+      cellX: number,
+      cellY: number,
+      heading: number,
+      halfLengthMetres: number = 6.0,
+      halfWidthMetres: number = 1.25,
+    ): boolean => {
+      const hLActual = halfLengthMetres / cellMetres;
+      const hWActual = halfWidthMetres / cellMetres;
+      const cos = Math.cos(heading);
+      const sin = Math.sin(heading);
+      const absC = Math.abs(cos);
+      const absS = Math.abs(sin);
+
+      const radX = hLActual * absC + hWActual * absS;
+      const radY = hLActual * absS + hWActual * absC;
+
+      const minX = Math.floor(cellX - radX);
+      const maxX = Math.ceil(cellX + radX);
+      const minY = Math.floor(cellY - radY);
+      const maxY = Math.ceil(cellY + radY);
+
+      const maxProj1 = hLActual + 0.5 * (absC + absS);
+      const maxProj2 = hWActual + 0.5 * (absS + absC);
+
+      for (let rx = minX; rx <= maxX; rx++) {
+        for (let ry = minY; ry <= maxY; ry++) {
+          const dx = rx - cellX;
+          const dy = ry - cellY;
+          if (Math.abs(dx) > radX + 0.5) continue;
+          if (Math.abs(dy) > radY + 0.5) continue;
+          if (Math.abs(dx * cos + dy * sin) > maxProj1) continue;
+          if (Math.abs(-dx * sin + dy * cos) > maxProj2) continue;
+
+          if (
+            depotPad &&
+            rx >= depotPad.x - 0.5 &&
+            rx <= depotPad.x + depotPad.w + 0.5 &&
+            ry >= depotPad.y - 0.5 &&
+            ry <= depotPad.y + depotPad.h + 0.5
+          ) {
+            continue;
+          }
+
+          if (!roadSet.has(`${rx},${ry}`)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+
+    let testedArc916 = false;
+    for (let s = 0; s < loop.total; s += 0.5) {
+      const pMin = lanePose(loop, s, minOffset);
+      const pMax = lanePose(loop, s, maxOffset);
+      const midPose = {
+        x: (pMin.x + pMax.x) / 2,
+        y: (pMin.y + pMax.y) / 2,
+        heading: pMin.heading,
+      };
+      const latDist = Math.hypot(pMax.x - pMin.x, pMax.y - pMin.y);
+      const sweptHWMetres = (latDist * cellMetres) / 2 + 1.25;
+
+      const paved = isFootprintPaved(midPose.x, midPose.y, midPose.heading, 6.0, sweptHWMetres);
+      expect(
+        paved,
+        `Loop at arc ${s.toFixed(1)} (${midPose.x.toFixed(2)}, ${midPose.y.toFixed(2)}) must be paved`,
+      ).toBe(true);
+
+      if (Math.abs(s - 916.0) < 0.5) {
+        testedArc916 = true;
+      }
+    }
+    expect(testedArc916, "Must test around arc 916.0").toBe(true);
   });
 });

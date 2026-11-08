@@ -1937,7 +1937,6 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     const defaultDoc = createWorldLayoutDocument({
       ...baseSurveyDoc,
       frames: sortedFrames,
-      placements: [],
       layoutId: "seed-4242",
       seed: 4242,
       revision: { number: 0, parentHash: null },
@@ -4238,7 +4237,6 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     const baseSurveyRuntime = new ColonyRuntime(4242);
     const defaultDoc = createWorldLayoutDocument({
       ...baseSurveyRuntime.captureWorldLayout(),
-      placements: [],
       layoutId: "seed-4242",
       seed: 4242,
       revision: { number: 0, parentHash: null },

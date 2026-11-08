@@ -41,6 +41,7 @@ import {
   completeHouseBuild,
   type HouseBuildSession,
 } from "../home/starterCatalogueClient";
+import { getAuthClient } from "../authClient";
 import type { PlayerWalletStatus } from "../wallet/playerWallet";
 
 const panelStyle: CSSProperties = {
@@ -78,6 +79,7 @@ export function StarterPropertyOverlay({
   onWalletRefresh,
   currency = "₭",
   onHomePurchased,
+  runtime,
 }: {
   onClose: () => void;
   walletKco?: number | null;
@@ -86,6 +88,7 @@ export function StarterPropertyOverlay({
   onWalletRefresh?: () => void;
   currency?: string;
   onHomePurchased?: (target: HomeTruth | string) => void;
+  runtime?: any;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [choices, setChoices] = useState<EligibleNeighbourhood[]>([]);
@@ -102,50 +105,56 @@ export function StarterPropertyOverlay({
   const [buildConfirmed, setBuildConfirmed] = useState(false);
 
   const startHouseBuild = useCallback(async () => {
+    const startUserId =
+      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
     setBuildError(null);
     setBuildPending(true);
     try {
       const session = await loadHouseBuild();
+      const currentUserId =
+        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+      if (!currentUserId || currentUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
+      }
       setBuildSession(session);
-      setBuildScript(session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n");
+      setBuildScript(
+        session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n",
+      );
     } catch (err: any) {
       setBuildError(err?.message || "House building unavailable");
     } finally {
       setBuildPending(false);
     }
-  }, []);
+  }, [runtime]);
 
   const finishHouseBuild = useCallback(async () => {
     if (!buildSession) return;
+    const startUserId =
+      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
     setBuildError(null);
     setBuildPending(true);
     try {
-      const res = await postBuildHome({
-        plotId: buildSession.context.plotId,
-        layoutRevision: buildSession.context.layoutRevision,
-        script: buildScript,
-      });
-      if (res.kind !== "confirmed") {
-        throw new Error(
-          res.kind === "rejected"
-            ? (res.reason ?? "House build rejected by server")
-            : res.kind === "disabled"
-              ? "House building is currently disabled"
-              : "Failed to confirm house build with server",
-        );
+      const receipt = await completeHouseBuild(buildSession, buildScript);
+      const currentUserId =
+        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+      if (!currentUserId || currentUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
       }
       setBuildConfirmed(true);
-      const fresh = await fetchHomeTruth();
-      if (fresh) {
-        setTruth(fresh);
-        onHomePurchased?.(fresh);
+      const updatedTruth = await fetchHomeTruth();
+      if (updatedTruth) {
+        setTruth(updatedTruth);
+        const plotId = (updatedTruth as any).plotId ?? buildSession.context.plotId;
+        runtime?.claimStarterHome?.(updatedTruth, plotId);
+        runtime?.applyBlueprint?.(buildSession.context.plotId, receipt.script);
+        onHomePurchased?.(updatedTruth);
       }
     } catch (err: any) {
       setBuildError(err?.message || "Failed to confirm house build");
     } finally {
       setBuildPending(false);
     }
-  }, [buildSession, buildScript, onHomePurchased]);
+  }, [buildSession, buildScript, runtime, onHomePurchased]);
 
   // Load the authoritative eligible choices + home truth together. Fail-soft: a null from either read
   // (signed out / endpoint absent / malformed) surfaces the retry state and never a client-invented list.
@@ -374,7 +383,7 @@ export function StarterPropertyOverlay({
       {/* OWNED OR SECURED PLOT — the deterministic, identity-bound house projection or paid builder */}
       {hasPlot && (
         <div
-          data-testid="home-owned"
+          data-testid={!projected ? "plot-secured-card" : "home-owned"}
           data-plot-id={projected?.plotId ?? truth?.plotId ?? ""}
           data-frame-id={projected?.frameId ?? truth?.frameId ?? ""}
           data-house-seed={projected ? String(projected.seed) : ""}
@@ -421,7 +430,7 @@ export function StarterPropertyOverlay({
               onClick={startHouseBuild}
               style={{ ...controlButtonStyle, fontSize: 12 }}
             >
-              🔨 Build / Edit Your House
+              {truth?.completed ? "🔨 Build / Edit Your House" : "🔨 Build Your House"}
             </button>
             <button
               type="button"
@@ -437,6 +446,16 @@ export function StarterPropertyOverlay({
                 : "📍 Select a different coastal plot"}
             </button>
           </div>
+
+          {buildError && !buildSession && (
+            <div
+              data-testid="home-builder-error"
+              role="alert"
+              style={{ color: "#e07a7a", fontSize: 12, marginTop: 4 }}
+            >
+              {buildError}
+            </div>
+          )}
 
           {buildSession && (
             <div

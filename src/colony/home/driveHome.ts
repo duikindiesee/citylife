@@ -41,6 +41,8 @@ import {
  *  advisory and re-checked server-side. */
 export const HOME_ARRIVAL_PATH =
   "/kooker/api/v1/citylife/players/me/home/arrival";
+export const HOME_DEED_DRIVE_HOME_ARRIVAL_PATH =
+  "/kooker/api/v1/citylife/players/me/home-deed/drive-home-arrival";
 
 /** The authoritative home-truth GET (shared with PLAYER.HOME.1C) — residency + garage unlock are read
  *  from the SAME endpoint so there is a single source of home truth. */
@@ -446,9 +448,16 @@ export async function fetchHomeResidency(): Promise<HomeResidency | null> {
  *  SAME request and can never record a second arrival. The service alone validates the evidence and moves
  *  the player to RESIDENT; while the flag / kill switch are OFF it answers 403/503 (→ disabled). Returns a
  *  classified {@link ArrivalOutcome}. */
+export interface PostHomeArrivalOptions {
+  plotId?: string | null;
+  frameId?: string | null;
+  vehicleKey?: string | null;
+}
+
 export async function postHomeArrival(
   current: Cell,
   truth: HomeTruth | null,
+  options?: PostHomeArrivalOptions,
 ): Promise<ArrivalOutcome> {
   const home = homeTargetCell(truth);
   const plotRef = homePlotRef(truth);
@@ -459,6 +468,47 @@ export async function postHomeArrival(
   const token = await auth.getValidToken();
   if (!token) return { kind: "disabled" };
   const idemKey = arrivalIdempotencyKey(auth.operator?.userId ?? null, plotRef);
+
+  const plotId = options?.plotId ?? truth?.plotId ?? null;
+  const frameId = options?.frameId ?? truth?.frameId ?? null;
+  const vehicleKey =
+    options?.vehicleKey ?? ((truth as any)?.vehicleId ? String((truth as any).vehicleId).trim() : null);
+
+  if (plotId && frameId && vehicleKey) {
+    try {
+      const resp = await fetch(HOME_DEED_DRIVE_HOME_ARRIVAL_PATH, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": idemKey,
+        },
+        body: JSON.stringify({
+          plotId,
+          frameId,
+          vehicleKey,
+          cell: evidence.cell,
+          plotRef,
+        }),
+      });
+      if (resp.status === 404) {
+        return postHomeArrivalLegacy(token, idemKey, evidence.cell, plotRef);
+      }
+      return classifyArrivalStatus(resp.status);
+    } catch {
+      return { kind: "error" };
+    }
+  }
+
+  return postHomeArrivalLegacy(token, idemKey, evidence.cell, plotRef);
+}
+
+async function postHomeArrivalLegacy(
+  token: string,
+  idemKey: string,
+  cell: Cell,
+  plotRef: string,
+): Promise<ArrivalOutcome> {
   try {
     const resp = await fetch(HOME_ARRIVAL_PATH, {
       method: "POST",
@@ -467,9 +517,7 @@ export async function postHomeArrival(
         Authorization: `Bearer ${token}`,
         "Idempotency-Key": idemKey,
       },
-      // Bounded evidence only: the clamped observed cell + the server-owned plot echo. No owner, no deed,
-      // no price, no residency claim — the service re-derives identity from the bearer token.
-      body: JSON.stringify({ cell: evidence.cell, plotRef }),
+      body: JSON.stringify({ cell, plotRef }),
     });
     return classifyArrivalStatus(resp.status);
   } catch {

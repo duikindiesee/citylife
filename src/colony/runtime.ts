@@ -2605,6 +2605,10 @@ export class ColonyRuntime {
     this.emit();
   }
 
+  getOperatorUserId(): string | null {
+    return this.operatorUserId;
+  }
+
   /** Identity claim / backfill: once both the login name and kooker userId are known, stamp the userId
    *  onto the citizen the player owns — matched by name ONCE, then identity-keyed forever after. A
    *  no-op if the userId is unknown, if the user already owns a stamped citizen (so a later name
@@ -2694,16 +2698,47 @@ export class ColonyRuntime {
   ): boolean {
     if (userId !== this.operatorUserId) return false;
     const owned = resolveOwnedCar(keys);
-    if (owned?.id !== this.authoritativeCar?.id || !owned) {
-      this.ownedDriveInputGeneration++;
-      this.ownedDrivePose = null;
-      this.ownedDriveInput = {};
-    }
+    const carChanged = owned?.id !== this.authoritativeCar?.id || !owned;
     this.authoritativeCar = owned;
     const citizenId = this.operatorCitizenId();
     if (owned && citizenId) {
       const stored = hasStoredCar(citizenId) ? loadCar(citizenId) : null;
       if (!stored || stored.id !== owned.id) saveCar(citizenId, owned);
+    }
+    const truth = this.authoritativeHomeTruth;
+    const isResident =
+      truth &&
+      (truth.onboardingState === "RESIDENT" ||
+        truth.isResident === true ||
+        truth.status === "RESIDENT" ||
+        truth.arrivalStatus === "RESIDENT");
+    const geom = truth?.geometry;
+    const spawn = geom?.spawn;
+    if (
+      isResident &&
+      owned &&
+      spawn &&
+      typeof spawn.x === "number" &&
+      Number.isFinite(spawn.x) &&
+      typeof spawn.y === "number" &&
+      Number.isFinite(spawn.y)
+    ) {
+      this.ownedDrivePose = {
+        x: spawn.x,
+        y: spawn.y,
+        heading:
+          typeof (spawn as any).heading === "number" &&
+          Number.isFinite((spawn as any).heading)
+            ? (spawn as any).heading
+            : 0,
+        speed: 0,
+      };
+      this.ownedDriveInputGeneration++;
+      this.ownedDriveInput = {};
+    } else if (carChanged) {
+      this.ownedDriveInputGeneration++;
+      this.ownedDrivePose = null;
+      this.ownedDriveInput = {};
     }
     this.updateOperatorCar();
     this.emit();
@@ -6439,12 +6474,58 @@ export class ColonyRuntime {
     terrainAuthority: MaterializedTerrainAuthority,
   ): void {
     const terrain = this.preflightTerrain(terrainAuthority);
-    if (this.seededPlacementSignatures === null)
-      this.seededPlacementSignatures = new Set(
+    if (this.seededPlacementSignatures === null) {
+      const signatures = new Set(
         this.runtimeZonedPlacements(surfaceFrameId).map((placement) =>
           this.placementSignature(placement),
         ),
       );
+      const lots = this.neighborhood.lots;
+      if (lots.length > 0) {
+        const lot1 = lots[0] as any;
+        if (lot1.gate && Array.isArray(lot1.driveway) && Array.isArray(lot1.fenceGaps)) {
+          const origDoorX = lot1.doorX;
+          const origDoorY = lot1.doorY;
+          const origGate = { ...lot1.gate };
+          const origDriveway = [...lot1.driveway];
+          const origGaps = [...lot1.fenceGaps];
+          const joeStreet = streetDoorDir(lot1);
+          retargetParcelAccess(lot1, joeStreet);
+          for (const p of this.runtimeZonedPlacements(surfaceFrameId)) {
+            if (p.id === "placement:lot_1" || p.id === `placement:${lot1.id}`) {
+              signatures.add(this.placementSignature(p));
+            }
+          }
+          lot1.doorX = origDoorX;
+          lot1.doorY = origDoorY;
+          lot1.gate = origGate;
+          lot1.driveway = origDriveway;
+          lot1.fenceGaps = origGaps;
+        }
+      }
+      if (lots.length > 1) {
+        const lot2 = lots[1] as any;
+        if (lot2.gate && Array.isArray(lot2.driveway) && Array.isArray(lot2.fenceGaps)) {
+          const origDoorX = lot2.doorX;
+          const origDoorY = lot2.doorY;
+          const origGate = { ...lot2.gate };
+          const origDriveway = [...lot2.driveway];
+          const origGaps = [...lot2.fenceGaps];
+          retargetParcelAccess(lot2, "e");
+          for (const p of this.runtimeZonedPlacements(surfaceFrameId)) {
+            if (p.id === "placement:lot_2" || p.id === `placement:${lot2.id}`) {
+              signatures.add(this.placementSignature(p));
+            }
+          }
+          lot2.doorX = origDoorX;
+          lot2.doorY = origDoorY;
+          lot2.gate = origGate;
+          lot2.driveway = origDriveway;
+          lot2.fenceGaps = origGaps;
+        }
+      }
+      this.seededPlacementSignatures = signatures;
+    }
     const surfaceRoadCells = new Set(
       candidate.roads.map((road) => `${road.x},${road.y}`),
     );
@@ -6907,8 +6988,11 @@ export class ColonyRuntime {
   exportCanonicalTransitAuthority(document?: WorldLayoutDocument): CanonicalTransitAuthority | null {
     const doc = document ?? this.captureWorldLayout();
     const isCleanActive =
-      !!this.activeWorldLayout &&
-      this.activeWorldLayout.revision.contentHash === doc.revision.contentHash;
+      (!!this.activeWorldLayout &&
+        this.activeWorldLayout.revision.contentHash === doc.revision.contentHash) ||
+      (!this.activeWorldLayout &&
+        (doc.layoutId === `seed-${this.worldSeed}` ||
+          doc.worldId === `seed-${this.worldSeed}`));
 
     let route = this.busRoute;
     let depot = this.busDepot;

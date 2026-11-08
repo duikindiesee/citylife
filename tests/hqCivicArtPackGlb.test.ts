@@ -1,6 +1,14 @@
 // Structural contract for the civic-art & landmark pack (PR-352 pattern).
 // @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
 import { readFileSync } from "node:fs";
+// @ts-ignore
+import { execSync } from "node:child_process";
+// @ts-ignore
+import { createHash } from "node:crypto";
+// @ts-ignore
+import { resolve, dirname } from "node:path";
+// @ts-ignore
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-ignore - Vite raw import lets this contract inspect the committed GLB container.
 import packGlbRaw from "../public/assets/citylife/props/hq-civic-art-pack.glb?raw";
@@ -211,5 +219,30 @@ describe("generate_hq_civic_art_pack.mjs determinism contract", () => {
     expect(generatorSource).toContain("package-lock.json");
     expect(generatorSource).toContain("hq-civic-art-pack.glb");
     expect(generatorSource).toContain("HqCivicArtPack_Root");
+  });
+
+  it("executes generate_hq_civic_art_pack.mjs and reproduces committed GLB byte-for-byte", () => {
+    const glbPath = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../public/assets/citylife/props/hq-civic-art-pack.glb",
+    );
+    const originalBuf = readFileSync(glbPath);
+    const originalSha = createHash("sha256").update(originalBuf).digest("hex");
+    expect(originalSha).toBe(
+      "cca3c14413d6ffa2ddbae321b8c3f6e91769760bfada4fb83f700371b59ea9b7",
+    );
+
+    const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const output = execSync("node scripts/generate_hq_civic_art_pack.mjs", {
+      cwd: rootDir,
+    }).toString();
+    expect(output).toContain("matches the lockfile — generating");
+
+    const regeneratedBuf = readFileSync(glbPath);
+    const regeneratedSha = createHash("sha256")
+      .update(regeneratedBuf)
+      .digest("hex");
+    expect(regeneratedSha).toBe(originalSha);
+    expect(regeneratedBuf.byteLength).toBe(85896);
   });
 });

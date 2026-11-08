@@ -212,14 +212,20 @@ export function deriveTransitMaterialization(
       ? createTransitCorridorPathfinder({
           terrain,
           roadKind,
-          roadWays: candidateRoadWays?.filter(
-            (w) =>
+          roadWays: candidateRoadWays?.filter((w) => {
+            const len = Array.isArray(w.path)
+              ? w.path.length
+              : Array.isArray((w as any).cells)
+                ? (w as any).cells.length
+                : 0;
+            return (
               (w as any).source !== "transit-loop" &&
               (w as any).source !== "depot-spur" &&
               (w as any).id !== "transit-loop" &&
               (w as any).id !== "depot-spur" &&
-              (!("cells" in w) || !Array.isArray((w as any).cells) || (w as any).cells.length < 200),
-          ),
+              len < 150
+            );
+          }),
           placementBoxes: constraints.placementBoxes,
           ownedCells: constraints.ownedCells,
           residentialSetbacks: constraints.residentialSetbacks,

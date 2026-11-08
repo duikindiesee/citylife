@@ -798,20 +798,35 @@ export function ColonyApp({
   const auth = useMemo(() => propAuth ?? getAuthClient(), [propAuth]);
   const operatorUserId = auth.operator?.userId ?? null;
   const [loggedOut, setLoggedOut] = useState(false);
+  const ownedVehicleKeysRef = useRef<readonly string[] | null>(null);
+
+  useEffect(() => {
+    ownedVehicleKeysRef.current = null;
+  }, [operatorUserId]);
 
   // P3 — Load authenticated home truth and exact owned vehicle on mount or operatorUserId change
   useEffect(() => {
     let active = true;
-    if (!operatorUserId) {
+    const currentUserId = operatorUserId;
+    if (!currentUserId) {
       runtime.setAuthoritativeHomeTruth(null);
       runtime.setAuthoritativeOwnedVehicle(null);
       return;
     }
     void fetchHomeTruth().then((truth) => {
-      if (!active) return;
+      if (!active || (runtime.getOperatorUserId?.() ?? currentUserId) !== currentUserId) return;
       if (truth && isHomeOwned(truth)) {
         runtime.setAuthoritativeHomeTruth(truth);
-        const projection = projectReturningResidentState(truth, initialInventory);
+        const keys =
+          ownedVehicleKeysRef.current ??
+          (runtime.getAuthoritativeCar?.()?.id
+            ? [runtime.getAuthoritativeCar()!.id]
+            : null);
+        const projection = projectReturningResidentState(
+          truth,
+          initialInventory,
+          keys,
+        );
         if (projection.isResident && projection.vehicle) {
           runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
         }
@@ -819,7 +834,7 @@ export function ColonyApp({
         runtime.setAuthoritativeHomeTruth(null);
       }
     }).catch(() => {
-      if (active) {
+      if (active && (runtime.getOperatorUserId?.() ?? currentUserId) === currentUserId) {
         runtime.setAuthoritativeHomeTruth(null);
       }
     });
@@ -1340,11 +1355,25 @@ export function ColonyApp({
       return;
     }
     let cancelled = false;
+    const currentUserId = operatorUserId;
     void (async () => {
       const truth = await fetchOwnedVehicleKeysBackend();
-      if (cancelled) return;
-      if (operatorUserId)
-        runtime.applyVehicleOwnership(String(operatorUserId), truth);
+      if (cancelled || (runtime.getOperatorUserId?.() ?? currentUserId) !== currentUserId) return;
+      ownedVehicleKeysRef.current = truth;
+      if (currentUserId) {
+        runtime.applyVehicleOwnership(String(currentUserId), truth);
+        const currentTruth = runtime.getAuthoritativeHomeTruth?.();
+        if (currentTruth && isHomeOwned(currentTruth)) {
+          const projection = projectReturningResidentState(
+            currentTruth,
+            initialInventory,
+            truth,
+          );
+          if (projection.isResident && projection.vehicle) {
+            runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
+          }
+        }
+      }
       // Hydrate existing owners even when onboarding is off. If entitlement is still
       // loading, its later change must get a chance to route a no-car player.
       autoShowroomCheckedRef.current = newPlayerJourneyEnabled;
@@ -1364,7 +1393,7 @@ export function ColonyApp({
     return () => {
       cancelled = true;
     };
-  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
+  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime, initialInventory]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
@@ -2266,6 +2295,7 @@ export function ColonyApp({
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
           onClose={() => setHomeOpen(false)}
+          runtime={runtime}
           walletKco={playerWalletKco}
           walletStatus={visiblePlayerWallet.status}
           walletLabel={playerWalletText}

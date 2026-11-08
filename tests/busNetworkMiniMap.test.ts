@@ -1243,5 +1243,88 @@ describe("mounted consumer chain: ColonyApp -> BusNetworkMiniMap -> DOM (#544)",
     const marker = findNode(container, (n) => n.getAttribute?.("data-testid") === "city-map-player-marker");
     expect(marker).not.toBeNull();
   });
+
+  it("removes expired peer marker from presenceReadout and mounted BusNetworkMiniMap DOM after 15,001ms", async () => {
+    setupTestDOM();
+    const runtime = new ColonyRuntime(42);
+    runtime.setOperatorUserId("user-alice");
+    (runtime as any).operatorCitizenId = () => "cit-alice";
+    (runtime as any).fpCitizenId = "cit-alice";
+    (runtime as any).fpCameraCell = { x: 25, y: 35 };
+
+    // Register active remote peer snapshot received right now
+    if (!(runtime as any).sim.state.remoteRacers) {
+      (runtime as any).sim.state.remoteRacers = new Map();
+    }
+    const t0 = Date.now();
+    (runtime as any).sim.state.remoteRacers.set("peer-bob", {
+      participantId: "peer-bob",
+      username: "Bob",
+      cell: { x: 30, y: 40 },
+      heading: 0,
+      lastSeen: t0,
+    });
+
+    const activeReadout = runtime.presenceReadout();
+    expect(
+      activeReadout.entries.some((r) => r.subjectId === "peer:peer-bob"),
+      "Active remote peer snapshot must be present in presenceReadout",
+    ).toBe(true);
+
+    const container = (globalThis as any).document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(BusNetworkMiniMap, {
+          runtime,
+          walletLabel: "Alice Wallet",
+          presenceReadout: activeReadout,
+          open: true,
+          onClose: () => {},
+          playerLocationAuthorized: true,
+          authenticatedUserId: "user-alice",
+        }),
+      );
+    });
+
+    const peerMarkerBefore = findNode(
+      container,
+      (n) => n.getAttribute?.("data-testid") === "city-map-peer-marker",
+    );
+    expect(peerMarkerBefore, "Mounted DOM must render peer marker while fresh").not.toBeNull();
+
+    // Advance peer lastSeen by 15,001ms without new snapshot or session_ended/peer_left frame
+    (runtime as any).sim.state.remoteRacers.get("peer-bob").lastSeen = t0 - 15_001;
+
+    const expiredReadout = runtime.presenceReadout();
+    expect(
+      expiredReadout.entries.some((r) => r.subjectId === "peer:peer-bob"),
+      "Expired peer (>15,000ms) must be removed from presenceReadout",
+    ).toBe(false);
+    expect(
+      (runtime as any).sim.state.remoteRacers.has("peer-bob"),
+      "Expired peer must be pruned from remoteRacers map",
+    ).toBe(false);
+
+    await act(async () => {
+      root.render(
+        React.createElement(BusNetworkMiniMap, {
+          runtime,
+          walletLabel: "Alice Wallet",
+          presenceReadout: expiredReadout,
+          open: true,
+          onClose: () => {},
+          playerLocationAuthorized: true,
+          authenticatedUserId: "user-alice",
+        }),
+      );
+    });
+
+    const peerMarkerAfter = findNode(
+      container,
+      (n) => n.getAttribute?.("data-testid") === "city-map-peer-marker",
+    );
+    expect(peerMarkerAfter, "Mounted DOM must remove expired peer marker").toBeNull();
+  });
 });
 

@@ -38,6 +38,7 @@ import {
   type HomeResidency,
   type ArrivalOutcome,
 } from "../home/driveHome";
+import { serverVehicleKeyOf } from "../car/carAcquisition";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -84,6 +85,9 @@ export function DriveHomeOverlay({
     getPhysicalCarPosition?(): { x: number; y: number } | null;
     getActiveLayoutRevisionId?(): string | null;
     worldLayoutDocument?(): any;
+    getOperatorUserId?(): string | null;
+    getAuthoritativeCar?(): { id: string } | null;
+    subscribe?(listener: () => void): () => void;
   };
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
@@ -93,6 +97,19 @@ export function DriveHomeOverlay({
   const [pending, setPending] = useState(false);
   const [garageOpen, setGarageOpen] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [, setRuntimeTick] = useState(0);
+
+  // Subscribe to runtime state changes so physical vehicle movement re-renders guidance and arrival
+  useEffect(() => {
+    if (!runtime || typeof runtime.subscribe !== "function") return;
+    const unsub = runtime.subscribe(() => {
+      setRuntimeTick((t) => t + 1);
+      setOutcome(undefined);
+    });
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [runtime]);
 
   // Load the authoritative residency (owned/RESIDENT/garage) truth. Fail-soft: a null read (signed out /
   // endpoint absent / malformed) surfaces the retry state and never a client-invented destination.
@@ -125,25 +142,44 @@ export function DriveHomeOverlay({
     () => homeTargetCell(residency?.truth ?? null),
     [residency],
   );
-  const guidance = useMemo(
-    () => computeRouteGuidance(cursor, home),
-    [cursor, home],
+
+  const operatorUserId = runtime?.getOperatorUserId?.();
+  const runtimeLayoutRevision = runtime?.getActiveLayoutRevisionId?.();
+  const truthLayoutRevision = residency?.truth?.layoutRevision;
+  const layoutMatches =
+    !runtimeLayoutRevision ||
+    !truthLayoutRevision ||
+    runtimeLayoutRevision === truthLayoutRevision;
+  const isOperatorAuthed = runtime ? Boolean(operatorUserId) : true;
+  const carEligible = Boolean(
+    isOperatorAuthed &&
+      layoutMatches &&
+      (runtime ? runtime.getAuthoritativeCar?.() : true),
   );
-  const physicalCarPose =
-    runtime?.getOwnedDrivePose?.() ??
-    runtime?.getPhysicalCarPosition?.() ??
-    null;
+
+  const physicalCarPose = carEligible
+    ? (runtime?.getOwnedDrivePose?.() ??
+      runtime?.getPhysicalCarPosition?.() ??
+      null)
+    : null;
   const physicalCarCell: Cell | null = physicalCarPose
     ? { x: Math.round(physicalCarPose.x), y: Math.round(physicalCarPose.y) }
     : null;
+  const activeCarCell = physicalCarCell ?? cursor;
+
+  const guidance = useMemo(
+    () => computeRouteGuidance(activeCarCell, home),
+    [activeCarCell, home],
+  );
 
   const effectiveWithinBounds = useMemo(() => {
-    if (!home) return false;
-    if (physicalCarCell) {
+    if (!home || !carEligible) return false;
+    if (runtime) {
+      if (!physicalCarCell) return false;
       return isWithinArrivalBounds(physicalCarCell, home);
     }
     return cursor ? isWithinArrivalBounds(cursor, home) : false;
-  }, [physicalCarCell, home, cursor]);
+  }, [home, carEligible, runtime, physicalCarCell, cursor]);
 
   const resident = residency?.resident === true;
   const garageUnlocked = isHomeGarageUnlocked(residency);
@@ -163,17 +199,36 @@ export function DriveHomeOverlay({
 
   const arrive = useCallback(() => {
     if (pending || resident || !home) return;
-    // P4 discriminating negative: car away / cursor at home must fail with kind: "rejected"
-    if (physicalCarCell && !isWithinArrivalBounds(physicalCarCell, home)) {
+    if (!carEligible) {
       setOutcome({ kind: "rejected" });
       return;
+    }
+    if (runtime) {
+      if (!physicalCarCell || !isWithinArrivalBounds(physicalCarCell, home)) {
+        setOutcome({ kind: "rejected" });
+        return;
+      }
     }
     if (!effectiveWithinBounds) return;
 
     const targetCell = physicalCarCell ?? cursor;
     if (!targetCell) return;
     setPending(true);
-    void postHomeArrival(targetCell, residency?.truth ?? null).then(async (result) => {
+
+    const carSpec = runtime?.getAuthoritativeCar?.() ?? null;
+    const vehicleKey = carSpec
+      ? serverVehicleKeyOf(carSpec.id)
+      : (residency?.truth as any)?.vehicleId
+        ? String((residency?.truth as any).vehicleId).trim()
+        : null;
+    const plotId = residency?.truth?.plotId ?? null;
+    const frameId = residency?.truth?.frameId ?? null;
+
+    void postHomeArrival(targetCell, residency?.truth ?? null, {
+      plotId,
+      frameId,
+      vehicleKey,
+    }).then(async (result) => {
       setOutcome(result);
       if (result.kind === "confirmed" || result.kind === "pending") {
         try {
@@ -186,7 +241,17 @@ export function DriveHomeOverlay({
         setPending(false);
       }
     });
-  }, [pending, resident, home, physicalCarCell, effectiveWithinBounds, cursor, residency]);
+  }, [
+    pending,
+    resident,
+    home,
+    carEligible,
+    runtime,
+    physicalCarCell,
+    effectiveWithinBounds,
+    cursor,
+    residency,
+  ]);
 
   const view = arrivalButtonView(resident, effectiveWithinBounds, pending, outcome);
 
@@ -312,7 +377,7 @@ export function DriveHomeOverlay({
         </div>
       )}
 
-      {phase === "ready" && home && cursor && (
+      {phase === "ready" && home && activeCarCell && (
         <>
           {/* Live, mobile-ready driving guidance — a pure function of the cursor + server destination. */}
           <div
@@ -336,7 +401,7 @@ export function DriveHomeOverlay({
           {/* Where the car is + where home is (both server-derived) — display only. */}
           <div
             data-testid="drive-home-cursor"
-            data-cell={`${cursor.x},${cursor.y}`}
+            data-cell={`${activeCarCell.x},${activeCarCell.y}`}
             data-home={`${home.x},${home.y}`}
             style={{
               ...panelStyle,
@@ -348,7 +413,7 @@ export function DriveHomeOverlay({
             }}
           >
             <span style={{ color: "#7ab0d0" }}>
-              Car {cursor.x},{cursor.y}
+              Car {activeCarCell.x},{activeCarCell.y}
             </span>
             <span style={{ color: "#ffd25a" }}>
               Home {home.x},{home.y}
