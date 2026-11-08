@@ -73,7 +73,10 @@ export function clampCell(cell: Cell, grid = STARTER_PLACEMENT_GRID): Cell {
 /** The owned-home target cell — the SAME deterministic placement the house projects to, so the drive
  *  destination is server-derived truth (a pure function of the deed), never a client-authored point.
  *  Null unless the truth is unambiguously OWNED, so no destination exists until the server grants one. */
-export function homeTargetCell(truth: HomeTruth | null): Cell | null {
+export function homeTargetCell(
+  truth: HomeTruth | null,
+  authority?: any,
+): Cell | null {
   if (!isHomeOwned(truth)) return null;
   const t = truth as HomeTruth;
   if (
@@ -85,6 +88,88 @@ export function homeTargetCell(truth: HomeTruth | null): Cell | null {
     t.y === undefined
   ) {
     return null;
+  }
+  if (authority && t.plotId) {
+    if (typeof authority.lots === "function") {
+      const allLots = authority.lots();
+      if (Array.isArray(allLots)) {
+        const lot = allLots.find(
+          (l: any) =>
+            l &&
+            (l.id === t.plotId ||
+              l.id === `lot-${t.plotId}` ||
+              l.id === `lot_${t.plotId}`),
+        );
+        if (lot) {
+          if (lot.spawn && Number.isFinite(lot.spawn.x) && Number.isFinite(lot.spawn.y)) {
+            return { x: Math.round(lot.spawn.x), y: Math.round(lot.spawn.y) };
+          }
+          if (
+            lot.doorX !== undefined &&
+            lot.doorY !== undefined &&
+            Number.isFinite(lot.doorX) &&
+            Number.isFinite(lot.doorY)
+          ) {
+            return { x: Math.round(lot.doorX), y: Math.round(lot.doorY) };
+          }
+          if (
+            lot.houseZone &&
+            Number.isFinite(lot.houseZone.x) &&
+            Number.isFinite(lot.houseZone.y)
+          ) {
+            const w = lot.houseZone.width ?? lot.houseZone.w ?? 1;
+            const d = lot.houseZone.depth ?? lot.houseZone.d ?? 1;
+            return {
+              x: Math.round(lot.houseZone.x + (w - 1) / 2),
+              y: Math.round(lot.houseZone.y + (d - 1) / 2),
+            };
+          }
+        }
+      }
+    }
+    if (typeof authority.getStarterCatalogueManifest === "function") {
+      const manifest = authority.getStarterCatalogueManifest();
+      const plot = manifest?.plots?.find?.((p: any) => p && p.plotId === t.plotId);
+      if (plot?.geometry?.spawn) {
+        return {
+          x: Math.round(plot.geometry.spawn.x),
+          y: Math.round(plot.geometry.spawn.y),
+        };
+      }
+      if (plot?.geometry?.houseZone) {
+        const hz = plot.geometry.houseZone;
+        const w = hz.width ?? 1;
+        const d = hz.depth ?? 1;
+        return {
+          x: Math.round(hz.x + (w - 1) / 2),
+          y: Math.round(hz.y + (d - 1) / 2),
+        };
+      }
+    }
+    if (authority.plotGeometry && typeof authority.plotGeometry.get === "function") {
+      const geom = authority.plotGeometry.get(t.plotId);
+      if (geom?.spawn) {
+        return {
+          x: Math.round(geom.spawn.x),
+          y: Math.round(geom.spawn.y),
+        };
+      }
+      if (geom?.houseZone) {
+        const hz = geom.houseZone;
+        const w = hz.width ?? 1;
+        const d = hz.depth ?? 1;
+        return {
+          x: Math.round(hz.x + (w - 1) / 2),
+          y: Math.round(hz.y + (d - 1) / 2),
+        };
+      }
+    }
+    if (typeof authority.getOperatorHomeTarget === "function") {
+      const target = authority.getOperatorHomeTarget();
+      if (target && (target.lotId === t.plotId || target.lotId === "starter-home")) {
+        return { x: target.x, y: target.y };
+      }
+    }
   }
   return deriveHomePlacement(t);
 }
@@ -98,15 +183,23 @@ export const DEALERSHIP_OFFSET_CELLS = 6; // ARRIVAL_RADIUS_CELLS (2) + 4 — co
  *  toward whichever side of the grid has room, so the journey begins a short, followable drive away yet is
  *  identical on every device. Only used to seed the guidance HUD's initial cursor; it carries no authority
  *  and is never submitted. Null when there is no owned home. Pure. */
-export function dealershipStartCell(truth: HomeTruth | null): Cell | null {
-  const home = homeTargetCell(truth);
+export function dealershipStartCell(
+  truth: HomeTruth | null,
+  authorityOrGrid?: any,
+): Cell | null {
+  const authority =
+    authorityOrGrid && typeof authorityOrGrid === "object"
+      ? authorityOrGrid
+      : undefined;
+  const home = homeTargetCell(truth, authority);
   if (!home) return null;
   const off = DEALERSHIP_OFFSET_CELLS;
-  const effectiveGrid = Math.max(
-    STARTER_PLACEMENT_GRID,
-    home.x + off + 1,
-    home.y + off + 1,
-  );
+  const effectiveGrid =
+    typeof authorityOrGrid === "number" && authorityOrGrid > 0
+      ? authorityOrGrid
+      : home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID
+        ? 608
+        : STARTER_PLACEMENT_GRID;
   // Offset toward whichever side has room to stay in-grid; the fixed magnitude keeps it outside the
   // arrival radius (a real drive) without ever leaving the bounded grid.
   const dx = home.x >= off ? -off : off;
@@ -261,11 +354,9 @@ export function boundedArrivalEvidence(
   const effectiveGrid =
     typeof grid === "number" && grid > 0
       ? grid
-      : Math.max(
-          STARTER_PLACEMENT_GRID,
-          home.x + radius + 1,
-          home.y + radius + 1,
-        );
+      : home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID
+        ? 608
+        : STARTER_PLACEMENT_GRID;
   const cell = clampCell(current, effectiveGrid);
   return { cell, withinBounds: isWithinArrivalBounds(cell, home, radius) };
 }
@@ -505,6 +596,8 @@ export interface PostHomeArrivalOptions {
   plotId?: string | null;
   frameId?: string | null;
   vehicleKey?: string | null;
+  grid?: number | null;
+  authority?: any;
 }
 
 export async function postHomeArrival(
@@ -512,10 +605,21 @@ export async function postHomeArrival(
   truth: HomeTruth | null,
   options?: PostHomeArrivalOptions,
 ): Promise<ArrivalOutcome> {
-  const home = homeTargetCell(truth);
+  const home = homeTargetCell(truth, options?.authority);
   const plotRef = homePlotRef(truth);
   if (!home || !plotRef) return { kind: "disabled" };
-  const evidence = boundedArrivalEvidence(current, home);
+  const effectiveGrid =
+    typeof options?.grid === "number" && options.grid > 0
+      ? options.grid
+      : home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID
+        ? 608
+        : STARTER_PLACEMENT_GRID;
+  const evidence = boundedArrivalEvidence(
+    current,
+    home,
+    ARRIVAL_RADIUS_CELLS,
+    effectiveGrid,
+  );
   if (!evidence.withinBounds) return { kind: "disabled" };
   const auth = getAuthClient();
   const token = await auth.getValidToken();

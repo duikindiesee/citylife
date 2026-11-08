@@ -1195,8 +1195,46 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       triggerNodeClick(switchStartBtn);
     });
-    const errorNode = findNode(switchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
-    expect(errorNode, "Error message must be displayed on account switch").not.toBeNull();
+    const scriptNode = findNode(switchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-script");
+    const confirmedNode = findNode(switchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    const staleErrorNode = findNode(switchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(scriptNode, "Superseded build start must not write script to new context").toBeNull();
+    expect(confirmedNode, "Superseded build start must not confirm build in new context").toBeNull();
+    expect(staleErrorNode, "Superseded build start must not overwrite new context with stale error").toBeNull();
+
+    // Healthy-current error control: genuine error on current owner is displayed
+    const healthyErrRuntime: any = {
+      currentUserId: "user-alice",
+      getOperatorUserId() { return this.currentUserId; },
+    };
+    currentAuthUser = "user-alice";
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response("Service Unavailable", { status: 503 });
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(JSON.stringify({ owned: false, status: "PLOT_OWNED", plotOwned: true, requiresBuild: true, plotId: "coast4_1", frameId: "frame-coast4-1", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const healthyErrContainer = (globalThis as any).document.createElement("div");
+    const healthyErrRoot = createRoot(healthyErrContainer);
+    await act(async () => {
+      healthyErrRoot.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: healthyErrRuntime,
+        }),
+      );
+    });
+    const healthyStartBtn = findNode(healthyErrContainer, (n) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    expect(healthyStartBtn).not.toBeNull();
+    await act(async () => {
+      triggerNodeClick(healthyStartBtn);
+    });
+    const healthyErrorNode = findNode(healthyErrContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(healthyErrorNode, "Healthy current operator must display error on genuine failure").not.toBeNull();
 
     // Negative 4c: Account-switch during fetchHomeTruth() await in finishHouseBuild aborts fail-closed
     const switchMidRuntime: any = {
@@ -1291,7 +1329,9 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(switchMidBuildPostCount, "Build POST must execute before truth readback").toBe(1);
     expect(switchedDuringTruth, "Account switch must occur specifically during truth readback").toBe(true);
     const switchMidErrorNode = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
-    expect(switchMidErrorNode, "Account switch during truth readback must display error").not.toBeNull();
+    const switchMidConfirmedNode = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
+    expect(switchMidConfirmedNode, "Account switch during truth readback must NOT confirm build").toBeNull();
+    expect(switchMidErrorNode, "Superseded finishHouseBuild must NOT write stale error into new owner context").toBeNull();
     expect(switchMidRuntime.claimStarterHome).not.toHaveBeenCalled();
 
     // Negative 4d: Foreign / mismatched plotId returned from fetchHomeTruth() aborts
@@ -2289,14 +2329,30 @@ describe("Starter catalogue client & returning resident projection", () => {
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart2,
             geometry: builderPlotGeometryPart2,
-            completed: false,
+            completed: true,
             script: validScriptPart2,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.endsWith("/players/me/home")) {
-        if (unmountBuildPostCount > 0) unmountTruthReadCount++;
+        if (unmountBuildPostCount > 0) {
+          unmountTruthReadCount++;
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              neighbourhoodKey: "coast4",
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layoutRevPart2,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
         return new Response(
           JSON.stringify({
             owned: false,
@@ -2512,13 +2568,29 @@ describe("Starter catalogue client & returning resident projection", () => {
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart4,
             geometry: builderPlotGeometry,
-            completed: false,
+            completed: true,
             script: validScript,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.endsWith("/players/me/home")) {
+        if (builderPostCountPart4 > 0) {
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              neighbourhoodKey: "coast4",
+              layoutRevision: layoutRevPart4,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
         return new Response(
           JSON.stringify({
             owned: false,
@@ -2528,8 +2600,7 @@ describe("Starter catalogue client & returning resident projection", () => {
             plotId: "coast4_1",
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart4,
-            completed: false,
-            geometry: builderPlotGeometry,
+            priceKco: 10000,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -2582,7 +2653,7 @@ describe("Starter catalogue client & returning resident projection", () => {
         JSON.stringify({
           plotId: "coast4_1",
           frameId: "frame-coast4-1",
-          layoutRevision: "rev-coast4",
+          layoutRevision: layoutRevPart4,
           geometry: builderPlotGeometry,
           completed: true,
           script: validScript,
@@ -2594,6 +2665,7 @@ describe("Starter catalogue client & returning resident projection", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
 
+    expect(builderRuntimeA.claimStarterHome, "Original runtime A must NOT have claimStarterHome called").not.toHaveBeenCalled();
     expect(builderRuntimeB.claimStarterHome, "Swapped runtime B must NOT have claimStarterHome called").not.toHaveBeenCalled();
     const confirmedNode4 = findNode(containerBuilder, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
     expect(confirmedNode4, "Swapped runtime B must NOT show build confirmed").toBeNull();
@@ -2620,13 +2692,29 @@ describe("Starter catalogue client & returning resident projection", () => {
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart4,
             geometry: builderPlotGeometry,
-            completed: false,
+            completed: true,
             script: validScript,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.endsWith("/players/me/home")) {
+        if (builderPostCountPart5 > 0) {
+          return new Response(
+            JSON.stringify({
+              owned: true,
+              status: "OWNED",
+              plotOwned: true,
+              requiresBuild: false,
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              neighbourhoodKey: "coast4",
+              layoutRevision: layoutRevPart4,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
         return new Response(
           JSON.stringify({
             owned: false,
@@ -2636,8 +2724,7 @@ describe("Starter catalogue client & returning resident projection", () => {
             plotId: "coast4_1",
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart4,
-            completed: false,
-            geometry: builderPlotGeometry,
+            priceKco: 10000,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -2670,7 +2757,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     });
     expect(builderPostCountPart5).toBe(1);
 
-    // Switch operator on the same runtime object and notify subscribers
+    // Switch Auth user only (without runtime notification)
     currentAuthUser = "user-mallory";
     builderRuntimeSameObj.setUserId("user-mallory");
     builderRuntimeSameObj.notify();
@@ -2701,18 +2788,54 @@ describe("Starter catalogue client & returning resident projection", () => {
     currentAuthUser = "user-alice";
     const runtimeFinallyA = createMockRuntime("user-alice", "rev-coast4");
     const runtimeFinallyB = createMockRuntime("user-alice", "rev-coast4");
-    const deferredArrivalOp1 = createDeferred<Response>();
-    const deferredArrivalOp2 = createDeferred<Response>();
+    const deferredArrivalOp1Truth = createDeferred<Response>();
+    deferredArrivalOp1Truth.promise.catch(() => {});
+    const deferredArrivalOp2Post = createDeferred<Response>();
     let arrivalCallCount = 0;
+    let homeTruthCallCount = 0;
 
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
         arrivalCallCount++;
-        return arrivalCallCount === 1 ? deferredArrivalOp1.promise : deferredArrivalOp2.promise;
+        if (arrivalCallCount === 1) {
+          // Op 1 POST resolves immediately with confirmed receipt
+          return new Response(
+            JSON.stringify({
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              homeGarageUnlocked: true,
+              vehicleStorageLocation: "HOME",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return deferredArrivalOp2Post.promise;
       }
       if (url.endsWith("/players/me/home")) {
-        return new Response(JSON.stringify(homeTruth), { status: 200 });
+        homeTruthCallCount++;
+        // Call 1: initial mount of A
+        if (homeTruthCallCount === 1) {
+          return new Response(JSON.stringify(homeTruth), { status: 200 });
+        }
+        // Call 2: Op 1's post-arrival fetchHomeResidency() readback!
+        if (homeTruthCallCount === 2) {
+          return deferredArrivalOp1Truth.promise;
+        }
+        // Call 3: mount of B
+        if (homeTruthCallCount === 3) {
+          return new Response(JSON.stringify(homeTruth), { status: 200 });
+        }
+        // Subsequent calls (for Op 2) return RESIDENT truth
+        return new Response(
+          JSON.stringify({
+            ...homeTruth,
+            onboardingState: "RESIDENT",
+            resident: true,
+            homeGarageUnlocked: true,
+          }),
+          { status: 200 },
+        );
       }
       return new Response("{}", { status: 200 });
     });
@@ -2731,11 +2854,12 @@ describe("Starter catalogue client & returning resident projection", () => {
     const arriveBtnFinally = findNode(containerFinally, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
     expect(arriveBtnFinally).not.toBeNull();
 
-    // Start Op 1
+    // Start Op 1 — completes POST and enters post-arrival fetchHomeResidency() await
     await act(async () => {
       triggerNodeClick(arriveBtnFinally);
     });
     expect(arrivalCallCount).toBe(1);
+    expect(homeTruthCallCount).toBe(2);
     expect(arriveBtnFinally.disabled).toBe(true);
 
     // Rerender with runtimeFinallyB (invalidates Op 1, resets pending for B)
@@ -2747,6 +2871,7 @@ describe("Starter catalogue client & returning resident projection", () => {
         }),
       );
     });
+    expect(homeTruthCallCount).toBe(3);
 
     // Start Op 2 on runtimeFinallyB
     const arriveBtnFinally2 = findNode(containerFinally, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
@@ -2757,8 +2882,8 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(arrivalCallCount).toBe(2);
     expect(arriveBtnFinally2.disabled).toBe(true);
 
-    // Reject Op 1
-    deferredArrivalOp1.reject(new Error("Op 1 network failure"));
+    // Reject Op 1's held final residency readback
+    deferredArrivalOp1Truth.reject(new Error("Op 1 final-residency readback failure"));
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
@@ -2767,7 +2892,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(arriveBtnFinally2.disabled, "Older operation finally block must NOT clear newer operation's pending state").toBe(true);
 
     // Clean up Op 2
-    deferredArrivalOp2.resolve(
+    deferredArrivalOp2Post.resolve(
       new Response(
         JSON.stringify({
           plotId: "coast4_1",
@@ -2826,9 +2951,9 @@ describe("Starter catalogue client & returning resident projection", () => {
     // Same-object revision change with held builder submission:
     // Builder starts on rev-coast4-v1, revision changes to rev-coast4-v2 on same runtime,
     // held builder POST resolves with 500 error. Old error must NOT write home-builder-error!
-    const runtimeSameBuildRev = createMockRuntime("user-alice", "rev-coast4-v1");
+    const runtimeSameBuildRev = createMockRuntime("user-alice", layoutRevPart4);
     const deferredBuildErr = createDeferred<Response>();
-    deferredBuildErr.promise.catch(() => {});
+    let buildErrPostCount = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/starter-catalogue")) {
@@ -2836,6 +2961,7 @@ describe("Starter catalogue client & returning resident projection", () => {
       }
       if (url.endsWith("/home/build")) {
         if (init?.method === "POST") {
+          buildErrPostCount++;
           return deferredBuildErr.promise;
         }
         return new Response(
@@ -2880,11 +3006,16 @@ describe("Starter catalogue client & returning resident projection", () => {
     const startBuildBtnSame = findNode(containerBuildSameRev, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
     await act(async () => {
       triggerNodeClick(startBuildBtnSame);
+      await new Promise((r) => setTimeout(r, 20));
     });
     const submitBtnSame = findNode(containerBuildSameRev, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(submitBtnSame).not.toBeNull();
     await act(async () => {
       triggerNodeClick(submitBtnSame);
+      await new Promise((r) => setTimeout(r, 20));
     });
+    expect(buildErrPostCount, "Builder POST must have been called").toBe(1);
+
     // Revision changes on same runtime
     await act(async () => {
       runtimeSameBuildRev.setRev("rev-coast4-v2");
@@ -2899,11 +3030,11 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(errNodeSameRev, "Stale builder error across same-object revision change must NOT write error").toBeNull();
 
     // StarterPropertyOverlay older-finally vs newer-pending protection:
-    const deferredBuildOp1 = createDeferred<Response>();
-    deferredBuildOp1.promise.catch(() => {});
-    const deferredBuildOp2 = createDeferred<Response>();
-    deferredBuildOp2.promise.catch(() => {});
+    const deferredBuildOp1Truth = createDeferred<Response>();
+    deferredBuildOp1Truth.promise.catch(() => {});
+    const deferredBuildOp2Post = createDeferred<Response>();
     let buildCallCount = 0;
+    let truthCallCount = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/starter-catalogue")) {
@@ -2912,7 +3043,21 @@ describe("Starter catalogue client & returning resident projection", () => {
       if (url.endsWith("/home/build")) {
         if (init?.method === "POST") {
           buildCallCount++;
-          return buildCallCount === 1 ? deferredBuildOp1.promise : deferredBuildOp2.promise;
+          if (buildCallCount === 1) {
+            // Op 1 POST resolves immediately with confirmed receipt
+            return new Response(
+              JSON.stringify({
+                plotId: "coast4_1",
+                frameId: "frame-coast4-1",
+                layoutRevision: layoutRevPart4,
+                geometry: builderPlotGeometry,
+                completed: true,
+                script: validScript,
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          return deferredBuildOp2Post.promise;
         }
         return new Response(
           JSON.stringify({
@@ -2920,19 +3065,41 @@ describe("Starter catalogue client & returning resident projection", () => {
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart4,
             geometry: builderPlotGeometry,
-            completed: false,
+            completed: buildCallCount > 0,
             script: validScript,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.endsWith("/players/me/home")) {
+        truthCallCount++;
+        // Call 1: initial mount of A
+        if (truthCallCount === 1) {
+          return new Response(
+            JSON.stringify({
+              owned: false,
+              status: "PLOT_OWNED",
+              plotOwned: true,
+              requiresBuild: true,
+              plotId: "coast4_1",
+              frameId: "frame-coast4-1",
+              layoutRevision: layoutRevPart4,
+              priceKco: 10000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        // Call 2 is Op 1's post-build fetchHomeTruth() readback!
+        if (truthCallCount === 2) {
+          return deferredBuildOp1Truth.promise;
+        }
+        // Subsequent calls (for Op 2) return completed truth
         return new Response(
           JSON.stringify({
-            owned: false,
-            status: "PLOT_OWNED",
+            owned: true,
+            status: "OWNED",
             plotOwned: true,
-            requiresBuild: true,
+            requiresBuild: false,
             plotId: "coast4_1",
             frameId: "frame-coast4-1",
             layoutRevision: layoutRevPart4,
@@ -2966,6 +3133,7 @@ describe("Starter catalogue client & returning resident projection", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(buildCallCount).toBe(1);
+    expect(truthCallCount).toBe(2);
 
     // Rerender with runtimeBuildFinallyB (invalidates Op 1, resets build state for B)
     await act(async () => {
@@ -2989,8 +3157,8 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(buildCallCount).toBe(2);
     expect(submitBuildBtnFinB.disabled).toBe(true);
 
-    // Reject Op 1
-    deferredBuildOp1.reject(new Error("Op 1 network failure"));
+    // Reject Op 1's held final truth readback
+    deferredBuildOp1Truth.reject(new Error("Op 1 final-truth readback failure"));
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
@@ -2998,7 +3166,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(submitBuildBtnFinB.disabled, "Older build finally block must NOT clear newer build pending state").toBe(true);
 
     // Clean up Op 2
-    deferredBuildOp2.resolve(
+    deferredBuildOp2Post.resolve(
       new Response(
         JSON.stringify({
           plotId: "coast4_1",
@@ -3506,9 +3674,6 @@ describe("Starter catalogue client & returning resident projection", () => {
             frameId: surfaceFrame.id,
             layoutRevision: realCanonicalDoc.revision.contentHash, // bare 64-hex hash
             priceKco: 10000,
-            resident: arrivalPostCountE > 0,
-            homeGarageUnlocked: arrivalPostCountE > 0,
-            geometry: realPlot,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );

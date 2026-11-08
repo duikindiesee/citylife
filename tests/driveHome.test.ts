@@ -174,6 +174,37 @@ describe("driveHome — bounded arrival evidence", () => {
     expect(out.cell).toEqual({ x: STARTER_PLACEMENT_GRID - 1, y: 0 }); // clamped, never out of range
     expect(out.withinBounds).toBe(false);
   });
+
+  it("reconciles legacy 64 boundary home without overflowing beyond 63", () => {
+    // Review 150 counterexample: legacy 64 grid/home(63,63), current(999,63) must clamp to (63,63), not 65
+    const legacyHome: Cell = { x: 63, y: 63 };
+    const boundaryArrival = boundedArrivalEvidence({ x: 999, y: 63 }, legacyHome);
+    expect(boundaryArrival.cell).toEqual({ x: 63, y: 63 });
+    expect(boundaryArrival.withinBounds).toBe(true);
+
+    const boundaryOut = boundedArrivalEvidence({ x: 999, y: 0 }, legacyHome);
+    expect(boundaryOut.cell).toEqual({ x: 63, y: 0 });
+    expect(boundaryOut.withinBounds).toBe(false);
+
+    // Dealership start cell also stays within [0, 63]
+    const dealerStart = dealershipStartCell(truth({ x: 63, y: 63, plotId: "legacy_63" }));
+    expect(dealerStart).not.toBeNull();
+    expect(dealerStart!.x).toBeLessThan(STARTER_PLACEMENT_GRID);
+    expect(dealerStart!.y).toBeLessThan(STARTER_PLACEMENT_GRID);
+  });
+
+  it("supports canonical 608 layout grid coordinates and enforces 608 bounds", () => {
+    const canonicalHome: Cell = { x: 150, y: 200 };
+    // Inside arrival radius on 608 layout
+    const canonicalInside = boundedArrivalEvidence({ x: 151, y: 200 }, canonicalHome, ARRIVAL_RADIUS_CELLS, 608);
+    expect(canonicalInside.cell).toEqual({ x: 151, y: 200 });
+    expect(canonicalInside.withinBounds).toBe(true);
+
+    // Outside bounds on 608 layout: clamps to 607 (608 - 1), never 63
+    const canonicalFar = boundedArrivalEvidence({ x: 999, y: 200 }, canonicalHome, ARRIVAL_RADIUS_CELLS, 608);
+    expect(canonicalFar.cell).toEqual({ x: 607, y: 200 });
+    expect(canonicalFar.withinBounds).toBe(false);
+  });
 });
 
 describe("driveHome — arrival status classification (idempotent duplicate = pending)", () => {
@@ -380,18 +411,36 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
     vi.stubGlobal("fetch", async (u: string, i: RequestInit) => {
       url = u;
       init = i;
-      return { ok: true, status: 200 };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          plotId: "starter-home:demo-user",
+          frameId: "starter-home-frame:demo-user",
+          homeGarageUnlocked: true,
+          vehicleStorageLocation: "HOME",
+        }),
+      };
     });
     const home = homeTargetCell(truth())!;
-    const r = await postHomeArrival(home, truth());
-    expect(r).toEqual({ kind: "confirmed" });
-    expect(url).toBe("/kooker/api/v1/citylife/players/me/home/arrival");
+    const r = await postHomeArrival(home, truth(), {
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(r.kind).toBe("confirmed");
+    expect(url).toBe(
+      "/kooker/api/v1/citylife/players/me/home-deed/drive-home-arrival",
+    );
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer jwt.tok");
     expect(headers["Idempotency-Key"]).toContain("starter-home:demo-user");
-    // Bounded evidence only — the observed cell + the server plot echo, NO owner / deed / price claim.
+    // Authoritative payload: cell, plotRef, plotId, frameId, vehicleKey
     expect(JSON.parse(init.body as string)).toEqual({
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: "karoo-x19-targa",
       cell: home,
       plotRef: "starter-home:demo-user",
     });
@@ -399,10 +448,38 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
   it("maps a 409 duplicate to a neutral pending replay and a 422 to rejected", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     const home = homeTargetCell(truth())!;
-    vi.stubGlobal("fetch", async () => ({ ok: false, status: 409 }));
-    expect(await postHomeArrival(home, truth())).toEqual({ kind: "pending" });
+    const arrivalOpts = {
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: "karoo-x19-targa",
+    };
+    vi.stubGlobal("fetch", async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        plotId: "starter-home:demo-user",
+        frameId: "starter-home-frame:demo-user",
+        homeGarageUnlocked: true,
+        vehicleStorageLocation: "HOME",
+        alreadyArrived: true,
+      }),
+    }));
+    expect(await postHomeArrival(home, truth(), arrivalOpts)).toEqual({
+      kind: "pending",
+      receipt: {
+        plotId: "starter-home:demo-user",
+        frameId: "starter-home-frame:demo-user",
+        homeGarageUnlocked: true,
+        homeGarageUnlockedAt: null,
+        vehicleStorageLocation: "HOME",
+        onboardingState: null,
+        alreadyArrived: true,
+      },
+    });
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 422 }));
-    expect(await postHomeArrival(home, truth())).toEqual({ kind: "rejected" });
+    expect(await postHomeArrival(home, truth(), arrivalOpts)).toEqual({
+      kind: "rejected",
+    });
   });
   it("maps a thrown/network failure to a transient error", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
@@ -410,6 +487,25 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
       throw new Error("offline");
     });
     const home = homeTargetCell(truth())!;
-    expect(await postHomeArrival(home, truth())).toEqual({ kind: "error" });
+    expect(
+      await postHomeArrival(home, truth(), {
+        plotId: "starter-home:demo-user",
+        frameId: "starter-home-frame:demo-user",
+        vehicleKey: "karoo-x19-targa",
+      }),
+    ).toEqual({ kind: "error" });
+  });
+  it("fails closed locally without POSTing when required identity (vehicleKey) is missing", async () => {
+    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const home = homeTargetCell(truth())!;
+    const res = await postHomeArrival(home, truth(), {
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: null,
+    });
+    expect(res).toEqual({ kind: "rejected" });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

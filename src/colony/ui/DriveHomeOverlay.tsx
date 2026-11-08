@@ -91,6 +91,10 @@ export function DriveHomeOverlay({
     getOperatorUserId?(): string | null;
     getAuthoritativeCar?(): { id: string } | null;
     subscribe?(listener: () => void): () => void;
+    lots?(): any[];
+    getStarterCatalogueManifest?(): any;
+    plotGeometry?: { get: (id: string) => any };
+    getOperatorHomeTarget?(): { x: number; y: number; lotId: string } | null;
   };
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
@@ -161,7 +165,7 @@ export function DriveHomeOverlay({
         return;
       }
       setResidency(res);
-      if (!res || !homeTargetCell(res.truth)) {
+      if (!res || !homeTargetCell(res.truth, runtime)) {
         setPhase("error");
         return;
       }
@@ -169,8 +173,8 @@ export function DriveHomeOverlay({
       // player is RESIDENT, in which case a second device / relogin converges without re-driving.
       setCursor((cur) => {
         if (cur) return cur;
-        if (res.resident) return homeTargetCell(res.truth);
-        return dealershipStartCell(res.truth);
+        if (res.resident) return homeTargetCell(res.truth, runtime);
+        return dealershipStartCell(res.truth, runtime);
       });
       setPhase("ready");
     })();
@@ -180,8 +184,8 @@ export function DriveHomeOverlay({
   }, [reloadToken, runtime]);
 
   const home = useMemo(
-    () => homeTargetCell(residency?.truth ?? null),
-    [residency],
+    () => homeTargetCell(residency?.truth ?? null, runtime),
+    [residency, runtime],
   );
 
   const operatorUserId = runtime?.getOperatorUserId?.();
@@ -282,10 +286,18 @@ export function DriveHomeOverlay({
 
     const opId = ++operationSeqRef.current;
     const expectedRuntime = runtime;
-    const isCurrent = () =>
-      mountedRef.current &&
-      operationSeqRef.current === opId &&
-      currentRuntimeRef.current === expectedRuntime;
+    const isCurrent = () => {
+      if (!mountedRef.current) return false;
+      if (operationSeqRef.current !== opId) return false;
+      if (currentRuntimeRef.current !== expectedRuntime) return false;
+      const curAuth = authClient.operator?.userId ?? null;
+      if (curAuth !== startAuthUserId) return false;
+      const curRtUser = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (curRtUser !== startRuntimeUserId) return false;
+      const curRev = expectedRuntime?.getActiveLayoutRevisionId?.() ?? null;
+      if (curRev !== startRuntimeRev) return false;
+      return true;
+    };
 
     setPending(true);
 
@@ -302,6 +314,8 @@ export function DriveHomeOverlay({
       plotId,
       frameId,
       vehicleKey,
+      authority: expectedRuntime,
+      grid: expectedRuntime ? 608 : undefined,
     }).then(async (result) => {
       try {
         if (!isCurrent()) return;

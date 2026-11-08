@@ -162,10 +162,21 @@ export function StarterPropertyOverlay({
         ? runtime.getActiveLayoutRevisionId()
         : null;
 
-    const isCurrent = () =>
-      mountedRef.current &&
-      buildOpSeqRef.current === opId &&
-      currentRuntimeRef.current === expectedRuntime;
+    const isCurrent = () => {
+      if (!mountedRef.current) return false;
+      if (buildOpSeqRef.current !== opId) return false;
+      if (currentRuntimeRef.current !== expectedRuntime) return false;
+      const curAuth = authClient.operator?.userId ?? null;
+      if (curAuth !== startAuthUserId) return false;
+      const curRtUser = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (curRtUser !== startRuntimeUserId) return false;
+      const curRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (curRev !== startRuntimeRev) return false;
+      return true;
+    };
     if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
       setBuildError("Authenticated user and runtime operator mismatch; aborted.");
       return;
@@ -227,10 +238,21 @@ export function StarterPropertyOverlay({
         ? runtime.getActiveLayoutRevisionId()
         : null;
 
-    const isCurrent = () =>
-      mountedRef.current &&
-      buildOpSeqRef.current === opId &&
-      currentRuntimeRef.current === expectedRuntime;
+    const isCurrent = () => {
+      if (!mountedRef.current) return false;
+      if (buildOpSeqRef.current !== opId) return false;
+      if (currentRuntimeRef.current !== expectedRuntime) return false;
+      const curAuth = authClient.operator?.userId ?? null;
+      if (curAuth !== startAuthUserId) return false;
+      const curRtUser = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (curRtUser !== startRuntimeUserId) return false;
+      const curRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (curRev !== startRuntimeRev) return false;
+      return true;
+    };
 
     if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
       setBuildConfirmed(false);
