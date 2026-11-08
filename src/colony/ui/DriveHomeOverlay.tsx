@@ -20,6 +20,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -39,6 +40,7 @@ import {
   type ArrivalOutcome,
 } from "../home/driveHome";
 import { serverVehicleKeyOf } from "../car/carAcquisition";
+import { getAuthClient } from "../authClient";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -98,6 +100,13 @@ export function DriveHomeOverlay({
   const [garageOpen, setGarageOpen] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [, setRuntimeTick] = useState(0);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Subscribe to runtime state changes so physical vehicle movement re-renders guidance and arrival
   useEffect(() => {
@@ -116,9 +125,17 @@ export function DriveHomeOverlay({
   useEffect(() => {
     let live = true;
     setPhase("loading");
+    const startUserId =
+      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
     void (async () => {
       const res = await fetchHomeResidency();
-      if (!live) return;
+      if (!live || !mountedRef.current) return;
+      const currentUserId =
+        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+      if (startUserId && currentUserId !== startUserId) {
+        setPhase("error");
+        return;
+      }
       setResidency(res);
       if (!res || !homeTargetCell(res.truth)) {
         setPhase("error");
@@ -136,7 +153,7 @@ export function DriveHomeOverlay({
     return () => {
       live = false;
     };
-  }, [reloadToken]);
+  }, [reloadToken, runtime]);
 
   const home = useMemo(
     () => homeTargetCell(residency?.truth ?? null),
@@ -144,13 +161,19 @@ export function DriveHomeOverlay({
   );
 
   const operatorUserId = runtime?.getOperatorUserId?.();
+  const authUserId = getAuthClient().operator?.userId ?? null;
   const runtimeLayoutRevision = runtime?.getActiveLayoutRevisionId?.();
   const truthLayoutRevision = residency?.truth?.layoutRevision;
-  const layoutMatches =
-    !runtimeLayoutRevision ||
-    !truthLayoutRevision ||
-    runtimeLayoutRevision === truthLayoutRevision;
-  const isOperatorAuthed = runtime ? Boolean(operatorUserId) : true;
+  const layoutMatches = runtime
+    ? Boolean(
+        runtimeLayoutRevision &&
+          truthLayoutRevision &&
+          runtimeLayoutRevision === truthLayoutRevision,
+      )
+    : true;
+  const isOperatorAuthed = runtime
+    ? Boolean(operatorUserId && authUserId && operatorUserId === authUserId)
+    : Boolean(authUserId);
   const carEligible = Boolean(
     isOperatorAuthed &&
       layoutMatches &&
@@ -224,21 +247,62 @@ export function DriveHomeOverlay({
     const plotId = residency?.truth?.plotId ?? null;
     const frameId = residency?.truth?.frameId ?? null;
 
+    const startUserId =
+      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+    const startRevision =
+      runtime?.getActiveLayoutRevisionId?.() ??
+      residency?.truth?.layoutRevision ??
+      null;
+
     void postHomeArrival(targetCell, residency?.truth ?? null, {
       plotId,
       frameId,
       vehicleKey,
     }).then(async (result) => {
+      if (!mountedRef.current) return;
+      const midUserId =
+        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+      if (!midUserId || midUserId !== startUserId) {
+        setPending(false);
+        setOutcome({ kind: "rejected" });
+        return;
+      }
       setOutcome(result);
       if (result.kind === "confirmed" || result.kind === "pending") {
         try {
           const fresh = await fetchHomeResidency();
-          if (fresh) setResidency(fresh);
+          if (!mountedRef.current) return;
+          const endUserId =
+            runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+          const endRevision =
+            runtime?.getActiveLayoutRevisionId?.() ??
+            fresh?.truth?.layoutRevision ??
+            null;
+          if (!endUserId || endUserId !== startUserId) {
+            setOutcome({ kind: "rejected" });
+            return;
+          }
+          if (runtime && (!endRevision || endRevision !== startRevision)) {
+            setOutcome({ kind: "rejected" });
+            return;
+          }
+          if (fresh) {
+            const freshPlotId = fresh.truth?.plotId;
+            if (plotId && freshPlotId && freshPlotId !== plotId) {
+              setOutcome({ kind: "rejected" });
+              return;
+            }
+            setResidency(fresh);
+          }
         } finally {
-          setPending(false);
+          if (mountedRef.current) {
+            setPending(false);
+          }
         }
       } else {
-        setPending(false);
+        if (mountedRef.current) {
+          setPending(false);
+        }
       }
     });
   }, [

@@ -19,6 +19,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -35,6 +36,7 @@ import {
   type PurchaseOutcome,
   type PurchaseHomeOptions,
 } from "../home/starterProperty";
+import { homePlotRef } from "../home/driveHome";
 import { projectStarterHome } from "../home/starterHouseProjection";
 import {
   loadHouseBuild,
@@ -103,6 +105,13 @@ export function StarterPropertyOverlay({
   const [buildPending, setBuildPending] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [buildConfirmed, setBuildConfirmed] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const startHouseBuild = useCallback(async () => {
     const startUserId =
@@ -111,6 +120,7 @@ export function StarterPropertyOverlay({
     setBuildPending(true);
     try {
       const session = await loadHouseBuild();
+      if (!mountedRef.current) return;
       const currentUserId =
         runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
       if (!currentUserId || currentUserId !== startUserId) {
@@ -121,9 +131,13 @@ export function StarterPropertyOverlay({
         session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n",
       );
     } catch (err: any) {
-      setBuildError(err?.message || "House building unavailable");
+      if (mountedRef.current) {
+        setBuildError(err?.message || "House building unavailable");
+      }
     } finally {
-      setBuildPending(false);
+      if (mountedRef.current) {
+        setBuildPending(false);
+      }
     }
   }, [runtime]);
 
@@ -131,28 +145,49 @@ export function StarterPropertyOverlay({
     if (!buildSession) return;
     const startUserId =
       runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+    const expectedPlotId = buildSession.context.plotId;
     setBuildError(null);
     setBuildPending(true);
     try {
       const receipt = await completeHouseBuild(buildSession, buildScript);
-      const currentUserId =
+      if (!mountedRef.current) return;
+      const midUserId =
         runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
-      if (!currentUserId || currentUserId !== startUserId) {
+      if (!midUserId || midUserId !== startUserId) {
         throw new Error("Account changed during house build; aborted.");
       }
-      setBuildConfirmed(true);
       const updatedTruth = await fetchHomeTruth();
-      if (updatedTruth) {
-        setTruth(updatedTruth);
-        const plotId = (updatedTruth as any).plotId ?? buildSession.context.plotId;
-        runtime?.claimStarterHome?.(updatedTruth, plotId);
-        runtime?.applyBlueprint?.(buildSession.context.plotId, receipt.script);
-        onHomePurchased?.(updatedTruth);
+      if (!mountedRef.current) return;
+      const endUserId =
+        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+      if (!endUserId || endUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
       }
+      if (!updatedTruth) {
+        throw new Error("Failed to re-read authoritative home truth after build.");
+      }
+      const truthPlotId = (updatedTruth as any).plotId ?? homePlotRef(updatedTruth);
+      if (truthPlotId && truthPlotId !== expectedPlotId) {
+        throw new Error(`Home truth plot mismatch: expected ${expectedPlotId}, got ${truthPlotId}`);
+      }
+      if ((updatedTruth as any).requiresBuild === true) {
+        throw new Error("Authoritative home truth indicates build is still required.");
+      }
+      setBuildConfirmed(true);
+      setTruth(updatedTruth);
+      const plotId = truthPlotId ?? expectedPlotId;
+      runtime?.claimStarterHome?.(updatedTruth, plotId);
+      runtime?.applyBlueprint?.(expectedPlotId, receipt.script);
+      onHomePurchased?.(updatedTruth);
     } catch (err: any) {
-      setBuildError(err?.message || "Failed to confirm house build");
+      if (mountedRef.current) {
+        setBuildConfirmed(false);
+        setBuildError(err?.message || "Failed to confirm house build");
+      }
     } finally {
-      setBuildPending(false);
+      if (mountedRef.current) {
+        setBuildPending(false);
+      }
     }
   }, [buildSession, buildScript, runtime, onHomePurchased]);
 

@@ -474,53 +474,30 @@ export async function postHomeArrival(
   const vehicleKey =
     options?.vehicleKey ?? ((truth as any)?.vehicleId ? String((truth as any).vehicleId).trim() : null);
 
-  if (plotId && frameId && vehicleKey) {
-    try {
-      const resp = await fetch(HOME_DEED_DRIVE_HOME_ARRIVAL_PATH, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "Idempotency-Key": idemKey,
-        },
-        body: JSON.stringify({
-          plotId,
-          frameId,
-          vehicleKey,
-          cell: evidence.cell,
-          plotRef,
-        }),
-      });
-      if (resp.status === 404) {
-        return postHomeArrivalLegacy(token, idemKey, evidence.cell, plotRef);
-      }
-      return classifyArrivalStatus(resp.status);
-    } catch {
-      return { kind: "error" };
-    }
+  if (!plotId || !frameId || !vehicleKey) {
+    // Fail closed for incomplete identity/context without automatic fallback
+    return { kind: "rejected" };
   }
 
-  return postHomeArrivalLegacy(token, idemKey, evidence.cell, plotRef);
-}
-
-async function postHomeArrivalLegacy(
-  token: string,
-  idemKey: string,
-  cell: Cell,
-  plotRef: string,
-): Promise<ArrivalOutcome> {
   try {
-    const resp = await fetch(HOME_ARRIVAL_PATH, {
+    const resp = await fetch(HOME_DEED_DRIVE_HOME_ARRIVAL_PATH, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         Authorization: `Bearer ${token}`,
         "Idempotency-Key": idemKey,
       },
-      body: JSON.stringify({ cell, plotRef }),
+      body: JSON.stringify({
+        plotId,
+        frameId,
+        vehicleKey,
+        cell: evidence.cell,
+        plotRef,
+      }),
     });
     return classifyArrivalStatus(resp.status);
   } catch {
     return { kind: "error" };
   }
 }
+

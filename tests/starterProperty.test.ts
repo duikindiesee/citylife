@@ -20,6 +20,7 @@ import {
   homeTargetCell,
   isWithinArrivalBounds,
   arrivalButtonView,
+  postHomeArrival,
   HOME_DEED_DRIVE_HOME_ARRIVAL_PATH,
   HOME_ARRIVAL_PATH,
 } from "../src/colony/home/driveHome";
@@ -1192,6 +1193,120 @@ describe("Starter catalogue client & returning resident projection", () => {
     const errorNode = findNode(switchContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
     expect(errorNode, "Error message must be displayed on account switch").not.toBeNull();
 
+    // Negative 4c: Account-switch during fetchHomeTruth() await in finishHouseBuild aborts fail-closed
+    const switchMidRuntime: any = {
+      currentUserId: "user-alice",
+      getOperatorUserId() { return this.currentUserId; },
+      claimStarterHome: vi.fn(),
+      applyBlueprint: vi.fn(),
+    };
+    const switchMidContainer = (globalThis as any).document.createElement("div");
+    const switchMidRoot = createRoot(switchMidContainer);
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifest), { status: 200 });
+      }
+      if (url.endsWith("/home/build") && !url.includes("complete")) {
+        return new Response(JSON.stringify({ plotId: "coast4_1", frameId: "frame-coast4-1", layoutRevision: layout.revision.contentHash, geometry: plotGeometry, completed: false, script: null }), { status: 200 });
+      }
+      if (url.endsWith("/home/build/complete")) {
+        return new Response(JSON.stringify({ completed: true, plotId: "coast4_1", script: validScript }), { status: 200 });
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (switchMidRuntime.currentUserId === "user-alice") {
+          return new Response(JSON.stringify({ owned: false, status: "PLOT_OWNED", plotOwned: true, requiresBuild: true, plotId: "coast4_1", frameId: "frame-coast4-1", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ owned: true, status: "OWNED", plotOwned: true, requiresBuild: false, plotId: "coast4_1", frameId: "frame-coast4-1", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ neighbourhoods: [] }), { status: 200 });
+    });
+
+    currentAuthUser = "user-alice";
+    await act(async () => {
+      switchMidRoot.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: switchMidRuntime,
+        }),
+      );
+    });
+
+    const switchMidStartBtn = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(switchMidStartBtn);
+    });
+    const switchMidConfirmBtn = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    expect(switchMidConfirmBtn).not.toBeNull();
+
+    // Trigger account switch during the second await (fetchHomeTruth)
+    const origFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/players/me/home")) {
+        switchMidRuntime.currentUserId = "user-mallory";
+        currentAuthUser = "user-mallory";
+      }
+      return origFetch(input);
+    });
+
+    await act(async () => {
+      triggerNodeClick(switchMidConfirmBtn);
+    });
+
+    const switchMidErrorNode = findNode(switchMidContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(switchMidErrorNode, "Account switch during truth readback must display error").not.toBeNull();
+    expect(switchMidRuntime.claimStarterHome).not.toHaveBeenCalled();
+
+    // Negative 4d: Foreign / mismatched plotId returned from fetchHomeTruth() aborts
+    const foreignRuntime: any = {
+      currentUserId: "user-alice",
+      getOperatorUserId() { return this.currentUserId; },
+      claimStarterHome: vi.fn(),
+      applyBlueprint: vi.fn(),
+    };
+    const foreignContainer = (globalThis as any).document.createElement("div");
+    const foreignRoot = createRoot(foreignContainer);
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifest), { status: 200 });
+      }
+      if (url.endsWith("/home/build") && !url.includes("complete")) {
+        return new Response(JSON.stringify({ plotId: "coast4_1", frameId: "frame-coast4-1", layoutRevision: layout.revision.contentHash, geometry: plotGeometry, completed: false, script: null }), { status: 200 });
+      }
+      if (url.endsWith("/home/build/complete")) {
+        return new Response(JSON.stringify({ completed: true, plotId: "coast4_1", script: validScript }), { status: 200 });
+      }
+      if (url.endsWith("/players/me/home")) {
+        // Foreign plotId
+        return new Response(JSON.stringify({ owned: true, status: "OWNED", plotOwned: true, requiresBuild: false, plotId: "foreign_99", frameId: "frame-foreign-99", neighbourhoodKey: "coast4", layoutRevision: layout.revision.contentHash, geometry: plotGeometry }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ neighbourhoods: [] }), { status: 200 });
+    });
+
+    currentAuthUser = "user-alice";
+    await act(async () => {
+      foreignRoot.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: foreignRuntime,
+        }),
+      );
+    });
+
+    const foreignStartBtn = findNode(foreignContainer, (n) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(foreignStartBtn);
+    });
+    const foreignConfirmBtn = findNode(foreignContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(foreignConfirmBtn);
+    });
+    const foreignErrorNode = findNode(foreignContainer, (n) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(foreignErrorNode, "Foreign plot mismatch must display error").not.toBeNull();
+    expect(foreignRuntime.claimStarterHome).not.toHaveBeenCalled();
+
     vi.unstubAllGlobals();
   });
 
@@ -1402,6 +1517,75 @@ describe("Starter catalogue client & returning resident projection", () => {
     // After server confirms arrival, home-garage-portal renders
     const garagePortal = findNode(container, (n) => n.getAttribute?.("data-testid") === "home-garage-portal");
     expect(garagePortal, "home-garage-portal must render after arrival confirmation").not.toBeNull();
+
+    // Negative 4b: 404 from HOME_DEED_DRIVE_HOME_ARRIVAL_PATH produces rejected without automatic fallback to legacy
+    let deed404PostCount = 0;
+    let legacyPostCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === HOME_DEED_DRIVE_HOME_ARRIVAL_PATH) {
+        deed404PostCount++;
+        return new Response("Not Found", { status: 404 });
+      }
+      if (url === HOME_ARRIVAL_PATH) {
+        legacyPostCount++;
+        return new Response("{}", { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const outcome404 = await postHomeArrival({ x: 32, y: 48 }, homeTruth as any, {
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(outcome404, "404 must classify as error without fallback").toEqual({ kind: "error", status: 404 });
+    expect(deed404PostCount, "Exactly 1 POST to home-deed arrival route").toBe(1);
+    expect(legacyPostCount, "Zero automatic fallback POSTs to legacy arrival route").toBe(0);
+
+    // Negative 4c: Incomplete identity (missing vehicleKey) fails closed with rejected and 0 POSTs
+    deed404PostCount = 0;
+    const outcomeMissingKey = await postHomeArrival({ x: 32, y: 48 }, homeTruth as any, {
+      plotId: "coast4_1",
+      frameId: "frame-coast4-1",
+      vehicleKey: "",
+    });
+    expect(outcomeMissingKey.kind, "Missing vehicleKey must fail closed as rejected").toBe("rejected");
+    expect(deed404PostCount, "Zero POSTs when vehicleKey is missing").toBe(0);
+
+    // Negative 4d: Layout revision mismatch between runtime and truth disables arrival
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            ...homeTruth,
+            onboardingState: "ONBOARDING",
+            garageUnlocked: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const mismatchRuntime: any = {
+      ...mockRuntime,
+      getActiveLayoutRevisionId: () => "foreign-layout-rev-9999",
+    };
+    const mismatchContainer = (globalThis as any).document.createElement("div");
+    const mismatchRoot = createRoot(mismatchContainer);
+    await act(async () => {
+      mismatchRoot.render(
+        React.createElement(DriveHomeOverlay, {
+          onClose: () => {},
+          runtime: mismatchRuntime,
+        }),
+      );
+    });
+    const mismatchArriveBtn = findNode(mismatchContainer, (n) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    expect(mismatchArriveBtn, "Arrival button must render in ready phase").not.toBeNull();
+    expect(mismatchArriveBtn.disabled, "Arrival button must remain disabled on layout revision mismatch").toBe(true);
 
     vi.unstubAllGlobals();
   });

@@ -6482,13 +6482,13 @@ export class ColonyRuntime {
       );
       const lots = this.neighborhood.lots;
       if (lots.length > 0) {
-        const lot1 = lots[0] as any;
-        if (lot1.gate && Array.isArray(lot1.driveway) && Array.isArray(lot1.fenceGaps)) {
+        const lot1 = lots[0];
+        if (lot1 && lot1.gate && Array.isArray(lot1.driveway) && Array.isArray(lot1.fence)) {
           const origDoorX = lot1.doorX;
           const origDoorY = lot1.doorY;
           const origGate = { ...lot1.gate };
           const origDriveway = [...lot1.driveway];
-          const origGaps = [...lot1.fenceGaps];
+          const origFence = [...lot1.fence];
           const joeStreet = streetDoorDir(lot1);
           retargetParcelAccess(lot1, joeStreet);
           for (const p of this.runtimeZonedPlacements(surfaceFrameId)) {
@@ -6500,17 +6500,17 @@ export class ColonyRuntime {
           lot1.doorY = origDoorY;
           lot1.gate = origGate;
           lot1.driveway = origDriveway;
-          lot1.fenceGaps = origGaps;
+          lot1.fence = origFence;
         }
       }
       if (lots.length > 1) {
-        const lot2 = lots[1] as any;
-        if (lot2.gate && Array.isArray(lot2.driveway) && Array.isArray(lot2.fenceGaps)) {
+        const lot2 = lots[1];
+        if (lot2 && lot2.gate && Array.isArray(lot2.driveway) && Array.isArray(lot2.fence)) {
           const origDoorX = lot2.doorX;
           const origDoorY = lot2.doorY;
           const origGate = { ...lot2.gate };
           const origDriveway = [...lot2.driveway];
-          const origGaps = [...lot2.fenceGaps];
+          const origFence = [...lot2.fence];
           retargetParcelAccess(lot2, "e");
           for (const p of this.runtimeZonedPlacements(surfaceFrameId)) {
             if (p.id === "placement:lot_2" || p.id === `placement:${lot2.id}`) {
@@ -6521,7 +6521,7 @@ export class ColonyRuntime {
           lot2.doorY = origDoorY;
           lot2.gate = origGate;
           lot2.driveway = origDriveway;
-          lot2.fenceGaps = origGaps;
+          lot2.fence = origFence;
         }
       }
       this.seededPlacementSignatures = signatures;
@@ -6987,12 +6987,15 @@ export class ColonyRuntime {
   /** Spec 149 / Task e81ea9de — Export standalone canonical transit authority v1. */
   exportCanonicalTransitAuthority(document?: WorldLayoutDocument): CanonicalTransitAuthority | null {
     const doc = document ?? this.captureWorldLayout();
+    const currentLayoutHash = this.activeWorldLayout
+      ? this.activeWorldLayout.revision.contentHash
+      : this.captureWorldLayout().revision.contentHash;
     const isCleanActive =
-      (!!this.activeWorldLayout &&
-        this.activeWorldLayout.revision.contentHash === doc.revision.contentHash) ||
-      (!this.activeWorldLayout &&
+      !document ||
+      (currentLayoutHash === doc.revision.contentHash &&
         (doc.layoutId === `seed-${this.worldSeed}` ||
-          doc.worldId === `seed-${this.worldSeed}`));
+          doc.worldId === `seed-${this.worldSeed}` ||
+          doc.layoutId === this.activeWorldLayout?.layoutId));
 
     let route = this.busRoute;
     let depot = this.busDepot;

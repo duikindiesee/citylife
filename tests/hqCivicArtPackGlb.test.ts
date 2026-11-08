@@ -1,6 +1,6 @@
 // Structural contract for the civic-art & landmark pack (PR-352 pattern).
 // @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 // @ts-ignore
 import { execSync } from "node:child_process";
 // @ts-ignore
@@ -233,16 +233,25 @@ describe("generate_hq_civic_art_pack.mjs determinism contract", () => {
     );
 
     const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    const output = execSync("node scripts/generate_hq_civic_art_pack.mjs", {
-      cwd: rootDir,
-    }).toString();
-    expect(output).toContain("matches the lockfile — generating");
+    try {
+      const output = execSync("node scripts/generate_hq_civic_art_pack.mjs", {
+        cwd: rootDir,
+      }).toString();
+      expect(output).toContain("matches the lockfile — generating");
 
-    const regeneratedBuf = readFileSync(glbPath);
-    const regeneratedSha = createHash("sha256")
-      .update(regeneratedBuf)
-      .digest("hex");
-    expect(regeneratedSha).toBe(originalSha);
-    expect(regeneratedBuf.byteLength).toBe(85896);
+      const regeneratedBuf = readFileSync(glbPath);
+      const regeneratedSha = createHash("sha256")
+        .update(regeneratedBuf)
+        .digest("hex");
+      expect(regeneratedSha).toBe(originalSha);
+      expect(regeneratedBuf.byteLength).toBe(85896);
+    } finally {
+      // Ensure preserved original is always restored if any failure occurred
+      const currentBuf = readFileSync(glbPath);
+      const currentSha = createHash("sha256").update(currentBuf).digest("hex");
+      if (currentSha !== originalSha) {
+        writeFileSync(glbPath, originalBuf);
+      }
+    }
   });
 });
