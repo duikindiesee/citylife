@@ -113,7 +113,26 @@ export function StarterPropertyOverlay({
     };
   }, []);
 
+  const buildOpSeqRef = useRef(0);
+  const currentRuntimeRef = useRef(runtime);
+
+  useEffect(() => {
+    currentRuntimeRef.current = runtime;
+    buildOpSeqRef.current += 1;
+    setBuildPending(false);
+    setBuildError(null);
+    setBuildConfirmed(false);
+    setBuildSession(null);
+  }, [runtime]);
+
   const startHouseBuild = useCallback(async () => {
+    const opId = ++buildOpSeqRef.current;
+    const expectedRuntime = runtime;
+    const isCurrent = () =>
+      mountedRef.current &&
+      buildOpSeqRef.current === opId &&
+      currentRuntimeRef.current === expectedRuntime;
+
     const authClient = getAuthClient();
     const startAuthUserId = authClient.operator?.userId ?? null;
     const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
@@ -130,25 +149,27 @@ export function StarterPropertyOverlay({
     setBuildPending(true);
     try {
       const session = await loadHouseBuild();
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       const currentAuthUserId = authClient.operator?.userId ?? null;
-      const currentRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
-      if (runtime && (!currentAuthUserId || !currentRuntimeUserId || currentAuthUserId !== startUserId || currentRuntimeUserId !== startUserId)) {
+      const currentRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!currentAuthUserId || !currentRuntimeUserId || currentAuthUserId !== startUserId || currentRuntimeUserId !== startUserId)) {
         throw new Error("Account changed during house build; aborted.");
       }
       if (!currentAuthUserId || currentAuthUserId !== startUserId) {
         throw new Error("Account changed during house build; aborted.");
       }
-      setBuildSession(session);
-      setBuildScript(
-        session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n",
-      );
+      if (isCurrent()) {
+        setBuildSession(session);
+        setBuildScript(
+          session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n",
+        );
+      }
     } catch (err: any) {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setBuildError(err?.message || "House building unavailable");
       }
     } finally {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setBuildPending(false);
       }
     }
@@ -156,6 +177,13 @@ export function StarterPropertyOverlay({
 
   const finishHouseBuild = useCallback(async () => {
     if (!buildSession) return;
+    const opId = ++buildOpSeqRef.current;
+    const expectedRuntime = runtime;
+    const isCurrent = () =>
+      mountedRef.current &&
+      buildOpSeqRef.current === opId &&
+      currentRuntimeRef.current === expectedRuntime;
+
     const authClient = getAuthClient();
     const startAuthUserId = authClient.operator?.userId ?? null;
     const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
@@ -173,15 +201,19 @@ export function StarterPropertyOverlay({
     const expectedPlotId = buildSession.context.plotId;
     const expectedFrameId = buildSession.context.frameId;
     const expectedRevision = buildSession.context.layoutRevision;
+    const startRuntimeRev =
+      typeof runtime?.getActiveLayoutRevisionId === "function"
+        ? runtime.getActiveLayoutRevisionId()
+        : null;
 
     setBuildError(null);
     setBuildPending(true);
     try {
       const receipt = await completeHouseBuild(buildSession, buildScript);
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       const midAuthUserId = authClient.operator?.userId ?? null;
-      const midRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
-      if (runtime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
+      const midRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
         throw new Error("Account changed during house build; aborted.");
       }
       if (!midAuthUserId || midAuthUserId !== startUserId) {
@@ -189,10 +221,10 @@ export function StarterPropertyOverlay({
       }
 
       const updatedTruth = await fetchHomeTruth();
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       const endAuthUserId = authClient.operator?.userId ?? null;
-      const endRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
-      if (runtime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
+      const endRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
         throw new Error("Account changed during house build; aborted.");
       }
       if (!endAuthUserId || endAuthUserId !== startUserId) {
@@ -207,13 +239,25 @@ export function StarterPropertyOverlay({
         throw new Error(`Home truth plot mismatch: expected ${expectedPlotId}, got ${truthPlotId ?? "null"}`);
       }
       const truthFrameId = updatedTruth.frameId ?? (updatedTruth.geometry as any)?.frameId ?? null;
-      if (expectedFrameId && truthFrameId && truthFrameId !== expectedFrameId) {
-        throw new Error(`Home truth frame mismatch: expected ${expectedFrameId}, got ${truthFrameId}`);
+      if (!truthFrameId || (expectedFrameId && truthFrameId !== expectedFrameId)) {
+        throw new Error(`Home truth frame mismatch or missing frameId: expected ${expectedFrameId}, got ${truthFrameId ?? "null"}`);
       }
       const truthRevision = updatedTruth.layoutRevision ?? (updatedTruth.geometry as any)?.layoutRevision ?? null;
-      if (expectedRevision && truthRevision && truthRevision !== expectedRevision) {
-        throw new Error(`Home truth layout revision mismatch: expected ${expectedRevision}, got ${truthRevision}`);
+      if (!truthRevision || (expectedRevision && truthRevision !== expectedRevision)) {
+        throw new Error(`Home truth layout revision mismatch or missing layoutRevision: expected ${expectedRevision}, got ${truthRevision ?? "null"}`);
       }
+
+      const currentRuntimeRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (startRuntimeRev && (!currentRuntimeRev || currentRuntimeRev !== startRuntimeRev)) {
+        throw new Error("Runtime layout revision changed during house build; aborted.");
+      }
+      if (currentRuntimeRev && expectedRevision && currentRuntimeRev !== expectedRevision) {
+        throw new Error("Runtime layout revision does not match expected build session revision; aborted.");
+      }
+
       if (updatedTruth.completed !== true || (updatedTruth as any).requiresBuild === true) {
         throw new Error("Authoritative home truth indicates build is not completed or still required.");
       }
@@ -221,21 +265,24 @@ export function StarterPropertyOverlay({
         throw new Error("Authoritative home truth does not confirm home ownership.");
       }
 
-      const claimOk = runtime?.claimStarterHome?.(updatedTruth);
+      if (!isCurrent()) return;
+      const claimOk = expectedRuntime?.claimStarterHome?.(updatedTruth);
       if (claimOk === false) {
         throw new Error("Runtime rejected starter home claim.");
       }
-      runtime?.applyBlueprint?.(expectedPlotId, receipt.script);
-      setBuildConfirmed(true);
-      setTruth(updatedTruth);
-      onHomePurchased?.(updatedTruth);
+      expectedRuntime?.applyBlueprint?.(expectedPlotId, receipt.script);
+      if (isCurrent()) {
+        setBuildConfirmed(true);
+        setTruth(updatedTruth);
+        onHomePurchased?.(updatedTruth);
+      }
     } catch (err: any) {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setBuildConfirmed(false);
         setBuildError(err?.message || "Failed to confirm house build");
       }
     } finally {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setBuildPending(false);
       }
     }

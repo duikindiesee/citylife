@@ -260,8 +260,8 @@ export interface DriveHomeArrivalReceipt {
   readonly homeGarageUnlocked: boolean;
   readonly homeGarageUnlockedAt?: string | null;
   readonly vehicleStorageLocation: string;
-  readonly onboardingState: string;
-  readonly alreadyArrived: boolean;
+  readonly onboardingState?: string | null;
+  readonly alreadyArrived?: boolean;
 }
 
 export function parseDriveHomeArrivalReceipt(raw: unknown): DriveHomeArrivalReceipt | null {
@@ -284,8 +284,8 @@ export function parseDriveHomeArrivalReceipt(raw: unknown): DriveHomeArrivalRece
     onboardingState:
       typeof o.onboardingState === "string" && o.onboardingState.trim()
         ? o.onboardingState.trim()
-        : "RESIDENT",
-    alreadyArrived: o.alreadyArrived === true,
+        : null,
+    alreadyArrived: typeof o.alreadyArrived === "boolean" ? o.alreadyArrived : undefined,
   };
 }
 

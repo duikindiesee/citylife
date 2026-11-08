@@ -108,6 +108,16 @@ export function DriveHomeOverlay({
     };
   }, []);
 
+  const operationSeqRef = useRef(0);
+  const currentRuntimeRef = useRef(runtime);
+
+  useEffect(() => {
+    currentRuntimeRef.current = runtime;
+    operationSeqRef.current += 1;
+    setPending(false);
+    setOutcome(undefined);
+  }, [runtime]);
+
   // Subscribe to runtime state changes so physical vehicle movement re-renders guidance and arrival
   useEffect(() => {
     if (!runtime || typeof runtime.subscribe !== "function") return;
@@ -250,6 +260,13 @@ export function DriveHomeOverlay({
       return;
     }
 
+    const opId = ++operationSeqRef.current;
+    const expectedRuntime = runtime;
+    const isCurrent = () =>
+      mountedRef.current &&
+      operationSeqRef.current === opId &&
+      currentRuntimeRef.current === expectedRuntime;
+
     setPending(true);
 
     const carSpec = runtime?.getAuthoritativeCar?.() ?? null;
@@ -271,73 +288,84 @@ export function DriveHomeOverlay({
       frameId,
       vehicleKey,
     }).then(async (result) => {
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       const midAuthUserId = authClient.operator?.userId ?? null;
-      const midRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
-      if (runtime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
-        setPending(false);
-        setOutcome({ kind: "rejected" });
+      const midRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
+        if (isCurrent()) {
+          setPending(false);
+          setOutcome({ kind: "rejected" });
+        }
         return;
       }
       if (!midAuthUserId || midAuthUserId !== startUserId) {
-        setPending(false);
-        setOutcome({ kind: "rejected" });
+        if (isCurrent()) {
+          setPending(false);
+          setOutcome({ kind: "rejected" });
+        }
         return;
       }
 
       if (result.kind !== "confirmed" && result.kind !== "pending") {
-        setPending(false);
-        setOutcome(result);
+        if (isCurrent()) {
+          setPending(false);
+          setOutcome(result);
+        }
         return;
       }
 
       try {
         const fresh = await fetchHomeResidency();
-        if (!mountedRef.current) return;
+        if (!isCurrent()) return;
         const endAuthUserId = authClient.operator?.userId ?? null;
-        const endRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
-        if (runtime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
-          setOutcome({ kind: "rejected" });
+        const endRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+        if (expectedRuntime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }
         if (!endAuthUserId || endAuthUserId !== startUserId) {
-          setOutcome({ kind: "rejected" });
+          if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }
 
-        const endRevision =
-          runtime?.getActiveLayoutRevisionId?.() ??
-          fresh?.truth?.layoutRevision ??
-          null;
-        if (runtime && (!endRevision || endRevision !== startRevision)) {
-          setOutcome({ kind: "rejected" });
+        const currentRuntimeRev = expectedRuntime?.getActiveLayoutRevisionId?.() ?? null;
+        if (expectedRuntime && (!currentRuntimeRev || currentRuntimeRev !== startRevision)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        const freshTruthRev = fresh?.truth?.layoutRevision ?? null;
+        if (!freshTruthRev || (startRevision && freshTruthRev !== startRevision)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }
 
         if (!fresh || fresh.resident !== true) {
-          setOutcome({ kind: "rejected" });
+          if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }
 
-        const freshPlotId = fresh.truth?.plotId;
+        const freshPlotId = fresh.truth?.plotId ?? null;
         if (!freshPlotId || (plotId && freshPlotId !== plotId)) {
-          setOutcome({ kind: "rejected" });
+          if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }
-        const freshFrameId = fresh.truth?.frameId;
-        if (frameId && freshFrameId && freshFrameId !== frameId) {
-          setOutcome({ kind: "rejected" });
+        const freshFrameId = fresh.truth?.frameId ?? null;
+        if (!freshFrameId || (frameId && freshFrameId !== frameId)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
           return;
         }
 
-        setResidency(fresh);
-        setOutcome(result);
+        if (isCurrent()) {
+          setResidency(fresh);
+          setOutcome(result);
+        }
       } catch {
-        if (mountedRef.current) {
+        if (isCurrent()) {
           setOutcome({ kind: "rejected" });
         }
       } finally {
-        if (mountedRef.current) {
+        if (isCurrent()) {
           setPending(false);
         }
       }
