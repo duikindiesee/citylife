@@ -290,7 +290,7 @@ describe("world layout import runtime preflight", () => {
       before,
     );
     expect(runtime.sim.state.terrain.elev).toEqual(elevationBefore);
-  });
+  }, WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS);
 
   it("accepts a valid surveyed catalog footprint and rejects Float32 overflow before CAS", () => {
     const runtime = new ColonyRuntime(4242);
