@@ -279,20 +279,30 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
     : null;
 
   const statusStr = str(o.status);
+  const plotIdStr = str(o.plotId);
+  const layoutRevisionStr = str(o.layoutRevision);
   const isResident =
     o.isResident === true ||
     str(o.arrivalStatus) === "RESIDENT" ||
     statusStr === "RESIDENT";
   const plotOwned = o.plotOwned === true || statusStr === "PLOT_OWNED";
   const serverRequiresBuild = typeof o.requiresBuild === "boolean" ? o.requiresBuild : undefined;
+  const publishedCompletedFromProvider =
+    o.owned === true &&
+    o.plotOwned === true &&
+    serverRequiresBuild === false &&
+    (statusStr === "OWNED" || statusStr === "RESIDENT") &&
+    Boolean(plotIdStr && layoutRevisionStr);
   const completed =
-    o.completed === true ||
-    str(o.buildState) === "COMPLETED" ||
-    (o.owned === true && plotOwned && serverRequiresBuild === false);
+    serverRequiresBuild !== true &&
+    statusStr !== "PLOT_OWNED" &&
+    (o.completed === true ||
+      str(o.buildState) === "COMPLETED" ||
+      publishedCompletedFromProvider);
   const requiresBuild =
-    serverRequiresBuild !== undefined
-      ? serverRequiresBuild
-      : plotOwned && !completed;
+    serverRequiresBuild === true ||
+    statusStr === "PLOT_OWNED" ||
+    (plotOwned && !completed);
 
   return {
     owned: o.owned === true,
@@ -300,11 +310,11 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
     requiresBuild,
     status: statusStr,
     neighbourhoodKey: str(o.neighbourhoodKey),
-    plotId: str(o.plotId),
+    plotId: plotIdStr,
     frameId: str(o.frameId),
     onboardingState: str(o.onboardingState) ?? "NONE",
     priceKco: num(priceRaw),
-    layoutRevision: str(o.layoutRevision),
+    layoutRevision: layoutRevisionStr,
     x: num(o.x),
     y: num(o.y),
     geometry,

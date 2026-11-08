@@ -34,6 +34,7 @@ import {
   projectReturningResidentState,
   loadHouseBuild,
   completeHouseBuild,
+  houseDoor,
   type PublishedPlayerInventory,
   type StarterParcelGeometry,
 } from "../src/colony/home/starterCatalogueClient";
@@ -42,6 +43,9 @@ import { DriveHomeOverlay } from "../src/colony/ui/DriveHomeOverlay";
 import { getAuthClient } from "../src/colony/authClient";
 import { saveBlueprintLocal, clearBlueprintsLocal } from "../src/colony/bot/blueprintStore";
 import { resolveOwnedCar } from "../src/colony/car/ownedCar";
+import { surveyStarterParcels } from "../src/colony/starterParcelSurvey";
+import { cellOk } from "../src/colony/pathfind";
+import { COLONY } from "../src/colony/config";
 
 class MemStorage {
   private m = new Map<string, string>();
@@ -2063,10 +2067,23 @@ describe("Starter catalogue client & returning resident projection", () => {
         homeTruthFetchCountPart1++;
         // Call 1 is runtimeA initial mount load.
         // Call 2 is runtimeA post-arrival authoritative residency readback (held).
-        // Call 3+ is runtimeB initial mount load.
+        // Call 3 is runtimeB initial mount load.
+        // Call 4+ is runtimeB post-arrival residency readback.
         if (homeTruthFetchCountPart1 === 2) {
           finalReadReachedPart1 = true;
           return deferredFinalResidencyPart1.promise;
+        }
+        if (homeTruthFetchCountPart1 >= 4) {
+          return new Response(
+            JSON.stringify({
+              ...homeTruth,
+              resident: true,
+              onboardingState: "RESIDENT",
+              status: "OWNED",
+              homeGarageUnlocked: true,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
         }
         return new Response(JSON.stringify(homeTruth), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -2130,18 +2147,36 @@ describe("Starter catalogue client & returning resident projection", () => {
     const portal = findNode(container, (n: any) => n.getAttribute?.("data-testid") === "home-garage-portal");
     expect(portal, "Old arrival in runtime A must NOT unlock garage portal in runtime B despite valid resident readback").toBeNull();
 
+    // Trigger arrival on runtime B: healthy unmodified production-consumer positive on B succeeds
+    const arriveBtnB = findNode(container, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    expect(arriveBtnB).not.toBeNull();
+    expect(arriveBtnB.disabled).toBe(false);
+    await act(async () => {
+      triggerNodeClick(arriveBtnB);
+    });
+    expect(arrivalPostCount, "Runtime B arrival must send its own arrival POST").toBe(2);
+    const portalB = findNode(container, (n: any) => n.getAttribute?.("data-testid") === "home-garage-portal");
+    expect(portalB, "Runtime B's own arrival must succeed and unlock garage portal on B").not.toBeNull();
+
     // Part 2: Held arrival response followed by unmount
     const deferredPostUnmount = createDeferred<Response>();
     let unmountArrivalPostCount = 0;
-    let onCloseFiredPart2 = false;
+    let postUnmountHomeReadCount = 0;
+    let postArrivalResolvedPart2 = false;
 
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
         unmountArrivalPostCount++;
-        return deferredPostUnmount.promise;
+        return deferredPostUnmount.promise.then((res) => {
+          postArrivalResolvedPart2 = true;
+          return res;
+        });
       }
       if (url.endsWith("/players/me/home")) {
+        if (postArrivalResolvedPart2) {
+          postUnmountHomeReadCount++;
+        }
         return new Response(JSON.stringify(homeTruth), { status: 200 });
       }
       return new Response("{}", { status: 200 });
@@ -2153,9 +2188,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       rootC.render(
         React.createElement(DriveHomeOverlay, {
-          onClose: () => {
-            onCloseFiredPart2 = true;
-          },
+          onClose: () => {},
           runtime: runtimeC as any,
         }),
       );
@@ -2184,7 +2217,152 @@ describe("Starter catalogue client & returning resident projection", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
-    expect(onCloseFiredPart2, "Unmounted arrival overlay must not trigger callback on deferred release").toBe(false);
+    expect(unmountArrivalPostCount).toBe(1);
+    expect(postUnmountHomeReadCount, "Unmounted arrival overlay continuation must exit before fetchHomeResidency").toBe(0);
+
+    // Also test StarterPropertyOverlay unmount while completeHouseBuild POST is held
+    const transform = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } };
+    const builderPlotGeometryPart2: StarterParcelGeometry = {
+      plotId: "coast4_1",
+      worldId: "seed-4242",
+      layoutRevision: "a".repeat(64),
+      neighbourhoodKey: "coast4",
+      parcel: { x: 10, y: 10, width: 10, depth: 10 },
+      houseZone: { x: 12, y: 12, width: 6, depth: 5 },
+      driveway: [{ x: 15, y: 18 }, { x: 15, y: 17 }],
+      roadCells: [{ x: 15, y: 19 }],
+      spawn: { x: 10, y: 20 },
+    };
+    const validScriptPart2 =
+      "house{w:6 d:5 wallH:2 door:s} room{kind:living x:0 y:0 w:4 d:3 win:1} room{kind:bedroom x:4 y:0 w:2 d:3 win:1} room{kind:patio x:0 y:3 w:6 d:2 win:0}";
+    const builderLayoutPart2 = createWorldLayoutDocument({
+      layoutId: "seed-4242",
+      worldId: "seed-4242",
+      seed: 4242,
+      revision: { number: 1, parentHash: "a".repeat(64) },
+      frames: [
+        { id: "surface", address: "spatial://citylife/surface", kind: "region", layer: "surface", transform },
+        { id: "frame-coast4-1", address: "spatial://citylife/surface/region/parcel", kind: "region", layer: "surface", parentId: "surface", transform },
+      ],
+      placements: [],
+      roads: [],
+      ways: [],
+      terrainEdits: [],
+      portals: [],
+    });
+    const layoutRevPart2 = builderLayoutPart2.revision.contentHash;
+    (builderPlotGeometryPart2 as any).layoutRevision = layoutRevPart2;
+    const catalogueManifestPart2 = {
+      published: true,
+      manifest: {
+        schemaVersion: "citylife.starter-parcel-manifest/v1",
+        worldId: "seed-4242",
+        layoutRevision: layoutRevPart2,
+        sourceLayoutRevision: "a".repeat(64),
+        layout: builderLayoutPart2,
+        plots: [
+          {
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            geometry: builderPlotGeometryPart2,
+          },
+        ],
+      },
+    };
+
+    const deferredBuildUnmount = createDeferred<Response>();
+    let unmountBuildPostCount = 0;
+    let unmountTruthReadCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart2), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          unmountBuildPostCount++;
+          return deferredBuildUnmount.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart2,
+            geometry: builderPlotGeometryPart2,
+            completed: false,
+            script: validScriptPart2,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        if (unmountBuildPostCount > 0) unmountTruthReadCount++;
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            neighbourhoodKey: "coast4",
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart2,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const unmountRuntime = createMockRuntime("user-alice", layoutRevPart2);
+    unmountRuntime.claimStarterHome = vi.fn();
+    unmountRuntime.applyBlueprint = vi.fn();
+    const onPurchasedSpy = vi.fn();
+    const containerUnmount = (globalThis as any).document.createElement("div");
+    const rootUnmount = createRoot(containerUnmount);
+    await act(async () => {
+      rootUnmount.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          onHomePurchased: onPurchasedSpy,
+          runtime: unmountRuntime as any,
+        }),
+      );
+    });
+    const startBuildBtnUnmount = findNode(containerUnmount, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(startBuildBtnUnmount);
+    });
+    const submitBtnUnmount = findNode(containerUnmount, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(submitBtnUnmount);
+    });
+    expect(unmountBuildPostCount).toBe(1);
+
+    await act(async () => {
+      rootUnmount.unmount();
+    });
+    deferredBuildUnmount.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          layoutRevision: layoutRevPart2,
+          geometry: builderPlotGeometryPart2,
+          completed: true,
+          script: validScriptPart2,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(unmountRuntime.claimStarterHome, "Unmounted builder must not claim home").not.toHaveBeenCalled();
+    expect(unmountRuntime.applyBlueprint, "Unmounted builder must not apply blueprint").not.toHaveBeenCalled();
+    expect(onPurchasedSpy, "Unmounted builder must not call onHomePurchased").not.toHaveBeenCalled();
+    expect(unmountTruthReadCount, "Unmounted builder must not re-read home truth").toBe(0);
 
     // Part 3: Auth-only switch while runtime still reports A
     currentAuthUser = "user-alice";
@@ -2600,6 +2778,239 @@ describe("Starter catalogue client & returning resident projection", () => {
         { status: 200 },
       ),
     );
+    // Same-object revision change with held arrival denial:
+    // Arrival starts on rev-coast4-v1, revision changes to rev-coast4-v2 on same runtime,
+    // held arrival resolves with 422 denial. Old denial must NOT write data-arrival-state="rejected"!
+    const runtimeSameRev = createMockRuntime("user-alice", "rev-coast4-v1");
+    const deferredArrivalDenial = createDeferred<Response>();
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        return deferredArrivalDenial.promise;
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(JSON.stringify(homeTruth), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const containerSameRev = (globalThis as any).document.createElement("div");
+    const rootSameRev = createRoot(containerSameRev);
+    await act(async () => {
+      rootSameRev.render(
+        React.createElement(DriveHomeOverlay, {
+          onClose: () => {},
+          runtime: runtimeSameRev as any,
+        }),
+      );
+    });
+    const arriveBtnSameRev = findNode(containerSameRev, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    await act(async () => {
+      triggerNodeClick(arriveBtnSameRev);
+    });
+    // Revision changes on same runtime object
+    await act(async () => {
+      runtimeSameRev.setRev("rev-coast4-v2");
+      runtimeSameRev.notify();
+    });
+    // Held arrival resolves with 422 denial
+    deferredArrivalDenial.resolve(
+      new Response(JSON.stringify({ kind: "rejected" }), { status: 422 }),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const arrivalState = containerSameRev.getAttribute?.("data-arrival-state") ??
+      findNode(containerSameRev, (n: any) => n.getAttribute?.("data-arrival-state") === "rejected");
+    expect(arrivalState, "Stale denial across same-object revision change must NOT write rejected outcome").toBeNull();
+
+    // Same-object revision change with held builder submission:
+    // Builder starts on rev-coast4-v1, revision changes to rev-coast4-v2 on same runtime,
+    // held builder POST resolves with 500 error. Old error must NOT write home-builder-error!
+    const runtimeSameBuildRev = createMockRuntime("user-alice", "rev-coast4-v1");
+    const deferredBuildErr = createDeferred<Response>();
+    deferredBuildErr.promise.catch(() => {});
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          return deferredBuildErr.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: false,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const containerBuildSameRev = (globalThis as any).document.createElement("div");
+    const rootBuildSameRev = createRoot(containerBuildSameRev);
+    await act(async () => {
+      rootBuildSameRev.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: runtimeSameBuildRev as any,
+        }),
+      );
+    });
+    const startBuildBtnSame = findNode(containerBuildSameRev, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(startBuildBtnSame);
+    });
+    const submitBtnSame = findNode(containerBuildSameRev, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(submitBtnSame);
+    });
+    // Revision changes on same runtime
+    await act(async () => {
+      runtimeSameBuildRev.setRev("rev-coast4-v2");
+      runtimeSameBuildRev.notify();
+    });
+    // Held builder rejects with error
+    deferredBuildErr.reject(new Error("Network 500 error"));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const errNodeSameRev = findNode(containerBuildSameRev, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
+    expect(errNodeSameRev, "Stale builder error across same-object revision change must NOT write error").toBeNull();
+
+    // StarterPropertyOverlay older-finally vs newer-pending protection:
+    const deferredBuildOp1 = createDeferred<Response>();
+    deferredBuildOp1.promise.catch(() => {});
+    const deferredBuildOp2 = createDeferred<Response>();
+    deferredBuildOp2.promise.catch(() => {});
+    let buildCallCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/starter-catalogue")) {
+        return new Response(JSON.stringify(catalogueManifestPart4), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/home/build")) {
+        if (init?.method === "POST") {
+          buildCallCount++;
+          return buildCallCount === 1 ? deferredBuildOp1.promise : deferredBuildOp2.promise;
+        }
+        return new Response(
+          JSON.stringify({
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            geometry: builderPlotGeometry,
+            completed: false,
+            script: validScript,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            owned: false,
+            status: "PLOT_OWNED",
+            plotOwned: true,
+            requiresBuild: true,
+            plotId: "coast4_1",
+            frameId: "frame-coast4-1",
+            layoutRevision: layoutRevPart4,
+            priceKco: 10000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const runtimeBuildFinallyA = createMockRuntime("user-alice", layoutRevPart4);
+    const runtimeBuildFinallyB = createMockRuntime("user-alice", layoutRevPart4);
+    const containerBuildFinally = (globalThis as any).document.createElement("div");
+    const rootBuildFinally = createRoot(containerBuildFinally);
+    await act(async () => {
+      rootBuildFinally.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: runtimeBuildFinallyA as any,
+        }),
+      );
+    });
+    const startBuildBtnFinA = findNode(containerBuildFinally, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(startBuildBtnFinA);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const submitBuildBtnFinA = findNode(containerBuildFinally, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(submitBuildBtnFinA);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(buildCallCount).toBe(1);
+
+    // Rerender with runtimeBuildFinallyB (invalidates Op 1, resets build state for B)
+    await act(async () => {
+      rootBuildFinally.render(
+        React.createElement(StarterPropertyOverlay, {
+          onClose: () => {},
+          runtime: runtimeBuildFinallyB as any,
+        }),
+      );
+    });
+    const startBuildBtnFinB = findNode(containerBuildFinally, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
+    await act(async () => {
+      triggerNodeClick(startBuildBtnFinB);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const submitBuildBtnFinB = findNode(containerBuildFinally, (n: any) => n.getAttribute?.("data-testid") === "home-builder-submit");
+    await act(async () => {
+      triggerNodeClick(submitBuildBtnFinB);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(buildCallCount).toBe(2);
+    expect(submitBuildBtnFinB.disabled).toBe(true);
+
+    // Reject Op 1
+    deferredBuildOp1.reject(new Error("Op 1 network failure"));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    // Op 2 must still be pending!
+    expect(submitBuildBtnFinB.disabled, "Older build finally block must NOT clear newer build pending state").toBe(true);
+
+    // Clean up Op 2
+    deferredBuildOp2.resolve(
+      new Response(
+        JSON.stringify({
+          plotId: "coast4_1",
+          frameId: "frame-coast4-1",
+          layoutRevision: layoutRevPart4,
+          geometry: builderPlotGeometry,
+          completed: true,
+          script: validScript,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
@@ -2924,28 +3335,72 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(builderErrorNode, "Missing frameId in final truth must display error").not.toBeNull();
     expect(builderRuntime.claimStarterHome).not.toHaveBeenCalled();
 
-    // Subtest R2-E: Real Production Producer Positive
-    // Runtime exposes formatted CAS token `wl:v1:1:${layoutRevR1}`
-    // Catalogue manifest exposes bare content hash `${layoutRevR1}`
-    // Server returns the EXACT 10-field HomeTruthResponse from CitylifeHomePurchaseController.java:
-    // (owned: true, status: "OWNED", plotOwned: true, requiresBuild: false, layoutRevision: layoutRevR1, etc.)
-    // WITHOUT injecting client-only fields (completed: true, geometry, etc.)
+    // Subtest R2-E: Real Production Producer Positive with Actual ColonyRuntime
+    // 1. Construct real canonical document from ColonyRuntime survey on COLONY.render.seed
+    const surveyRt = new ColonyRuntime(COLONY.render.seed, { surveyOnly: true });
+    const realCanonicalDoc = surveyRt.captureWorldLayout();
+    const surfaceFrame = realCanonicalDoc.frames.find((f: any) => f.kind === "region" && f.layer === "surface")!;
+
+    const survey = surveyStarterParcels({
+      worldId: realCanonicalDoc.worldId,
+      layoutRevision: realCanonicalDoc.revision.contentHash,
+      parcels: surveyRt.lots(),
+      roads: surveyRt.sim.state.roads,
+      groundClear: (c) => cellOk(surveyRt.sim.state.terrain, c.x, c.y),
+    });
+    expect(survey.candidates.length).toBeGreaterThan(0);
+    const realPlot = survey.candidates[0]!;
+
+    const actualColonyRuntime = new ColonyRuntime(COLONY.render.seed, { initialWorldLayout: realCanonicalDoc });
+    actualColonyRuntime.setOperatorUserId("user-alice");
+    const citizen = (actualColonyRuntime as any).citizens?.list?.()[0];
+    if (citizen) {
+      vi.spyOn(actualColonyRuntime as any, "operatorCitizenId").mockReturnValue(citizen.id);
+    }
+
+    // Boundary assertion: runtime exposes formatted CAS token `wl:v1:1:${canonicalHash}`
+    // while catalogue manifest and provider DTO expose bare content hash `${canonicalHash}`
+    const expectedRuntimeToken = `wl:v1:${realCanonicalDoc.revision.number}:${realCanonicalDoc.revision.contentHash}`;
+    expect(actualColonyRuntime.getActiveLayoutRevisionId()).toBe(expectedRuntimeToken);
+
+    const doorE = houseDoor(realPlot);
+    const hzE = realPlot.houseZone;
+    const validScriptE = `house{w:${hzE.width} d:${hzE.depth} wallH:2 door:${doorE}} room{kind:living x:0 y:0 w:${hzE.width} d:${hzE.depth} win:1}`;
+
+    const catalogueManifestE = {
+      published: true,
+      manifest: {
+        schemaVersion: "citylife.starter-parcel-manifest/v1",
+        worldId: realCanonicalDoc.worldId,
+        layoutRevision: realCanonicalDoc.revision.contentHash, // bare 64-hex hash
+        sourceLayoutRevision: realCanonicalDoc.revision.parentHash,
+        layout: realCanonicalDoc,
+        plots: [
+          {
+            plotId: realPlot.plotId,
+            frameId: surfaceFrame.id,
+            geometry: realPlot,
+          },
+        ],
+      },
+    };
+
     let producerPostCount = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/starter-catalogue")) {
-        return new Response(JSON.stringify(catalogueManifest), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify(catalogueManifestE), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (url.endsWith("/home/build")) {
         if (init?.method === "POST") producerPostCount++;
         return new Response(
           JSON.stringify({
-            plotId: "coast4_1",
-            frameId: "frame-coast4-1",
-            layoutRevision: layoutRevR1,
-            geometry: builderPlotGeometry,
+            plotId: realPlot.plotId,
+            frameId: surfaceFrame.id,
+            layoutRevision: realCanonicalDoc.revision.contentHash,
+            geometry: realPlot,
             completed: producerPostCount > 0,
-            script: validScript,
+            script: validScriptE,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -2957,13 +3412,13 @@ describe("Starter catalogue client & returning resident projection", () => {
             JSON.stringify({
               owned: true,
               status: "OWNED",
-              neighbourhoodKey: "coast4",
-              plotId: "coast4_1",
+              neighbourhoodKey: realPlot.neighbourhoodKey,
+              plotId: realPlot.plotId,
               onboardingState: "RESIDENT",
               plotOwned: true,
               requiresBuild: false,
-              frameId: "frame-coast4-1",
-              layoutRevision: layoutRevR1,
+              frameId: surfaceFrame.id,
+              layoutRevision: realCanonicalDoc.revision.contentHash, // bare 64-hex hash
               priceKco: 10000,
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
@@ -2973,13 +3428,13 @@ describe("Starter catalogue client & returning resident projection", () => {
           JSON.stringify({
             owned: false,
             status: "PLOT_OWNED",
-            neighbourhoodKey: "coast4",
-            plotId: "coast4_1",
+            neighbourhoodKey: realPlot.neighbourhoodKey,
+            plotId: realPlot.plotId,
             onboardingState: "ONBOARDING",
             plotOwned: true,
             requiresBuild: true,
-            frameId: "frame-coast4-1",
-            layoutRevision: layoutRevR1,
+            frameId: surfaceFrame.id,
+            layoutRevision: realCanonicalDoc.revision.contentHash, // bare 64-hex hash
             priceKco: 10000,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -2988,17 +3443,10 @@ describe("Starter catalogue client & returning resident projection", () => {
       return new Response("{}", { status: 200 });
     });
 
-    const realProducerRuntime: any = {
-      getOperatorUserId: () => "user-alice",
-      getActiveLayoutRevisionId: () => `wl:v1:1:${layoutRevR1}`,
-      claimStarterHome: vi.fn().mockReturnValue(true),
-      applyBlueprint: vi.fn().mockReturnValue(true),
-      subscribe: () => () => {},
-    };
     const containerE = (globalThis as any).document.createElement("div");
     const rootE = createRoot(containerE);
     await act(async () => {
-      rootE.render(React.createElement(StarterPropertyOverlay, { onClose: () => {}, runtime: realProducerRuntime }));
+      rootE.render(React.createElement(StarterPropertyOverlay, { onClose: () => {}, runtime: actualColonyRuntime }));
     });
     const startBuildBtnE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-build-start-btn");
     expect(startBuildBtnE).not.toBeNull();
@@ -3012,21 +3460,95 @@ describe("Starter catalogue client & returning resident projection", () => {
     });
 
     expect(producerPostCount).toBe(1);
-    expect(realProducerRuntime.claimStarterHome).toHaveBeenCalledWith(
-      expect.objectContaining({
-        plotId: "coast4_1",
-        completed: true,
-        requiresBuild: false,
-        owned: true,
-      }),
-    );
-    expect(realProducerRuntime.applyBlueprint).toHaveBeenCalledWith("coast4_1", validScript);
     const confirmedNodeE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-builder-confirmed");
-    expect(confirmedNodeE, "Real production producer 10-field response must confirm build").not.toBeNull();
+    expect(confirmedNodeE, "Real production producer 10-field response must confirm build on actual ColonyRuntime").not.toBeNull();
     const errorNodeE = findNode(containerE, (n: any) => n.getAttribute?.("data-testid") === "home-builder-error");
     expect(errorNodeE).toBeNull();
+    expect(actualColonyRuntime.hasOperatorHome(), "ColonyRuntime must record operator home").toBe(true);
+    const assignedLotE = actualColonyRuntime.lots().find((l) => l.id === realPlot.plotId);
+    expect(assignedLotE?.blueprint).toBe(validScriptE);
 
-    // Subtest R2-F: Discriminating negative for contradictory requiresBuild: true
+    // Also mount DriveHomeOverlay with actualColonyRuntime
+    actualColonyRuntime.setOperatorUserId("user-alice");
+    actualColonyRuntime.setAuthoritativeOwnedVehicle({
+      id: "showroom:karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: realPlot.spawn.x,
+      y: realPlot.spawn.y,
+      heading: 0,
+    });
+    let arrivalPostCountE = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/home-deed/drive-home-arrival") || url.includes("/home/arrival")) {
+        arrivalPostCountE++;
+        return new Response(
+          JSON.stringify({
+            plotId: realPlot.plotId,
+            frameId: surfaceFrame.id,
+            homeGarageUnlocked: true,
+            vehicleStorageLocation: "HOME",
+            onboardingState: "RESIDENT",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/players/me/home")) {
+        return new Response(
+          JSON.stringify({
+            owned: true,
+            status: "OWNED",
+            neighbourhoodKey: realPlot.neighbourhoodKey,
+            plotId: realPlot.plotId,
+            onboardingState: arrivalPostCountE > 0 ? "RESIDENT" : "ONBOARDING",
+            plotOwned: true,
+            requiresBuild: false,
+            frameId: surfaceFrame.id,
+            layoutRevision: realCanonicalDoc.revision.contentHash, // bare 64-hex hash
+            priceKco: 10000,
+            resident: arrivalPostCountE > 0,
+            homeGarageUnlocked: arrivalPostCountE > 0,
+            geometry: realPlot,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    const containerDriveE = (globalThis as any).document.createElement("div");
+    const rootDriveE = createRoot(containerDriveE);
+    await act(async () => {
+      rootDriveE.render(React.createElement(DriveHomeOverlay, { onClose: () => {}, runtime: actualColonyRuntime }));
+    });
+    const arriveBtnDriveE = findNode(containerDriveE, (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive");
+    expect(arriveBtnDriveE).not.toBeNull();
+    expect(arriveBtnDriveE.disabled).toBe(false);
+    await act(async () => {
+      triggerNodeClick(arriveBtnDriveE);
+    });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 25));
+      });
+    }
+    expect(arrivalPostCountE).toBe(1);
+    const portalE = findNode(containerDriveE, (n: any) => n.getAttribute?.("data-testid") === "home-garage-portal");
+    expect(portalE, "Actual ColonyRuntime arrival with CAS token runtime and bare truth hash must unlock portal").not.toBeNull();
+
+    // Subtest R2-F: Discriminating negative for contradictory requiresBuild: true and status: "PLOT_OWNED"
+    // 1. Direct unit check on parseHomeTruth
+    const truthContradictory = parseHomeTruth({
+      owned: true,
+      status: "PLOT_OWNED",
+      plotOwned: true,
+      requiresBuild: false,
+      plotId: "coast4_1",
+      layoutRevision: layoutRevR1,
+    });
+    expect(truthContradictory?.completed, "status PLOT_OWNED must never be marked completed").toBe(false);
+    expect(truthContradictory?.requiresBuild, "status PLOT_OWNED must require build").toBe(true);
+
     let negativePostCount = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -3114,7 +3636,7 @@ describe("Starter catalogue client & returning resident projection", () => {
     expect(errorNodeF, "Contradictory requiresBuild: true must display error").not.toBeNull();
 
     vi.unstubAllGlobals();
-  });
+  }, 120_000);
 });
 
 

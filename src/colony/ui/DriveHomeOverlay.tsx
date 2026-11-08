@@ -274,8 +274,9 @@ export function DriveHomeOverlay({
       return;
     }
 
+    const startRuntimeRev = runtime?.getActiveLayoutRevisionId?.() ?? null;
     const startRevision =
-      runtime?.getActiveLayoutRevisionId?.() ??
+      startRuntimeRev ??
       residency?.truth?.layoutRevision ??
       null;
 
@@ -302,33 +303,39 @@ export function DriveHomeOverlay({
       frameId,
       vehicleKey,
     }).then(async (result) => {
-      if (!isCurrent()) return;
-      const midAuthUserId = authClient.operator?.userId ?? null;
-      const midRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
-      if (expectedRuntime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
-        if (isCurrent()) {
-          setPending(false);
-          setOutcome({ kind: "rejected" });
-        }
-        return;
-      }
-      if (!midAuthUserId || midAuthUserId !== startUserId) {
-        if (isCurrent()) {
-          setPending(false);
-          setOutcome({ kind: "rejected" });
-        }
-        return;
-      }
-
-      if (result.kind !== "confirmed" && result.kind !== "pending") {
-        if (isCurrent()) {
-          setPending(false);
-          setOutcome(result);
-        }
-        return;
-      }
-
       try {
+        if (!isCurrent()) return;
+        const midAuthUserId = authClient.operator?.userId ?? null;
+        const midRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+        if (expectedRuntime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
+          if (isCurrent()) {
+            setOutcome({ kind: "rejected" });
+          }
+          return;
+        }
+        if (!midAuthUserId || midAuthUserId !== startUserId) {
+          if (isCurrent()) {
+            setOutcome({ kind: "rejected" });
+          }
+          return;
+        }
+
+        const midRuntimeRev = expectedRuntime?.getActiveLayoutRevisionId?.() ?? null;
+        if (expectedRuntime && startRuntimeRev !== null && midRuntimeRev !== startRuntimeRev) {
+          if (result.kind !== "confirmed" && result.kind !== "pending") {
+            return;
+          }
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        if (result.kind !== "confirmed" && result.kind !== "pending") {
+          if (isCurrent()) {
+            setOutcome(result);
+          }
+          return;
+        }
+
         const fresh = await fetchHomeResidency();
         if (!isCurrent()) return;
         const endAuthUserId = authClient.operator?.userId ?? null;

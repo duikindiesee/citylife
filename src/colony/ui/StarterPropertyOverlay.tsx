@@ -188,6 +188,16 @@ export function StarterPropertyOverlay({
       if (!currentAuthUserId || currentAuthUserId !== startUserId) {
         throw new Error("Account changed during house build; aborted.");
       }
+      const currentRuntimeRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (startRuntimeRev && (!currentRuntimeRev || currentRuntimeRev !== startRuntimeRev)) {
+        throw new Error("Runtime layout revision changed during house build; aborted.");
+      }
+      if (currentRuntimeRev && session.context.layoutRevision && !layoutRevisionsMatch(currentRuntimeRev, session.context.layoutRevision)) {
+        throw new Error("Runtime layout revision does not match expected build session revision; aborted.");
+      }
       if (isCurrent()) {
         setBuildSession(session);
         setBuildScript(
@@ -249,6 +259,13 @@ export function StarterPropertyOverlay({
       }
       if (!midAuthUserId || midAuthUserId !== startUserId) {
         throw new Error("Account changed during house build; aborted.");
+      }
+      const midRuntimeRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (startRuntimeRev && (!midRuntimeRev || midRuntimeRev !== startRuntimeRev)) {
+        throw new Error("Runtime layout revision changed during house build; aborted.");
       }
 
       const updatedTruth = await fetchHomeTruth();

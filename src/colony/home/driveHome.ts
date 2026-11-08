@@ -102,11 +102,19 @@ export function dealershipStartCell(truth: HomeTruth | null): Cell | null {
   const home = homeTargetCell(truth);
   if (!home) return null;
   const off = DEALERSHIP_OFFSET_CELLS;
+  const effectiveGrid = Math.max(
+    STARTER_PLACEMENT_GRID,
+    home.x + off + 1,
+    home.y + off + 1,
+  );
   // Offset toward whichever side has room to stay in-grid; the fixed magnitude keeps it outside the
   // arrival radius (a real drive) without ever leaving the bounded grid.
   const dx = home.x >= off ? -off : off;
   const dy = home.y >= off ? -off : off;
-  return { x: clampToGrid(home.x + dx), y: clampToGrid(home.y + dy) };
+  return {
+    x: clampToGrid(home.x + dx, effectiveGrid),
+    y: clampToGrid(home.y + dy, effectiveGrid),
+  };
 }
 
 // ── Driving guidance (pure) ─────────────────────────────────────────────────────────
@@ -248,8 +256,17 @@ export function boundedArrivalEvidence(
   current: Cell,
   home: Cell,
   radius = ARRIVAL_RADIUS_CELLS,
+  grid?: number,
 ): ArrivalEvidence {
-  const cell = clampCell(current);
+  const effectiveGrid =
+    typeof grid === "number" && grid > 0
+      ? grid
+      : Math.max(
+          STARTER_PLACEMENT_GRID,
+          home.x + radius + 1,
+          home.y + radius + 1,
+        );
+  const cell = clampCell(current, effectiveGrid);
   return { cell, withinBounds: isWithinArrivalBounds(cell, home, radius) };
 }
 
