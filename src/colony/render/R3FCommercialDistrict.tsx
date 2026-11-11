@@ -12,6 +12,10 @@ import { leveledWorldY } from "./terrainLeveling";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { commercialSignature } from "./simSignals";
 import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
+import {
+  applyDesertPavilionEnvMap,
+  bakeDesertPavilionEnvMap,
+} from "./garagePavilionLook";
 
 // Spec 175 / Spec 135 — the commercial district in v3.
 // Mounts the district layer and replaces the placeholder box cars in the showroom
@@ -134,6 +138,37 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
       SHOWROOM_VEHICLES[1]?.rotationOffset,
       0.262,
     );
+
+    // Blue hatch on the lift, length across the opening so the apron sees its side.
+    replaceCar(
+      "garageAnchorBayLiftCar",
+      vonk.scene,
+      SHOWROOM_VEHICLES[0]?.spec.paint,
+      SHOWROOM_VEHICLES[0]?.rotationOffset,
+      0.255,
+    );
+
+    const env = layerGroup.userData.desertPavilionEnvMap as
+      | THREE.Texture
+      | undefined;
+    if (env) {
+      for (const name of ["garageAnchorShowroomHeroCar", "garageAnchorBayLiftCar"]) {
+        layerGroup.getObjectByName(name)?.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mats = Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material];
+          for (const m of mats) {
+            const mat = m as THREE.MeshStandardMaterial;
+            if (!mat?.isMeshStandardMaterial) continue;
+            mat.envMap = env;
+            mat.envMapIntensity = mat.envMapIntensity || 0.55;
+            mat.needsUpdate = true;
+          }
+        });
+      }
+    }
   }, [layerGroup, vonk.scene, kaap.scene, x19.scene]);
 
   // Spec 176: Smooth continuous turntable rotation for the hero presentation display
@@ -199,6 +234,18 @@ export function R3FCommercialDistrict({
     },
     [layer],
   );
+
+  useEffect(() => {
+    if (!layer) return;
+    const env = bakeDesertPavilionEnvMap(gl);
+    if (!env) return;
+    layer.group.userData.desertPavilionEnvMap = env;
+    applyDesertPavilionEnvMap(layer.group, env);
+    return () => {
+      env.dispose();
+      delete layer.group.userData.desertPavilionEnvMap;
+    };
+  }, [layer, gl]);
 
   useFrame(() => {
     if (!layer) return;

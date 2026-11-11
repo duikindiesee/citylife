@@ -124,6 +124,64 @@ export function garageAnchorNightFloorEmissive(daylight: number): number {
   return 0.12 + (1 - d) * 0.93;
 }
 
+/** Fraction of the bay-door width from the opening centre to each lift post.
+ *  High enough that the posts sit by the jambs and a centred car stays in clear view. */
+export const GARAGE_LIFT_POST_SPREAD = 0.44;
+
+export interface GarageAuthoredEmissive {
+  readonly night: number;
+  readonly day: number;
+}
+
+/**
+ * Night curve for garage materials.
+ * Untagged materials keep the legacy absolute curve (noon 0.12, full dark 1.05).
+ * Tagged materials keep their authored night intensity and dim toward `day` at noon,
+ * so a ceiling strip authored at 2.3 is not flattened to 1.05 after dark.
+ */
+export function blendGarageEmissive(
+  daylight: number,
+  authored?: GarageAuthoredEmissive | null,
+): number {
+  const curve = garageAnchorNightFloorEmissive(daylight);
+  if (!authored) return curve;
+  const dayCurve = garageAnchorNightFloorEmissive(1);
+  const nightCurve = garageAnchorNightFloorEmissive(0);
+  const span = nightCurve - dayCurve;
+  const u = span === 0 ? 0 : (curve - dayCurve) / span;
+  return authored.day + (authored.night - authored.day) * u;
+}
+
+export interface ApproachPole {
+  readonly id: "forecourt_light_pole_west";
+  readonly x: number;
+  readonly z: number;
+}
+
+/**
+ * The lamp pole stands on the far west edge of the parking apron, outside the
+ * showroom glass and far from the open bay. An east pole would sit in the bay
+ * approach, which the collision tests forbid. Nudged along the flank when the
+ * corner pylon already occupies that edge.
+ */
+export function garageApproachPolePositions(
+  model: Pick<
+    GarageAnchorShellModel,
+    "showroom" | "forecourt" | "pylon" | "footprint"
+  >,
+): ApproachPole[] {
+  const z = model.forecourt.frontOffset;
+  const west = Math.max(
+    model.showroom.x - model.showroom.w / 2 - 0.22,
+    -model.footprint.w / 2 + 0.18,
+  );
+  const clearZ =
+    Math.hypot(west - model.pylon.x, z - model.pylon.z) < 0.85
+      ? model.pylon.z - 1.2
+      : z;
+  return [{ id: "forecourt_light_pole_west", x: west, z: clearZ }];
+}
+
 /** Transform grid coordinate (gx, gy) to asset-local coordinate (lx, lz). */
 export function localFromGridCoordinates(
   garagePad: Pick<GaragePad, "x" | "y" | "w" | "h" | "facingAngle">,
@@ -623,7 +681,7 @@ export function buildGarageAnchorShellModel(
       id: "lift_post_left",
       kind: "lift_post",
       shape: "box",
-      x: serviceBay.x - serviceBay.bayDoorW * 0.38,
+      x: serviceBay.x - serviceBay.bayDoorW * GARAGE_LIFT_POST_SPREAD,
       z: bayFaceZ - serviceBay.d * 0.26,
       y: serviceBay.h * 0.32,
       w: 0.2,
@@ -634,7 +692,7 @@ export function buildGarageAnchorShellModel(
       id: "lift_post_right",
       kind: "lift_post",
       shape: "box",
-      x: serviceBay.x + serviceBay.bayDoorW * 0.38,
+      x: serviceBay.x + serviceBay.bayDoorW * GARAGE_LIFT_POST_SPREAD,
       z: bayFaceZ - serviceBay.d * 0.26,
       y: serviceBay.h * 0.32,
       w: 0.2,
@@ -655,21 +713,27 @@ export function buildGarageAnchorShellModel(
       h: pylon.h,
     },
 
-    // --- Forecourt Perimeter Lighting Pole ---
-    // Placed strictly on the far western perimeter curb corner, completely clear of all vehicle driving paths.
-    // The old stanchion on the east side (which blocked the service bay entrance) is eliminated!
-    {
-      id: "forecourt_light_pole_west",
-      kind: "pole",
-      shape: "cylinder",
-      x: -forecourt.w / 2 + 0.4,
-      z: forecourt.frontOffset + forecourt.d / 2 - 0.3,
-      y: 2.1,
-      w: 0.25,
-      d: 0.25,
-      h: 4.2,
-      radius: 0.12,
-    },
+    // Lamp poles at the outer edges of the frontage, clear of the showroom glass
+    // and the open bay. See garageApproachPolePositions.
+    ...garageApproachPolePositions({
+      showroom,
+      forecourt,
+      pylon,
+      footprint,
+    }).map(
+      (pole): GarageObstacle => ({
+        id: pole.id,
+        kind: "pole",
+        shape: "cylinder",
+        x: pole.x,
+        z: pole.z,
+        y: 2.1,
+        w: 0.2,
+        d: 0.2,
+        h: 4.2,
+        radius: 0.09,
+      }),
+    ),
   ];
 
   return {

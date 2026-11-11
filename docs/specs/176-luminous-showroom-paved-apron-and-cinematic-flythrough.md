@@ -1,5 +1,7 @@
 # Spec 176 — Luminous Showroom Pavilion, Paved Entrance Apron, Road Flora Clearance, and Cinematic Boot Flythrough
 
+Appearance of the pavilion glass, mullions, floor, ceiling, and workshop palette moved to spec 179. The night-lighting intent below still holds. As of spec 179 the shared night curve no longer overwrites every authored emissive intensity.
+
 - status: built
 - proposed-by: Antigravity (operator request)
 - date: 2026-09-30
