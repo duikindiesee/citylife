@@ -40,12 +40,13 @@ repo, on protected `main` (PRs + review only).
 14. **[specs/176-luminous-showroom-paved-apron-and-cinematic-flythrough.md](specs/176-luminous-showroom-paved-apron-and-cinematic-flythrough.md)** — Luminous showroom pavilion, paved entrance apron, road flora clearance, and cinematic boot flythrough.
 15. **[specs/177-commercial-garage-rebuild-discrete-surfaces-and-obstacles.md](specs/177-commercial-garage-rebuild-discrete-surfaces-and-obstacles.md)** — Commercial garage rebuild with discrete surfaces, obstacle colliders, swept footprint collision, and flush road apron.
 16. **[specs/178-multiplayer-free-drive-and-racing-websockets.md](specs/178-multiplayer-free-drive-and-racing-websockets.md)** — Multiplayer free drive and racing over WebSockets, real-time pose multicast, 3D remote vehicle rendering, and status HUD.
-17. **[tasks/thermal-performance-backlog.md](tasks/thermal-performance-backlog.md)** — Thermal load management, background tab frame throttling, and optional eco-mode limiter backlog.
-18. **[tasks/night-lighting-reflection-backlog.md](tasks/night-lighting-reflection-backlog.md)** — Night lighting calibration, road surface specular reflection, and bloom attenuation backlog.
-19. **[incidents/INCIDENT-2026-09-30-production-pod-drift.md](incidents/INCIDENT-2026-09-30-production-pod-drift.md)** — Production drift investigation, served bundle reconciliation, and recovery proposal.
-20. **[tasks/next-build-acceptance-blockers.md](tasks/next-build-acceptance-blockers.md)** — Next-build acceptance blockers resolution: showroom geometry clearance, coastal road grounding, testing diagnostic HUD, top-bar UI integration, and wallet/purchase edge-case hardening.
-21. **[tasks/bus-transit-stop-alignment-and-rider-flow.md](tasks/bus-transit-stop-alignment-and-rider-flow.md)** — Bus transit route alignment to 3D ribbon roads, stop furniture verge calibration, and automated next-stop rider onboarding/offboarding flow.
-22. **[tasks/road-intersections-and-signal-poles.md](tasks/road-intersections-and-signal-poles.md)** — Road intersection geometry, safe verge clearance for signal poles, and crosswalk termination pruning.
+17. **[specs/179-desert-showroom-pavilion.md](specs/179-desert-showroom-pavilion.md)** — Low-poly desert restyle of the Gearbox Auto Hub pavilion and a clear view into the open-bay workshop.
+18. **[tasks/thermal-performance-backlog.md](tasks/thermal-performance-backlog.md)** — Thermal load management, background tab frame throttling, and optional eco-mode limiter backlog.
+19. **[tasks/night-lighting-reflection-backlog.md](tasks/night-lighting-reflection-backlog.md)** — Night lighting calibration, road surface specular reflection, and bloom attenuation backlog.
+20. **[incidents/INCIDENT-2026-09-30-production-pod-drift.md](incidents/INCIDENT-2026-09-30-production-pod-drift.md)** — Production drift investigation, served bundle reconciliation, and recovery proposal.
+21. **[tasks/next-build-acceptance-blockers.md](tasks/next-build-acceptance-blockers.md)** — Next-build acceptance blockers resolution: showroom geometry clearance, coastal road grounding, testing diagnostic HUD, top-bar UI integration, and wallet/purchase edge-case hardening.
+22. **[tasks/bus-transit-stop-alignment-and-rider-flow.md](tasks/bus-transit-stop-alignment-and-rider-flow.md)** — Bus transit route alignment to 3D ribbon roads, stop furniture verge calibration, and automated next-stop rider onboarding/offboarding flow.
+23. **[tasks/road-intersections-and-signal-poles.md](tasks/road-intersections-and-signal-poles.md)** — Road intersection geometry, safe verge clearance for signal poles, and crosswalk termination pruning.
 
 ---
 
