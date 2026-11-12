@@ -232,7 +232,9 @@ describe("WB.1c authoritative placement parity", () => {
     });
     expect(invalidRuntime).toEqual(invalidPure);
     expect(failureCodes(invalidRuntime)).toContain("WATER_FORBIDDEN");
-  }, 20_000);
+    // ColonyRuntime(4242) is the cost. The suite default is 60s because that boot
+    // overruns a 20s cap when the unit pool is under load (CI run 43223508842).
+  }, 60_000);
 
   it("commits one aliased runtime plot, maps it once, and rejects a stale replay", () => {
     const runtime = new ColonyRuntime(4242);
@@ -318,5 +320,6 @@ describe("WB.1c authoritative placement parity", () => {
     expect(staleReplay.reason).toBe("stale-revision");
     expect(failureCodes(staleReplay.survey)).toContain("STALE_LAYOUT_REVISION");
     expect(runtime.lots()).toHaveLength(before + 1);
-  }, 30_000);
+    // Same boot as the preview test. 30s lost the race on the loaded CI runner.
+  }, 60_000);
 });
