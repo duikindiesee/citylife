@@ -7,9 +7,17 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { buildCarMesh } from "../car/carMesh";
 import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
-import type { GarageAnchorShellModel } from "./garageAnchorShell";
+import { CELL_SIZE } from "../scale";
+import {
+  GARAGE_TURNTABLE_DIAMETER_M,
+  garageShowroomFloorCars,
+  type GarageAnchorShellModel,
+} from "./garageAnchorShell";
 
 export const GARAGE_AUTHORED_EMISSIVE = "garageAuthoredEmissive";
+export const PAVILION_WOOD = 0x8d5a32;
+export const PAVILION_WOOD_ROOF = 0x7a4e30;
+export const PAVILION_GLASS = 0x9fd4cc;
 
 /** Tag a material so the per-frame night curve scales its authored intensity instead of
  *  replacing it. `night` is full dark, `day` is noon. */
@@ -23,9 +31,9 @@ export function tagAuthoredEmissive(
   return mat;
 }
 
-const WOOD = 0x8d5a32;
+const WOOD = PAVILION_WOOD;
 const WOOD_DARK = 0x6b4428;
-const WOOD_ROOF = 0x7a4e30;
+const WOOD_ROOF = PAVILION_WOOD_ROOF;
 const TEAL_GLASS = 0xb7ddd4;
 const PALE_DISC = 0xe7eef4;
 const RING = 0x2a241e;
@@ -415,23 +423,26 @@ export function buildDesertShowroomPavilion(showroom: Showroom): PavilionBuild {
   });
   discMat.userData.desertPavilionEnv = true;
   discMat.envMapIntensity = 0.35;
+  const outerR = GARAGE_TURNTABLE_DIAMETER_M / 2 / CELL_SIZE;
+  const ringBand = 0.35 / CELL_SIZE;
+  const discR = outerR - ringBand;
   const plinth = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.12, 1.16, 0.08, 10),
+    new THREE.CylinderGeometry(discR, discR + 0.01, 0.06, 16),
     discMat,
   );
   plinth.name = "garageAnchorShowroomPlinth";
-  const plinthX = sx - w * 0.1;
-  const plinthZ = sz + d * 0.04;
-  plinth.position.set(plinthX, 0.12, plinthZ);
+  const plinthX = sx;
+  const plinthZ = sz;
+  plinth.position.set(plinthX, 0.05, plinthZ);
   plinth.receiveShadow = true;
   interior.add(plinth);
 
   const ringParts: THREE.BufferGeometry[] = [];
-  const ringCount = 20;
-  const midR = 1.28;
-  const radial = 0.16;
+  const ringCount = 24;
+  const midR = outerR - ringBand / 2;
+  const radial = ringBand;
   const arc = (Math.PI * 2) / ringCount;
-  const tangential = midR * arc * 0.84;
+  const tangential = midR * arc * 0.9;
   const yaw = new THREE.Quaternion();
   const ringPos = new THREE.Vector3();
   const ringScale = new THREE.Vector3(1, 1, 1);
@@ -441,7 +452,7 @@ export function buildDesertShowroomPavilion(showroom: Showroom): PavilionBuild {
     const geo = new THREE.BoxGeometry(tangential, 0.04, radial);
     // Local +X is the long side. Yaw so it follows the tangent.
     yaw.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a - Math.PI / 2);
-    ringPos.set(plinthX + Math.cos(a) * midR, 0.07, plinthZ + Math.sin(a) * midR);
+    ringPos.set(plinthX + Math.cos(a) * midR, 0.045, plinthZ + Math.sin(a) * midR);
     ringMat4.compose(ringPos, yaw, ringScale);
     geo.applyMatrix4(ringMat4);
     ringParts.push(geo);
@@ -460,12 +471,27 @@ export function buildDesertShowroomPavilion(showroom: Showroom): PavilionBuild {
 
   const hero = new THREE.Group();
   hero.name = "garageAnchorShowroomHeroCar";
-  hero.position.set(plinthX, 0.16, plinthZ);
-  hero.rotation.y = -0.38;
+  hero.position.set(plinthX, 0.08, plinthZ);
+  hero.rotation.y = -0.4;
   const fallback = buildCarMesh(SHOWROOM_VEHICLES[2]!.spec);
   fallback.name = "garageAnchorShowroomHeroCarFallback";
   hero.add(fallback);
   interior.add(hero);
+
+  for (const slot of garageShowroomFloorCars({ x: sx, z: sz })) {
+    const parked = new THREE.Group();
+    parked.name = slot.id;
+    parked.position.set(slot.x, 0.02, slot.z);
+    parked.rotation.y = slot.rot;
+    parked.userData.floorCarModel = slot.model;
+    const parkedFallback = buildCarMesh(SHOWROOM_VEHICLES[slot.model]!.spec);
+    parkedFallback.name = `${slot.id}.fallback`;
+    // Procedural cars are long on X. Native GLBs are long on Z, so yaw the
+    // placeholder by -90° and the loader applies the slot yaw on the GLB directly.
+    parkedFallback.rotation.y = -Math.PI / 2;
+    parked.add(parkedFallback);
+    interior.add(parked);
+  }
 
   const sill = new THREE.Mesh(
     new THREE.BoxGeometry(w * 0.84, 0.1, 0.08),
@@ -646,6 +672,80 @@ export function applyDesertPavilionEnvMap(
       mat.needsUpdate = true;
     }
   });
+}
+
+/**
+ * Bake several posed copies of a metric GLB into one mesh per material.
+ * `prototype` is the raw GLB scene (metres, nose toward -Z). `scale` is the
+ * uniform factor into garage-group cells (1/renderScale for true metres).
+ */
+export function mergePosedCars(
+  prototypes: THREE.Object3D[],
+  slots: Array<{
+    prototype: number;
+    x: number;
+    y: number;
+    z: number;
+    rot: number;
+    scale: number;
+  }>,
+): THREE.Group {
+  const buckets = new Map<
+    string,
+    { mat: THREE.Material; parts: THREE.BufferGeometry[] }
+  >();
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scl = new THREE.Vector3();
+  const placed = new THREE.Matrix4();
+  const meshMat = new THREE.Matrix4();
+  for (const slot of slots) {
+    const src = prototypes[slot.prototype];
+    if (!src) continue;
+    src.updateMatrixWorld(true);
+    pos.set(slot.x, slot.y, slot.z);
+    quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), slot.rot);
+    scl.set(slot.scale, slot.scale, slot.scale);
+    placed.compose(pos, quat, scl);
+    src.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      const materials = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      const mat = materials[0];
+      if (!mat) return;
+      const geo = mesh.geometry.clone();
+      meshMat.multiplyMatrices(placed, mesh.matrixWorld);
+      geo.applyMatrix4(meshMat);
+      const key = `${slot.prototype}:${mat.name || mat.uuid}`;
+      const bucket = buckets.get(key) ?? { mat, parts: [] };
+      bucket.parts.push(geo);
+      buckets.set(key, bucket);
+    });
+  }
+  const group = new THREE.Group();
+  group.name = "garageAnchorShowroomFloorCarsMerged";
+  for (const { mat, parts } of buckets.values()) {
+    let merged: THREE.BufferGeometry | null = null;
+    try {
+      merged = mergeGeometries(parts, false);
+    } catch {
+      merged = null;
+    }
+    if (!merged) {
+      for (const geo of parts) {
+        group.add(new THREE.Mesh(geo, mat));
+      }
+      continue;
+    }
+    for (const p of parts) p.dispose();
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  return group;
 }
 
 export function countRenderableTriangles(root: THREE.Object3D): number {

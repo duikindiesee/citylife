@@ -4650,10 +4650,11 @@ export class ColonyRuntime {
     }
     // 2. Turntable plinth collision for pedestrian avatars
     const plinthDist = Math.hypot(
-      local.x - (model.showroom.x - model.showroom.w * 0.1),
-      local.z - (model.showroom.z + model.showroom.d * 0.04),
+      local.x - model.showroom.x,
+      local.z - model.showroom.z,
     );
-    if (plinthDist < 1.4) return false;
+    // 7 m turntable (radius 3.5 m) plus a small step, in cells.
+    if (plinthDist < 3.9 / 4) return false;
 
     // 3. Must not penetrate any discrete obstacle
     if (isPointInsideGarageObstacle(local.x, local.z, model.obstacles, 0.05)) {

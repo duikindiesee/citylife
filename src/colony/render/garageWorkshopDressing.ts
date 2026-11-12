@@ -6,9 +6,9 @@
 // to the obstacle list: Bay 2 stays legally drivable.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { buildCarMesh } from "../car/carMesh";
-import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
+import { CELL_SIZE } from "../scale";
 import {
+  GARAGE_LIFT_DECK_M,
   GARAGE_LIFT_POST_SPREAD,
   type GarageAnchorShellModel,
 } from "./garageAnchorShell";
@@ -156,7 +156,7 @@ export function buildOpenBayWorkspace(serviceBay: Bay): BayWorkspace {
     graphite,
   );
   board.name = "garageAnchorBayPegboard";
-  board.position.set(sx, 0.85, backZ + 0.02);
+  board.position.set(sx, 0.55, backZ + 0.02);
   const toolZ = backZ + 0.05;
   const toolBits: THREE.BufferGeometry[] = [];
   const tilt = (geo: THREE.BufferGeometry, x: number, y: number, angle: number) => {
@@ -166,14 +166,14 @@ export function buildOpenBayWorkspace(serviceBay: Bay): BayWorkspace {
   };
   // Claw hammers and diagonal open wrenches, so the row does not read as lettering.
   const hangHammer = (x: number, flip: number) => {
-    tilt(new THREE.BoxGeometry(0.04, 0.24, 0.03), x, 0.84, 0);
-    const head = new THREE.BoxGeometry(0.18, 0.055, 0.035);
+    tilt(new THREE.BoxGeometry(0.04, 0.22, 0.03), x, 0.52, 0);
+    const head = new THREE.BoxGeometry(0.16, 0.05, 0.035);
     head.translate(flip * 0.04, 0, 0);
-    tilt(head, x, 0.98, 0);
+    tilt(head, x, 0.64, 0);
   };
   const hangWrench = (x: number, angle: number) => {
-    tilt(new THREE.BoxGeometry(0.035, 0.22, 0.028), x, 0.86, angle);
-    tilt(new THREE.BoxGeometry(0.09, 0.04, 0.028), x, 0.97, angle);
+    tilt(new THREE.BoxGeometry(0.035, 0.2, 0.028), x, 0.52, angle);
+    tilt(new THREE.BoxGeometry(0.09, 0.04, 0.028), x, 0.62, angle);
   };
   hangHammer(sx - 0.62, 1);
   hangWrench(sx - 0.28, 0.5);
@@ -209,33 +209,73 @@ export function buildOpenBayWorkspace(serviceBay: Bay): BayWorkspace {
   tyres.name = "garageAnchorBayTyreRack";
   group.add(tyres);
 
-  const beam = new THREE.Mesh(
-    new THREE.BoxGeometry(postX * 2, 0.06, 0.08),
-    yellow,
-  );
-  beam.name = "garageAnchorHydraulicLiftBeam";
-  const postTop = serviceBay.h * 0.32 + serviceBay.h * 0.65 * 0.5;
-  beam.position.set(sx, Math.max(postTop - 0.04, 1.5), postZ);
-  const shoes = new THREE.Mesh(
+  const deckY = GARAGE_LIFT_DECK_M / CELL_SIZE;
+  const postTop = Math.min(serviceBay.h - 0.08, deckY + 2.4 / CELL_SIZE);
+  const postH = postTop;
+  const postCenterY = postH / 2;
+  for (const side of [-1, 1] as const) {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, postH, 0.1),
+      yellow,
+    );
+    post.name = `garageAnchorHydraulicLift.${side < 0 ? "left" : "right"}`;
+    post.position.set(sx + postX * side, postCenterY, postZ);
+    group.add(post);
+  }
+  const armLen = 3.4 / CELL_SIZE;
+  const arms = new THREE.Mesh(
     mergeParts([
-      placedBox(0.26, 0.04, 0.28, sx - postX, 0.03, postZ),
-      placedBox(0.26, 0.04, 0.28, sx + postX, 0.03, postZ),
+      placedBox(0.08, 0.05, armLen, sx - 0.22, deckY - 0.025, postZ),
+      placedBox(0.08, 0.05, armLen, sx + 0.22, deckY - 0.025, postZ),
+      placedBox(postX * 2 - 0.1, 0.04, 0.08, sx, postTop - 0.04, postZ),
     ])!,
     yellow,
   );
-  shoes.name = "garageAnchorHydraulicLiftShoes";
-  group.add(beam, shoes);
+  arms.name = "garageAnchorHydraulicLiftArms";
+  group.add(arms);
 
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.28), lampMat);
+  const stripMat = new THREE.MeshStandardMaterial({
+    color: 0xfffaed,
+    emissive: 0xfffaed,
+    emissiveIntensity: 1.6,
+    roughness: 0.35,
+  });
+  const strips = new THREE.Mesh(
+    mergeParts([
+      placedBox(serviceBay.bayDoorW * 0.9, 0.03, 0.12, sx, serviceBay.h - 0.08, postZ - 0.35),
+      placedBox(serviceBay.bayDoorW * 0.9, 0.03, 0.12, sx, serviceBay.h - 0.08, postZ + 0.35),
+    ])!,
+    stripMat,
+  );
+  strips.name = "garageAnchorBayCeilingStrips";
+  group.add(strips);
+  const key = new THREE.PointLight(0xfffaed, 42, 16, 1.4);
+  key.name = "garageAnchorBayKeyLight";
+  key.position.set(sx, serviceBay.h - 0.12, postZ);
+  const fill = new THREE.PointLight(0xa5dcff, 18, 14, 1.6);
+  fill.name = "garageAnchorBayFillLight";
+  fill.position.set(sx + 0.35, serviceBay.h - 0.2, postZ + 0.9);
+  group.add(key, fill);
+  const lamp = new THREE.Mesh(
+    new THREE.BoxGeometry(serviceBay.bayDoorW * 0.7, 0.03, 0.22),
+    lampMat,
+  );
   lamp.name = "garageAnchorBayInspectionLamp";
-  lamp.position.set(sx, Math.min(serviceBay.h - 0.2, postTop + 0.15), postZ);
+  lamp.position.set(sx, serviceBay.h - 0.1, postZ);
   group.add(lamp);
 
   const liftCar = new THREE.Group();
   liftCar.name = "garageAnchorBayLiftCar";
-  liftCar.position.set(sx, 0.02, postZ);
-  const fallback = buildCarMesh(SHOWROOM_VEHICLES[0]!.spec);
+  // Deck is the wheel contact. Native GLB nose is -Z, so yaw 0 faces into the bay.
+  liftCar.position.set(sx, deckY, postZ);
+  liftCar.rotation.y = 0;
+  // Metric placeholder: 4.08 m long on Z, 1.825 m wide, 1.01 m tall, nose toward -Z.
+  const fallback = new THREE.Mesh(
+    new THREE.BoxGeometry(1.825 / CELL_SIZE, 1.01 / CELL_SIZE, 4.08 / CELL_SIZE),
+    new THREE.MeshStandardMaterial({ color: 0x4d8be0, roughness: 0.45 }),
+  );
   fallback.name = "garageAnchorBayLiftCarFallback";
+  fallback.position.y = 1.01 / CELL_SIZE / 2;
   liftCar.add(fallback);
   group.add(liftCar);
 

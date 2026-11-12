@@ -125,8 +125,71 @@ export function garageAnchorNightFloorEmissive(daylight: number): number {
 }
 
 /** Fraction of the bay-door width from the opening centre to each lift post.
- *  High enough that the posts sit by the jambs and a centred car stays in clear view. */
+ *  The posts flank the car. They do not stand in front of it. */
 export const GARAGE_LIFT_POST_SPREAD = 0.44;
+
+/** Single-storey pavilion. The footprint stays the surveyed pad; only the height comes down. */
+export const GARAGE_SHOWROOM_HEIGHT_M = 6;
+/** Workshop eave, matched to the pavilion so the two wings read as one building. */
+export const GARAGE_WORKSHOP_HEIGHT_M = 5.5;
+/** Clear roller-door opening. */
+export const GARAGE_BAY_DOOR_HEIGHT_M = 3.25;
+/** Outer diameter of the centred showroom turntable. */
+export const GARAGE_TURNTABLE_DIAMETER_M = 7;
+/** Height of the lift deck under the service car, wheel contact. */
+export const GARAGE_LIFT_DECK_M = 1.5;
+
+/**
+ * Karoo GLBs are authored in metres (about 4.08 m long). The garage group is scaled by
+ * renderScale = CELL_SIZE, so the uniform scale that keeps 1 GLB unit = 1 world metre is
+ * 1/CELL_SIZE. Do not use a fudge factor on top of that.
+ */
+export const GARAGE_CAR_METRE_SCALE = 1 / CELL_SIZE;
+
+export function garageMetresToCells(metres: number): number {
+  return metres / CELL_SIZE;
+}
+
+export interface ShowroomFloorCarSlot {
+  readonly id: string;
+  /** Asset-local centre, in cells. */
+  readonly x: number;
+  readonly z: number;
+  /** Yaw in the garage group. Native GLB nose is -Z; this yaw is applied on top. */
+  readonly rot: number;
+  /** Index into SHOWROOM_VEHICLES. */
+  readonly model: 0 | 1 | 2;
+}
+
+/**
+ * Static dealership cars around the centred turntable. Offsets are in metres from the
+ * showroom centre, chosen so a 4.08 m car keeps roughly 2.5–3.5 m of clear floor to the
+ * 7 m turntable and stays inside the glass.
+ */
+export function garageShowroomFloorCars(showroom: {
+  x: number;
+  z: number;
+}): ShowroomFloorCarSlot[] {
+  const spots: Array<{
+    dx: number;
+    dz: number;
+    rot: number;
+    model: 0 | 1 | 2;
+  }> = [
+    { dx: -7.2, dz: 6.6, rot: 0.55, model: 0 },
+    { dx: 7.2, dz: 6.6, rot: -0.55, model: 1 },
+    { dx: -7.2, dz: -6.4, rot: Math.PI - 0.45, model: 2 },
+    { dx: 7.2, dz: -6.4, rot: Math.PI + 0.45, model: 1 },
+    { dx: 0, dz: -7.6, rot: Math.PI, model: 0 },
+  ];
+  return spots.map((s, i) => ({
+    id: `garageAnchorShowroomFloorCar.${i + 1}`,
+    x: showroom.x + s.dx / CELL_SIZE,
+    z: showroom.z + s.dz / CELL_SIZE,
+    rot: s.rot,
+    model: s.model,
+  }));
+}
 
 export interface GarageAuthoredEmissive {
   readonly night: number;
@@ -352,21 +415,23 @@ export function buildGarageAnchorShellModel(
   // East Wing: High-tech motorsport service workshop (X in [+0.16, +7.52], Z in [-3.30, +2.20])
   // Dividing Core: Solid architectural pier/dividing wall at X = 0.0 with ZERO showroom columns in front of bay doors!
   // Symmetrical facade alignment at front Z = +2.20, leaving unobstructed apron approach to all rollup doors.
+  const showroomH = GARAGE_SHOWROOM_HEIGHT_M / CELL_SIZE;
+  const workshopH = GARAGE_WORKSHOP_HEIGHT_M / CELL_SIZE;
   const showroom = {
     w: footprint.w * 0.48, // 7.68 cells wide (~30.7m)
-    h: 3.15,
+    h: showroomH, // 6 m, one storey
     d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
     x: -footprint.w * 0.245, // -3.92 cells (spans [-7.76, -0.08])
     z: 1.45, // spans [-1.30, +4.20], aligning front facade with commercial district line
-    y: 1.575,
+    y: showroomH / 2,
   };
   const serviceBay = {
     w: footprint.w * 0.46, // 7.36 cells wide (~29.4m)
-    h: 2.35,
+    h: workshopH, // 5.5 m, matched to the pavilion
     d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
     x: footprint.w * 0.24, // +3.84 cells (spans [+0.16, +7.52])
     z: 1.45, // spans [-1.30, +4.20], aligning front facade with showroom
-    y: 1.175,
+    y: workshopH / 2,
     doorCount: 3 as const,
     bayDoorW: footprint.w * 0.115, // 1.84 cells wide (~7.4m per bay)
   };
@@ -457,7 +522,7 @@ export function buildGarageAnchorShellModel(
   const westX = serviceBay.x - serviceBay.w / 2;
   const eastX = serviceBay.x + serviceBay.w / 2;
   const pierZ = serviceBay.z + serviceBay.d / 2 - 0.11;
-  const pierH = serviceBay.h * 0.78;
+  const pierH = GARAGE_BAY_DOOR_HEIGHT_M / CELL_SIZE;
 
   // Spec 177: Discrete Drivable & Walkable Surface Zones in asset-local coordinates
   const surfaces: GarageSurfaceZone[] = [

@@ -1,12 +1,49 @@
+// @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildCommercialDistrictLayer } from "../src/colony/render/commercialDistrictLayer";
 import {
   blendGarageEmissive,
+  GARAGE_BAY_DOOR_HEIGHT_M,
+  GARAGE_CAR_METRE_SCALE,
+  GARAGE_LIFT_DECK_M,
   GARAGE_LIFT_POST_SPREAD,
+  GARAGE_SHOWROOM_HEIGHT_M,
+  GARAGE_TURNTABLE_DIAMETER_M,
+  GARAGE_WORKSHOP_HEIGHT_M,
 } from "../src/colony/render/garageAnchorShell";
 import { countRenderableTriangles } from "../src/colony/render/garagePavilionLook";
+
+describe("Karoo GLB metre scale", () => {
+  it("keeps each GLB at its authored metre bbox inside the x4 garage group", async () => {
+    const loader = new GLTFLoader();
+    for (const file of ["karoo_vonk.glb", "karoo_kaap_gt.glb", "fiat_x19.glb"]) {
+      const buf = readFileSync(
+        new URL(`../public/assets/citylife/cars/${file}`, import.meta.url),
+      );
+      const gltf = await new Promise<THREE.Group>((resolve, reject) => {
+        loader.parse(
+          buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+          "",
+          (g) => resolve(g.scene),
+          reject,
+        );
+      });
+      const raw = new THREE.Box3().setFromObject(gltf).getSize(new THREE.Vector3());
+      const world = raw.clone().multiplyScalar(GARAGE_CAR_METRE_SCALE * 4);
+      expect(world.z, file).toBeGreaterThan(4);
+      expect(world.z, file).toBeLessThan(4.5);
+      expect(world.x, file).toBeGreaterThan(1.7);
+      expect(world.x, file).toBeLessThan(2.1);
+      expect(world.y, file).toBeGreaterThan(0.9);
+      expect(world.y, file).toBeLessThan(1.2);
+      expect(world.z, file).toBeCloseTo(raw.z, 5);
+    }
+  });
+});
 
 describe("blendGarageEmissive", () => {
   it("keeps the legacy absolute curve when a material is untagged", () => {
@@ -121,12 +158,12 @@ describe("Gearbox desert pavilion look", () => {
     const bayFaceZ = model.serviceBay.z + model.serviceBay.d / 2 + 0.045;
     const origin = new THREE.Vector3(
       model.serviceBay.x,
-      0.25,
+      0.45,
       bayFaceZ + 2.2,
     ).applyMatrix4(shell.matrixWorld);
     const target = new THREE.Vector3(
       model.serviceBay.x,
-      0.22,
+      0.45,
       bayFaceZ - 1.2,
     ).applyMatrix4(shell.matrixWorld);
     const ray = new THREE.Raycaster(origin, target.sub(origin).normalize());
@@ -147,6 +184,41 @@ describe("Gearbox desert pavilion look", () => {
     expect(named(first, "HydraulicLift")).toBe(false);
     expect(named(first, "Pier")).toBe(false);
     expect(named(first, "Partition")).toBe(false);
+  });
+
+  it("uses a one-storey showroom, a 7 m turntable, and a lift car facing into the bay", () => {
+    expect(model.showroom.h * model.renderScale).toBe(GARAGE_SHOWROOM_HEIGHT_M);
+    expect(model.serviceBay.h * model.renderScale).toBe(GARAGE_WORKSHOP_HEIGHT_M);
+    expect(GARAGE_BAY_DOOR_HEIGHT_M).toBeGreaterThanOrEqual(3);
+    expect(GARAGE_BAY_DOOR_HEIGHT_M).toBeLessThanOrEqual(3.5);
+    expect(GARAGE_TURNTABLE_DIAMETER_M).toBe(7);
+
+    const plinth = shell.getObjectByName("garageAnchorShowroomPlinth") as THREE.Mesh;
+    expect(plinth.position.x).toBeCloseTo(model.showroom.x, 5);
+    expect(plinth.position.z).toBeCloseTo(model.showroom.z, 5);
+
+    shell.updateMatrixWorld(true);
+    const car = shell.getObjectByName("garageAnchorBayLiftCar") as THREE.Group;
+    const shellPos = new THREE.Vector3();
+    const carPos = new THREE.Vector3();
+    shell.getWorldPosition(shellPos);
+    car.getWorldPosition(carPos);
+    expect(carPos.y - shellPos.y).toBeCloseTo(GARAGE_LIFT_DECK_M, 1);
+
+    const inv = shell.matrixWorld.clone().invert();
+    const local = new THREE.Box3();
+    car.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry.computeBoundingBox();
+      const b = mesh.geometry.boundingBox!.clone();
+      b.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld));
+      local.union(b);
+    });
+    const sizeM = local.getSize(new THREE.Vector3()).multiplyScalar(model.renderScale);
+    expect(sizeM.z).toBeGreaterThan(sizeM.x);
+    expect(sizeM.z).toBeGreaterThan(3.5);
+    expect(sizeM.z).toBeLessThan(5);
   });
 
   it("stays inside the triangle budget", () => {

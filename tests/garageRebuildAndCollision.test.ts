@@ -522,8 +522,8 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     carCopy.position.y -= unscaledBounds.min.y;
     carCopy.position.z -= (unscaledBounds.min.z + unscaledBounds.max.z) / 2;
 
-    // Scale 0.262 inside 4x parent group
-    const carScale = 0.262;
+    // 1/renderScale inside the ×4 garage group keeps the metric GLB at 1 m per unit.
+    const carScale = 0.25;
     carCopy.scale.setScalar(carScale);
 
     const turntableCar = new THREE.Group();
@@ -545,8 +545,8 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     expect(sizeInWorldMetres.z).toBeLessThan(2.1);
 
     // Showroom walls in world metres (4x cell coordinates)
-    const plinthX = model.showroom.x - model.showroom.w * 0.1;
-    const plinthZ = model.showroom.z + model.showroom.d * 0.04;
+    const plinthX = model.showroom.x;
+    const plinthZ = model.showroom.z;
     const westWallX = (model.showroom.x - model.showroom.w / 2) * 4;
     const dividingWallX = (model.serviceBay.x - model.serviceBay.w / 2) * 4;
     const glassFrontZ = (model.showroom.z + model.showroom.d / 2) * 4;

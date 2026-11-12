@@ -27,7 +27,7 @@ import {
 import {
   buildGarageAnchorShellModel,
   blendGarageEmissive,
-  GARAGE_LIFT_POST_SPREAD,
+  GARAGE_BAY_DOOR_HEIGHT_M,
   GARAGE_PYLON_METRES,
   garageApproachPolePositions,
   garageApronSurfaceY,
@@ -36,6 +36,9 @@ import {
 import {
   buildApronYellowCurbs,
   buildDesertShowroomPavilion,
+  PAVILION_GLASS,
+  PAVILION_WOOD,
+  PAVILION_WOOD_ROOF,
 } from "./garagePavilionLook";
 import { buildOpenBayWorkspace } from "./garageWorkshopDressing";
 import { ribbonSurfaceCells, type RoadWay } from "./roadRibbon";
@@ -814,11 +817,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   service.name = "garageAnchorServiceBayBlock";
 
   const workshopWallMat = new THREE.MeshStandardMaterial({
-    color: 0xd2b48c,
-    roughness: 0.86,
-    metalness: 0.04,
-    emissive: 0x4a3424,
-    emissiveIntensity: 0.05,
+    color: PAVILION_WOOD,
+    roughness: 0.78,
+    metalness: 0.06,
     flatShading: true,
   });
   const workshopFloorMat = new THREE.MeshStandardMaterial({
@@ -829,8 +830,8 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   });
 
   const wallThickness = 0.22;
-  const doorH = model.serviceBay.h * 0.78;
-  const lintelH = model.serviceBay.h - doorH;
+  const doorH = GARAGE_BAY_DOOR_HEIGHT_M / model.renderScale;
+  const lintelH = Math.max(0.08, model.serviceBay.h - doorH);
   const hdw = model.serviceBay.bayDoorW / 2;
   const bayFrontZ = model.serviceBay.z + model.serviceBay.d / 2;
   const bayBackZ = model.serviceBay.z - model.serviceBay.d / 2;
@@ -883,20 +884,43 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   workshopFloor.receiveShadow = true;
   service.add(workshopFloor);
 
-  // 4. Upper Spandrel Lintel above all door openings
+  // Wood header plus a teal clerestory, the same glazing language as the pavilion.
+  const headerH = Math.min(0.12, lintelH * 0.35);
+  const clerestoryH = Math.max(0.04, lintelH - headerH);
   const lintel = new THREE.Mesh(
-    new THREE.BoxGeometry(model.serviceBay.w, lintelH, wallThickness),
+    new THREE.BoxGeometry(model.serviceBay.w, headerH, wallThickness),
     workshopWallMat,
   );
   lintel.name = "garageAnchorWorkshopLintel";
   lintel.position.set(
     model.serviceBay.x,
-    doorH + lintelH / 2,
+    model.serviceBay.h - headerH / 2,
     bayFrontZ - wallThickness / 2,
   );
   lintel.castShadow = true;
   lintel.receiveShadow = true;
-  service.add(lintel);
+  const clerestoryMat = new THREE.MeshStandardMaterial({
+    color: PAVILION_GLASS,
+    roughness: 0.06,
+    metalness: 0.08,
+    transparent: true,
+    opacity: 0.3,
+    emissive: 0x14343a,
+    emissiveIntensity: 0.08,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const clerestory = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w * 0.96, clerestoryH, 0.04),
+    clerestoryMat,
+  );
+  clerestory.name = "garageAnchorWorkshopClerestory";
+  clerestory.position.set(
+    model.serviceBay.x,
+    doorH + clerestoryH / 2,
+    bayFrontZ - 0.02,
+  );
+  service.add(lintel, clerestory);
 
   // 5. Front Piers partitioned cleanly around the three bay openings:
   const bayDoorSpacing = model.serviceBay.bayDoorW * 1.25;
@@ -953,7 +977,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   const dividingCore = new THREE.Mesh(
     new THREE.BoxGeometry(0.32, model.showroom.h, model.showroom.d),
     new THREE.MeshStandardMaterial({
-      color: 0x7d5636,
+      color: PAVILION_WOOD,
       roughness: 0.74,
       metalness: 0.08,
       flatShading: true,
@@ -973,9 +997,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       model.serviceBay.d + 0.35,
     ),
     new THREE.MeshStandardMaterial({
-      color: 0x5e656e,
-      roughness: 0.84,
-      metalness: 0.08,
+      color: PAVILION_WOOD_ROOF,
+      roughness: 0.78,
+      metalness: 0.05,
       flatShading: true,
     }),
   );
@@ -1044,10 +1068,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       (i - (model.serviceBay.doorCount - 1) / 2) *
         (model.serviceBay.bayDoorW * 1.25);
     const open = i === openBayIndex;
+    const rolledH = 0.08;
     const door = new THREE.Mesh(
       new THREE.BoxGeometry(
         model.serviceBay.bayDoorW,
-        open ? model.serviceBay.h * 0.14 : model.serviceBay.h * 0.68,
+        open ? rolledH : doorH * 0.92,
         0.075,
       ),
       doorMat,
@@ -1055,7 +1080,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     door.name = `garageAnchorRollupDoor.${i + 1}`;
     door.position.set(
       sx,
-      open ? model.serviceBay.h * 0.88 : model.serviceBay.h * 0.39,
+      open ? doorH + rolledH / 2 + 0.01 : doorH * 0.46,
       bayFaceZ,
     );
     g.add(door);
@@ -1085,37 +1110,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       cavity.receiveShadow = true;
       g.add(cavity);
 
-      // Spec 176: High-output service bay inspection PointLight
-      const bayInspectionLight = new THREE.PointLight(0xfff8ee, 24, 15, 1.8);
-      bayInspectionLight.position.set(
-        sx,
-        model.serviceBay.h * 0.7,
-        bayFaceZ - model.serviceBay.d * 0.22,
-      );
-      g.add(bayInspectionLight);
-
-      // Hydraulic twin-post car lift
-      const liftMat = new THREE.MeshStandardMaterial({
-        color: 0xf0b429,
-        roughness: 0.4,
-        metalness: 0.45,
-        emissive: 0x8a5508,
-        emissiveIntensity: 0.28,
-        flatShading: true,
-      });
-      for (const side of [-1, 1]) {
-        const post = new THREE.Mesh(
-          new THREE.BoxGeometry(0.16, model.serviceBay.h * 0.65, 0.18),
-          liftMat,
-        );
-        post.name = `garageAnchorHydraulicLift.${side < 0 ? "left" : "right"}`;
-        post.position.set(
-          sx + model.serviceBay.bayDoorW * GARAGE_LIFT_POST_SPREAD * side,
-          model.serviceBay.h * 0.32,
-          bayFaceZ - model.serviceBay.d * 0.26,
-        );
-        g.add(post);
-      }
+      // Lift posts, arms, ceiling strips, and the key/fill lights live in the workspace.
       g.add(buildOpenBayWorkspace(model.serviceBay).group);
 
       // Yellow hazard threshold apron strip
@@ -1132,15 +1127,15 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       g.add(hazardStrip);
     }
     const doorFrameMat = new THREE.MeshStandardMaterial({
-      color: 0xffb24a,
-      emissive: 0xff8f2f,
-      emissiveIntensity: 0.38,
-      roughness: 0.36,
+      color: PAVILION_WOOD,
+      roughness: 0.72,
+      metalness: 0.08,
+      flatShading: true,
     });
     const frame = new THREE.Group();
     frame.name = `garageAnchorRollupDoorFrame.${i + 1}`;
     const jambW = 0.12;
-    const jambH = model.serviceBay.h * 0.78;
+    const jambH = doorH;
     const jambD = 0.08;
     const leftJamb = new THREE.Mesh(
       new THREE.BoxGeometry(jambW, jambH, jambD),
@@ -1166,7 +1161,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         new THREE.MeshStandardMaterial({ color: 0x8fa1ad, roughness: 0.45 }),
       );
       rib.name = `garageAnchorDoorSlat.${i + 1}.${slat}`;
-      rib.position.set(0, (slat - 3) * 0.25, 0.02);
+      rib.position.set(0, (slat - 3) * (doorH / 7), 0.02);
       door.add(rib);
     }
   }

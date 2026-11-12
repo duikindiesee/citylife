@@ -12,9 +12,11 @@ import { leveledWorldY } from "./terrainLeveling";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { commercialSignature } from "./simSignals";
 import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
+import { GARAGE_CAR_METRE_SCALE } from "./garageAnchorShell";
 import {
   applyDesertPavilionEnvMap,
   bakeDesertPavilionEnvMap,
+  mergePosedCars,
 } from "./garagePavilionLook";
 
 // Spec 175 / Spec 135 — the commercial district in v3.
@@ -111,42 +113,74 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
       parent.add(model);
     };
 
-    // Hero Car on showroom plinth: Karoo X19 Targa (Yellow Fiat X1/9 GLB)
-    // Sized to authentic real-world proportion (0.262 in parent 4x scaled group equals ~1.05m net scale).
+    // GLBs are in metres. GARAGE_CAR_METRE_SCALE is 1/renderScale so the ×4 garage
+    // group does not enlarge them. rotationOffset swings the native Z-length onto X
+    // for cars that park across a stall. The lift car keeps yaw 0: nose toward -Z.
+    const metre = GARAGE_CAR_METRE_SCALE;
     replaceCar(
       "garageAnchorShowroomHeroCar",
       x19.scene,
       SHOWROOM_VEHICLES[2]?.spec.paint,
       SHOWROOM_VEHICLES[2]?.rotationOffset,
-      0.262,
+      metre,
     );
-
-    // Forecourt Display Car 1: Karoo Vonk 1.1
     replaceCar(
       "garageAnchorDisplayCar.1",
       vonk.scene,
       SHOWROOM_VEHICLES[0]?.spec.paint,
       SHOWROOM_VEHICLES[0]?.rotationOffset,
-      0.255,
+      metre,
     );
-
-    // Forecourt Display Car 2: Karoo Kaap GT-V8
     replaceCar(
       "garageAnchorDisplayCar.2",
       kaap.scene,
       SHOWROOM_VEHICLES[1]?.spec.paint,
       SHOWROOM_VEHICLES[1]?.rotationOffset,
-      0.262,
+      metre,
     );
-
-    // Blue hatch on the lift, length across the opening so the apron sees its side.
     replaceCar(
       "garageAnchorBayLiftCar",
       vonk.scene,
       SHOWROOM_VEHICLES[0]?.spec.paint,
-      SHOWROOM_VEHICLES[0]?.rotationOffset,
-      0.255,
+      [0, 0, 0],
+      metre,
     );
+
+    const scenes = [vonk.scene, kaap.scene, x19.scene];
+    const painted = scenes.map((scene, i) =>
+      prepareModel(scene, SHOWROOM_VEHICLES[i]?.spec.paint),
+    );
+    const floorSlots: Array<{
+      prototype: number;
+      x: number;
+      y: number;
+      z: number;
+      rot: number;
+      scale: number;
+    }> = [];
+    for (let n = 1; n <= 8; n++) {
+      const slot = layerGroup.getObjectByName(`garageAnchorShowroomFloorCar.${n}`);
+      if (!slot) continue;
+      const modelIndex = Number(slot.userData.floorCarModel ?? 0);
+      floorSlots.push({
+        prototype: modelIndex,
+        x: slot.position.x,
+        y: slot.position.y,
+        z: slot.position.z,
+        rot: slot.rotation.y,
+        scale: metre,
+      });
+      const doomed: THREE.Object3D[] = [];
+      slot.traverse((child) => {
+        if (child !== slot && (child as THREE.Mesh).isMesh) doomed.push(child);
+      });
+      for (const obj of doomed) obj.parent?.remove(obj);
+    }
+    if (floorSlots.length > 0) {
+      const merged = mergePosedCars(painted, floorSlots);
+      const anchor = layerGroup.getObjectByName("garageAnchorShowroomInterior");
+      (anchor ?? layerGroup).add(merged);
+    }
 
     const env = layerGroup.userData.desertPavilionEnvMap as
       | THREE.Texture

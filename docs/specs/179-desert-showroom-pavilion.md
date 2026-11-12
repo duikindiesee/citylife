@@ -47,6 +47,24 @@ None. This is a render change. No stockpile, staff, or sim clock cost.
 - `npm run build` passes.
 - Approach, day, night, interior, and open-bay screenshots show the pavilion and a clear view of the lift car.
 
+## Scale correction (Irwin review of PR 581)
+
+The first pass left the pavilion at its old cell height, 6 m was not 6 m: `showroom.h` was 3.15 cells, and the group scale is 4, so the room was 12.6 m tall on a 13 m off-centre disc. Cars then looked like toys, and the lift car was yawed so its 4.08 m length ran across the opening.
+
+What changed, and what did not:
+
+- Pad footprint, apron C1 height (`garageApronSurfaceY` / `garageApronGroundY`), and obstacle ids are unchanged.
+- Showroom height is `GARAGE_SHOWROOM_HEIGHT_M` = 6. Workshop height is `GARAGE_WORKSHOP_HEIGHT_M` = 5.5. Roller opening is `GARAGE_BAY_DOOR_HEIGHT_M` = 3.25. Those three replace the old 12.6 m / 9.4 m masses and the old `0.78 * height` door. Wall and pier colliders follow the new heights. Sightline samples that used to sit at 4–5.6 m now sit inside the 3.25 m opening.
+- The turntable is centred on the showroom and is `GARAGE_TURNTABLE_DIAMETER_M` = 7. The pedestrian block around it matches that disc (radius 3.9 m) instead of the old 5.6 m off-centre bubble.
+- Karoo GLBs measure 4.08 × 1.825 × 1.01 m in file space, nose toward -Z. `GARAGE_CAR_METRE_SCALE` is `1 / renderScale` (0.25). World size equals the file size. The old 0.262 / 0.255 factors are gone.
+- The lift car keeps yaw 0, so its long axis is Z and the nose points at the back wall. The deck is `GARAGE_LIFT_DECK_M` = 1.5, on two yellow arms between the side posts.
+- Workshop walls, roof, door frames, and a clerestory band use the pavilion wood and teal glass. The roller doors still close bays 1 and 3.
+- Five static floor cars plus the hero (six showroom cars) sit on the 30.7 × 22 m floor. The five static copies are merged per material, about 43 meshes instead of one draw per GLB mesh.
+
+Workshop lights, none of them casting shadows: a `#fffaed` key point (intensity 42, distance 16), an `#a5dcff` fill point (intensity 18, distance 14), and two emissive `#fffaed` ceiling strips. They replace the single inspection point.
+
+Measured on seed 4242 after this correction, wide approach frame with GLBs loaded: 1316 draw calls and 63576 shell triangles. Against the first PR 581 frame (1186 calls, 30208 shell triangles) that is +130 calls and +33368 triangles, almost all of it the five extra showroom cars. Those five are about 43 draw calls and roughly 33k triangles after the merge. The lift car bbox is 1.82 × 1.00 × 4.08 m at a 1.5 m deck. The turntable hero’s authored bbox is the same 4.08 × 1.825 × 1.01 m; a posed axis-aligned box is larger because the car is yawed.
+
 ## Follow-up
 
 Meshy GLB props (finished pendant lamps, lounge chairs, desert plants) are a later change. The procedural cylinders and chests are the stand-ins.
