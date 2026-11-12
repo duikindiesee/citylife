@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-12T13:50:24.612Z",
+  "updatedAt": "2026-11-12T13:51:14.105Z",
   "runs": [
+    {
+      "runId": 43231072462,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/43231072462",
+      "event": "pull_request",
+      "branch": "cursor/desert-showroom-pavilion-a329",
+      "sha": "8ac4e7784c9d889519a78cde3ad236e2f28779b2",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/8ac4e7784c9d889519a78cde3ad236e2f28779b2",
+      "pullRequestNumbers": "#581",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/581",
+      "pullRequests": [
+        {
+          "number": 581,
+          "url": "https://github.com/duikindiesee/citylife/pull/581"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-12T13:49:59Z",
+      "completedAt": "2026-11-12T13:51:03Z",
+      "durationSeconds": 64,
+      "runnerSummary": "GitHub Actions 1000012990",
+      "jobs": [
+        {
+          "id": 131226209187,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000012990",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-11-12T13:50:03Z",
+          "completedAt": "2026-11-12T13:51:02Z",
+          "durationSeconds": 59
+        }
+      ]
+    },
     {
       "runId": 43231072391,
       "workflowName": "Secret scan",
@@ -12566,49 +12605,6 @@
           "startedAt": "2026-10-09T09:14:18Z",
           "completedAt": "2026-10-09T09:35:20Z",
           "durationSeconds": 1262
-        }
-      ]
-    },
-    {
-      "runId": 37820645085,
-      "workflowName": "CI",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37820645085",
-      "event": "pull_request",
-      "branch": "feat/multiplayer-racing",
-      "sha": "65da1418d3809c204c1bb011dc9481ba65206280",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/65da1418d3809c204c1bb011dc9481ba65206280",
-      "pullRequestNumbers": "#561",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
-      "pullRequests": [
-        {
-          "number": 561,
-          "url": "https://github.com/duikindiesee/citylife/pull/561"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-08T17:58:05Z",
-      "completedAt": "2026-10-08T18:20:27Z",
-      "durationSeconds": 1342,
-      "runnerSummary": "kooker1-citylife-gpu",
-      "jobs": [
-        {
-          "id": 113460769816,
-          "name": "verify",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-08T17:58:48Z",
-          "completedAt": "2026-10-08T18:20:26Z",
-          "durationSeconds": 1298
         }
       ]
     }
