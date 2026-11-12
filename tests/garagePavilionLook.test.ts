@@ -14,6 +14,7 @@ import {
   GARAGE_SHOWROOM_HEIGHT_M,
   GARAGE_TURNTABLE_DIAMETER_M,
   GARAGE_WORKSHOP_HEIGHT_M,
+  garageShowroomFloorCars,
 } from "../src/colony/render/garageAnchorShell";
 import { countRenderableTriangles } from "../src/colony/render/garagePavilionLook";
 
@@ -198,6 +199,10 @@ describe("Gearbox desert pavilion look", () => {
     expect(plinth.position.z).toBeCloseTo(model.showroom.z, 5);
 
     shell.updateMatrixWorld(true);
+    expect(shell.scale.x).toBe(4);
+    expect(shell.scale.y).toBe(4);
+    expect(shell.scale.z).toBe(4);
+    expect(shell.parent?.scale.x ?? 1).toBe(1);
     const car = shell.getObjectByName("garageAnchorBayLiftCar") as THREE.Group;
     const shellPos = new THREE.Vector3();
     const carPos = new THREE.Vector3();
@@ -219,6 +224,30 @@ describe("Gearbox desert pavilion look", () => {
     expect(sizeM.z).toBeGreaterThan(sizeM.x);
     expect(sizeM.z).toBeGreaterThan(3.5);
     expect(sizeM.z).toBeLessThan(5);
+
+    const plinthMesh = shell.getObjectByName("garageAnchorShowroomPlinth") as THREE.Mesh;
+    const floor = shell.getObjectByName("garageAnchorShowroomTerrazzo") as THREE.Mesh;
+    floor.geometry.computeBoundingBox();
+    const floorTop =
+      floor.position.y + (floor.geometry.boundingBox!.max.y - floor.geometry.boundingBox!.min.y) / 2;
+    plinthMesh.geometry.computeBoundingBox();
+    const discTop =
+      plinthMesh.position.y + plinthMesh.geometry.boundingBox!.max.y;
+    expect((discTop - floorTop) * model.renderScale).toBeGreaterThan(0.14);
+    expect((discTop - floorTop) * model.renderScale).toBeLessThan(0.26);
+    const ring = shell.getObjectByName("garageAnchorShowroomTurntableRing");
+    expect(ring?.parent?.name).toBe("garageAnchorShowroomPlinth");
+
+    const cars = garageShowroomFloorCars(model.showroom);
+    expect(cars).toHaveLength(4);
+    for (const slot of cars) {
+      const node = shell.getObjectByName(slot.id) as THREE.Object3D;
+      expect(node.rotation.x).toBe(0);
+      expect(node.rotation.z).toBe(0);
+      expect(node.position.y).toBeCloseTo(floorTop, 5);
+      const clearance = Math.hypot(slot.x - model.showroom.x, slot.z - model.showroom.z) * model.renderScale;
+      expect(clearance).toBeGreaterThan(GARAGE_TURNTABLE_DIAMETER_M / 2 + 2.5);
+    }
   });
 
   it("stays inside the triangle budget", () => {

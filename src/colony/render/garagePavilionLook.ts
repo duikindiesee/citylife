@@ -365,35 +365,45 @@ export function buildDesertShowroomPavilion(showroom: Showroom): PavilionBuild {
 
   const shadeMat = new THREE.MeshStandardMaterial({
     color: 0x2c241c,
-    roughness: 0.6,
-    metalness: 0.25,
+    roughness: 0.55,
+    metalness: 0.2,
     flatShading: true,
   });
   const bulbMat = tagAuthoredEmissive(
     new THREE.MeshStandardMaterial({
       color: 0xfff6e4,
       emissive: 0xffeed4,
-      emissiveIntensity: 1.7,
+      emissiveIntensity: 1.8,
       roughness: 0.3,
     }),
-    1.7,
-    0.3,
+    1.8,
+    0.45,
   );
   authoredMats.push(bulbMat);
   const pendantParts: THREE.BufferGeometry[] = [];
   const bulbParts: THREE.BufferGeometry[] = [];
-  const shadeY = h * 0.58;
-  for (const ox of [-0.18, 0, 0.18]) {
-    const px = sx + w * ox;
-    const pz = sz + d * 0.1;
-    const cord = new THREE.CylinderGeometry(0.012, 0.012, h - shadeY - 0.2, 5);
-    cord.translate(px, (h - 0.08 + shadeY) / 2, pz);
+  // 0.45 m diameter, shade bottom 3.75 m off the floor. Coordinates are cells.
+  const shadeR = 0.225 / CELL_SIZE;
+  const shadeH = 0.22 / CELL_SIZE;
+  const shadeBottom = 3.75 / CELL_SIZE;
+  const shadeY = shadeBottom + shadeH / 2;
+  const ceilingY = h - 0.06;
+  for (const [ox, oz] of [
+    [-6, 0],
+    [6, 0],
+    [0, 5],
+  ] as const) {
+    const px = sx + ox / CELL_SIZE;
+    const pz = sz + oz / CELL_SIZE;
+    const cordLen = Math.max(0.05, ceilingY - (shadeY + shadeH / 2));
+    const cord = new THREE.CylinderGeometry(0.015 / CELL_SIZE, 0.015 / CELL_SIZE, cordLen, 6);
+    cord.translate(px, shadeY + shadeH / 2 + cordLen / 2, pz);
     pendantParts.push(cord);
-    const shade = new THREE.CylinderGeometry(0.1, 0.14, 0.18, 6);
+    const shade = new THREE.CylinderGeometry(shadeR * 0.72, shadeR, shadeH, 12);
     shade.translate(px, shadeY, pz);
     pendantParts.push(shade);
-    const bulb = new THREE.CylinderGeometry(0.06, 0.06, 0.02, 6);
-    bulb.translate(px, shadeY - 0.1, pz);
+    const bulb = new THREE.CylinderGeometry(shadeR * 0.62, shadeR * 0.62, 0.02 / CELL_SIZE, 12);
+    bulb.translate(px, shadeBottom + 0.01 / CELL_SIZE, pz);
     bulbParts.push(bulb);
   }
   const pendants = meshFrom(
@@ -423,56 +433,58 @@ export function buildDesertShowroomPavilion(showroom: Showroom): PavilionBuild {
   });
   discMat.userData.desertPavilionEnv = true;
   discMat.envMapIntensity = 0.35;
-  const outerR = GARAGE_TURNTABLE_DIAMETER_M / 2 / CELL_SIZE;
-  const ringBand = 0.35 / CELL_SIZE;
-  const discR = outerR - ringBand;
+  const floorTop = 0.08;
+  const discRise = 0.2 / CELL_SIZE;
+  const discH = 0.2 / CELL_SIZE;
+  const discTop = floorTop + discRise;
+  const topR = 3.05 / CELL_SIZE;
+  const baseR = 3.3 / CELL_SIZE;
   const plinth = new THREE.Mesh(
-    new THREE.CylinderGeometry(discR, discR + 0.01, 0.06, 16),
+    new THREE.CylinderGeometry(topR, baseR, discH, 40),
     discMat,
   );
   plinth.name = "garageAnchorShowroomPlinth";
   const plinthX = sx;
   const plinthZ = sz;
-  plinth.position.set(plinthX, 0.05, plinthZ);
+  plinth.position.set(plinthX, discTop - discH / 2, plinthZ);
   plinth.receiveShadow = true;
   interior.add(plinth);
 
-  const ringParts: THREE.BufferGeometry[] = [];
-  const ringCount = 24;
-  const midR = outerR - ringBand / 2;
-  const radial = ringBand;
+  const ringCount = 28;
+  const ringOuter = GARAGE_TURNTABLE_DIAMETER_M / 2 / CELL_SIZE;
+  const ringInner = baseR + 0.02 / CELL_SIZE;
+  const midR = (ringOuter + ringInner) / 2;
+  const radial = ringOuter - ringInner;
+  const ringH = 0.08 / CELL_SIZE;
   const arc = (Math.PI * 2) / ringCount;
-  const tangential = midR * arc * 0.9;
-  const yaw = new THREE.Quaternion();
-  const ringPos = new THREE.Vector3();
-  const ringScale = new THREE.Vector3(1, 1, 1);
-  const ringMat4 = new THREE.Matrix4();
+  const tangential = midR * arc * 0.86;
+  const ringPieces: THREE.BufferGeometry[] = [];
   for (let i = 0; i < ringCount; i++) {
     const a = i * arc + arc / 2;
-    const geo = new THREE.BoxGeometry(tangential, 0.04, radial);
-    // Local +X is the long side. Yaw so it follows the tangent.
-    yaw.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a - Math.PI / 2);
-    ringPos.set(plinthX + Math.cos(a) * midR, 0.045, plinthZ + Math.sin(a) * midR);
-    ringMat4.compose(ringPos, yaw, ringScale);
-    geo.applyMatrix4(ringMat4);
-    ringParts.push(geo);
+    const geo = new THREE.BoxGeometry(tangential, ringH, radial);
+    geo.rotateY(-a - Math.PI / 2);
+    geo.translate(Math.cos(a) * midR, ringH / 2 - discH / 2, Math.sin(a) * midR);
+    ringPieces.push(geo);
   }
-  const ring = meshFrom(
-    mergeParts(ringParts),
-    new THREE.MeshStandardMaterial({
-      color: RING,
-      roughness: 0.55,
-      metalness: 0.12,
-      flatShading: true,
-    }),
-    "garageAnchorShowroomTurntableRing",
-  );
-  if (ring) interior.add(ring);
+  const ringMerged = mergeParts(ringPieces);
+  if (ringMerged) {
+    const ring = new THREE.Mesh(
+      ringMerged,
+      new THREE.MeshStandardMaterial({
+        color: 0x1c1915,
+        roughness: 0.62,
+        metalness: 0.08,
+        flatShading: true,
+      }),
+    );
+    ring.name = "garageAnchorShowroomTurntableRing";
+    plinth.add(ring);
+  }
 
   const hero = new THREE.Group();
   hero.name = "garageAnchorShowroomHeroCar";
-  hero.position.set(plinthX, 0.08, plinthZ);
-  hero.rotation.y = -0.4;
+  hero.position.set(plinthX, discTop, plinthZ);
+  hero.rotation.set(0, 0, 0);
   const fallback = buildCarMesh(SHOWROOM_VEHICLES[2]!.spec);
   fallback.name = "garageAnchorShowroomHeroCarFallback";
   hero.add(fallback);
@@ -481,17 +493,40 @@ export function buildDesertShowroomPavilion(showroom: Showroom): PavilionBuild {
   for (const slot of garageShowroomFloorCars({ x: sx, z: sz })) {
     const parked = new THREE.Group();
     parked.name = slot.id;
-    parked.position.set(slot.x, 0.02, slot.z);
-    parked.rotation.y = slot.rot;
+    parked.position.set(slot.x, floorTop, slot.z);
+    parked.rotation.set(0, slot.rot, 0);
     parked.userData.floorCarModel = slot.model;
     const parkedFallback = buildCarMesh(SHOWROOM_VEHICLES[slot.model]!.spec);
     parkedFallback.name = `${slot.id}.fallback`;
-    // Procedural cars are long on X. Native GLBs are long on Z, so yaw the
-    // placeholder by -90° and the loader applies the slot yaw on the GLB directly.
-    parkedFallback.rotation.y = -Math.PI / 2;
+    parkedFallback.rotation.set(0, -Math.PI / 2, 0);
     parked.add(parkedFallback);
     interior.add(parked);
   }
+
+  const backZ = sz - 9 / CELL_SIZE;
+  const wallH = h - 0.04;
+  const doorGap = 2.4 / CELL_SIZE;
+  const wallW = (w * 0.92 - doorGap) / 2;
+  const backMat = woodDark;
+  const backWest = new THREE.Mesh(
+    new THREE.BoxGeometry(wallW, wallH, 0.08),
+    backMat,
+  );
+  backWest.name = "garageAnchorShowroomBackWallWest";
+  backWest.position.set(sx - (doorGap + wallW) / 2, wallH / 2, backZ);
+  const backEast = new THREE.Mesh(
+    new THREE.BoxGeometry(wallW, wallH, 0.08),
+    backMat,
+  );
+  backEast.name = "garageAnchorShowroomBackWallEast";
+  backEast.position.set(sx + (doorGap + wallW) / 2, wallH / 2, backZ);
+  const counter = new THREE.Mesh(
+    new THREE.BoxGeometry(5 / CELL_SIZE, 1.1 / CELL_SIZE, 0.8 / CELL_SIZE),
+    wood,
+  );
+  counter.name = "garageAnchorShowroomReception";
+  counter.position.set(sx, 1.1 / CELL_SIZE / 2, backZ + 1.3 / CELL_SIZE);
+  interior.add(backWest, backEast, counter);
 
   const sill = new THREE.Mesh(
     new THREE.BoxGeometry(w * 0.84, 0.1, 0.08),

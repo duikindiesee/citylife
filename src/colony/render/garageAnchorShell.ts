@@ -162,25 +162,27 @@ export interface ShowroomFloorCarSlot {
 }
 
 /**
- * Static dealership cars around the centred turntable. Offsets are in metres from the
- * showroom centre, chosen so a 4.08 m car keeps roughly 2.5–3.5 m of clear floor to the
- * 7 m turntable and stays inside the glass.
+ * Four display cars in two symmetric pairs, 35 degrees off the glass so each nose
+ * points toward the facade and the centre aisle. Native GLB nose is -Z.
+ * Centres sit far enough out that a 4.08 x 1.83 m car keeps about 3 m clear of the
+ * 7 m turntable and about 1.8 m clear of its neighbour.
  */
 export function garageShowroomFloorCars(showroom: {
   x: number;
   z: number;
 }): ShowroomFloorCarSlot[] {
+  const noseTowardGlass = Math.PI;
+  const angle = (35 * Math.PI) / 180;
   const spots: Array<{
     dx: number;
     dz: number;
     rot: number;
     model: 0 | 1 | 2;
   }> = [
-    { dx: -7.2, dz: 6.6, rot: 0.55, model: 0 },
-    { dx: 7.2, dz: 6.6, rot: -0.55, model: 1 },
-    { dx: -7.2, dz: -6.4, rot: Math.PI - 0.45, model: 2 },
-    { dx: 7.2, dz: -6.4, rot: Math.PI + 0.45, model: 1 },
-    { dx: 0, dz: -7.6, rot: Math.PI, model: 0 },
+    { dx: -7.4, dz: 3.1, rot: noseTowardGlass + angle, model: 0 },
+    { dx: 7.4, dz: 3.1, rot: noseTowardGlass - angle, model: 1 },
+    { dx: -7.4, dz: -3.1, rot: noseTowardGlass + angle, model: 2 },
+    { dx: 7.4, dz: -3.1, rot: noseTowardGlass - angle, model: 1 },
   ];
   return spots.map((s, i) => ({
     id: `garageAnchorShowroomFloorCar.${i + 1}`,

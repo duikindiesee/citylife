@@ -65,6 +65,14 @@ Workshop lights, none of them casting shadows: a `#fffaed` key point (intensity 
 
 Measured on seed 4242 after this correction, wide approach frame with GLBs loaded: 1316 draw calls and 63576 shell triangles. Against the first PR 581 frame (1186 calls, 30208 shell triangles) that is +130 calls and +33368 triangles, almost all of it the five extra showroom cars. Those five are about 43 draw calls and roughly 33k triangles after the merge. The lift car bbox is 1.82 × 1.00 × 4.08 m at a 1.5 m deck. The turntable hero’s authored bbox is the same 4.08 × 1.825 × 1.01 m; a posed axis-aligned box is larger because the car is yawed.
 
+## Showroom floor review
+
+The raised disc was flush with the terrazzo slab, so the 7 m circle read as a pale square. It now stands 0.2 m above the floor, bevelled, with a dark segmented ring parented to the disc so the pair still turns with the hero car. Floor cars sit on the slab top, not inside it. Four of them form two mirrored pairs, noses 35 degrees toward the glass, about 1.8 m apart and about 3.2 m clear of the turntable. A wood screen and a reception counter close the back of the 30.72 × 22 × 6 m hall so the cars are not floating in an empty volume.
+
+World measurement with the shell scale at 4 and the district parent at 1: the lift car is 1.82 × 1.00 × 4.08 m and the turntable hero is 4.08 × 1.01 × 1.82 m. There is no second scale. Pendants are 0.45 m across, shade bottom 3.75 m off the floor, with a warm emissive underside.
+
+Against the previous push on this PR (1316 calls, 63576 shell triangles on the wide approach), this frame is 1268 calls and 56940 shell triangles. Dropping the fifth floor car is most of that.
+
 ## Follow-up
 
 Meshy GLB props (finished pendant lamps, lounge chairs, desert plants) are a later change. The procedural cylinders and chests are the stand-ins.
