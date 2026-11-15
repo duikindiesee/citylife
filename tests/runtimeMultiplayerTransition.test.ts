@@ -431,6 +431,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(preLogoutModel.parkedCars.length).toBe(2); // local + peer
     expect(preLogoutModel.peers.length).toBe(1);
@@ -616,6 +617,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
 
     expect(mapModel.player).not.toBeNull();
@@ -818,6 +820,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(mapModel.player).not.toBeNull();
     // Bounding box [30..50, 30..50], scale = 5.8, ox = 42, oy = 8
@@ -1872,6 +1875,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(mapModel.player).not.toBeNull();
     // Inner width = 184, inner height = 116. Scale = min(184/20, 116/20) = 5.8

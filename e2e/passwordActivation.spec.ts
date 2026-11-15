@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, type Page } from "@playwright/test";
 
 // Deterministic coverage for the CityLife password-change activation UX (PWD.ACT PR-E). The backend
@@ -107,6 +108,7 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     // Loads the full colony canvas (slow under headless, no GPU) and then reloads to the login gate —
     // give it generous headroom over the default 60s so a cold scene load never trips the cap.
     test.setTimeout(150_000);
+    await stubPublishedStarterCatalogue(page);
     await seedSession(page, ["CITYLIFE_PLAYER"]);
     await page.route(CHANGE_ROUTE, async (route) => {
       await route.fulfill({
@@ -147,6 +149,7 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     // Also loads the colony canvas — same generous headroom for a cold headless scene load.
     test.setTimeout(150_000);
     let hit = false;
+    await stubPublishedStarterCatalogue(page);
     await seedSession(page, ["CITYLIFE_PLAYER"]);
     await page.route(CHANGE_ROUTE, async (route) => {
       hit = true;

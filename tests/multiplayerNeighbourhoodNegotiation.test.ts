@@ -107,7 +107,7 @@ function makeSyntheticV4Manifest(
     schemaVersion: "citylife.starter-parcel-manifest/v1",
     status: "PUBLISHED",
     worldId: doc.worldId,
-    sourceLayoutRevision: doc.revision.parentHash ?? "",
+    sourceLayoutRevision: doc.revision.parentHash,
     layoutRevision: doc.revision.contentHash,
     layout: {
       schemaVersion: "citylife.world-layout/v1",
@@ -116,7 +116,7 @@ function makeSyntheticV4Manifest(
       generator: doc.generator,
       revision: {
         number: doc.revision.number,
-        parentHash: doc.revision.parentHash ?? "",
+        parentHash: doc.revision.parentHash,
         contentHash: doc.revision.contentHash,
       },
       frames: doc.frames as any,
@@ -576,11 +576,11 @@ describe("Authoritative Neighbourhood Wire Identity & Negotiation", () => {
       ]);
 
       // Revision is advanced via adoptWorldLayoutRevision
-      const doc2 = makeDoc({
+      const doc2 = createWorldLayoutDocument({
+        ...runtime.captureWorldLayout(),
         revision: {
-          number: 2,
+          number: doc1.revision.number + 1,
           parentHash: doc1.revision.contentHash,
-          contentHash: "new-content-hash-rev2",
         },
       });
 

@@ -174,7 +174,12 @@ import {
   solMinutesFracSinceEpoch,
   solsSinceEpoch,
 } from "./sol";
-import { MultiplayerClient, type RemoteRacer } from "./multiplayer/multiplayerClient";
+import {
+  MultiplayerClient,
+  type RemoteRacer,
+  type PartyRaceState,
+  type PartyRaceCheckpoint,
+} from "./multiplayer/multiplayerClient";
 import {
   extractAuthoritativeNeighbourhoodKeys,
   validateAuthoritativeStarterManifest,
@@ -262,7 +267,12 @@ import {
   type AccessDecision,
   type NeighbourhoodAccessDeps,
 } from "./bot/neighbourhoodAccess";
-import { isHomeOwned, type HomeTruth } from "./home/starterProperty";
+import {
+  isHomeOwned,
+  layoutRevisionsMatch,
+  type HomeTruth,
+} from "./home/starterProperty";
+import { homeTargetCell } from "./home/driveHome";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
 import {
@@ -1182,7 +1192,7 @@ export class ColonyRuntime {
 
   constructor(
     seed: number = COLONY.render.seed,
-    opts: { surveyOnly?: boolean } = {},
+    opts: { surveyOnly?: boolean; initialWorldLayout?: WorldLayoutDocument | unknown } = {},
   ) {
     this.surveyOnly = opts.surveyOnly === true;
     this.worldSeed = seed;
@@ -1194,7 +1204,6 @@ export class ColonyRuntime {
       buildability: new Uint8Array(this.sim.state.terrain.buildable),
       distanceToWater: new Int32Array(this.sim.state.terrain.distToWater),
     };
-    restoreColony(this.sim.state); // re-place settlers + restore the Kookerverse ledger
     this.cityPlan = makeCityPlan(this.sim.state.terrain);
     this.sim.state.cityPlan = this.cityPlan; // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan);
@@ -2297,6 +2306,12 @@ export class ColonyRuntime {
         this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }
+    // Founder doors are deterministic seed geometry, not resident state. Both published layout
+    // surveys and boots must see the same anchors before exact seeded-placement preflight.
+    const [joePlot, viwPlot] = this.neighborhood.lots;
+    if (joePlot) retargetParcelAccess(joePlot, streetDoorDir(joePlot));
+    if (viwPlot && !viwPlot.reservedFor) retargetParcelAccess(viwPlot, "e");
+
     // WORLD.SURVEY.1 — a SURVEY boot stops here. Everything above built the physical world:
     // terrain, neighbourhoods, the commercial reserve, hamlets, parcels, the road network, the bus
     // route, the depot and the fleet geometry. Everything below populates it — stored social
@@ -2305,7 +2320,11 @@ export class ColonyRuntime {
     //
     // This exists so seeds can be QUALIFIED in bulk (scripts/seedQualify.ts). It is not a "fast
     // mode" for the game: a surveyed runtime has no residents and must never be handed to the UI.
+    if (opts.initialWorldLayout) {
+      this.hydrateWorldLayout(opts.initialWorldLayout as WorldLayoutDocument);
+    }
     if (this.surveyOnly) return;
+    restoreColony(this.sim.state); // re-place settlers + restore the Kookerverse ledger
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
@@ -2596,6 +2615,10 @@ export class ColonyRuntime {
     this.emit();
   }
 
+  getOperatorUserId(): string | null {
+    return this.operatorUserId;
+  }
+
   /** Identity claim / backfill: once both the login name and kooker userId are known, stamp the userId
    *  onto the citizen the player owns — matched by name ONCE, then identity-keyed forever after. A
    *  no-op if the userId is unknown, if the user already owns a stamped citizen (so a later name
@@ -2685,16 +2708,47 @@ export class ColonyRuntime {
   ): boolean {
     if (userId !== this.operatorUserId) return false;
     const owned = resolveOwnedCar(keys);
-    if (owned?.id !== this.authoritativeCar?.id || !owned) {
-      this.ownedDriveInputGeneration++;
-      this.ownedDrivePose = null;
-      this.ownedDriveInput = {};
-    }
+    const carChanged = owned?.id !== this.authoritativeCar?.id || !owned;
     this.authoritativeCar = owned;
     const citizenId = this.operatorCitizenId();
     if (owned && citizenId) {
       const stored = hasStoredCar(citizenId) ? loadCar(citizenId) : null;
       if (!stored || stored.id !== owned.id) saveCar(citizenId, owned);
+    }
+    const truth = this.authoritativeHomeTruth;
+    const isResident =
+      truth &&
+      (truth.onboardingState === "RESIDENT" ||
+        truth.isResident === true ||
+        truth.status === "RESIDENT" ||
+        truth.arrivalStatus === "RESIDENT");
+    const geom = truth?.geometry;
+    const spawn = geom?.spawn;
+    if (
+      isResident &&
+      owned &&
+      spawn &&
+      typeof spawn.x === "number" &&
+      Number.isFinite(spawn.x) &&
+      typeof spawn.y === "number" &&
+      Number.isFinite(spawn.y)
+    ) {
+      this.ownedDrivePose = {
+        x: spawn.x,
+        y: spawn.y,
+        heading:
+          typeof (spawn as any).heading === "number" &&
+          Number.isFinite((spawn as any).heading)
+            ? (spawn as any).heading
+            : 0,
+        speed: 0,
+      };
+      this.ownedDriveInputGeneration++;
+      this.ownedDriveInput = {};
+    } else if (carChanged) {
+      this.ownedDriveInputGeneration++;
+      this.ownedDrivePose = null;
+      this.ownedDriveInput = {};
     }
     this.updateOperatorCar();
     this.emit();
@@ -3383,6 +3437,37 @@ export class ColonyRuntime {
 
   getAuthClient(): AuthClient | null {
     return this.authClient;
+  }
+
+  getPartyRaceState(): PartyRaceState | null {
+    return this.multiplayerClient?.getPartyRaceState() ?? null;
+  }
+
+  invitePartyRace(options?: {
+    checkpoints?: PartyRaceCheckpoint[];
+    countdownMs?: number;
+  }): boolean {
+    return this.multiplayerClient?.invitePartyRace(options) ?? false;
+  }
+
+  joinPartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.joinPartyRace(raceId) ?? false;
+  }
+
+  setPartyRaceReady(ready: boolean, raceId?: string): boolean {
+    return this.multiplayerClient?.setPartyRaceReady(ready, raceId) ?? false;
+  }
+
+  startPartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.startPartyRace(raceId) ?? false;
+  }
+
+  cancelPartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.cancelPartyRace(raceId) ?? false;
+  }
+
+  leavePartyRace(raceId?: string): boolean {
+    return this.multiplayerClient?.leavePartyRace(raceId) ?? false;
   }
 
   getMultiplayerClient(): MultiplayerClient | null {
@@ -4127,6 +4212,9 @@ export class ColonyRuntime {
           this.emitIfUiDue(modeChanged);
         }
       },
+      onPartyRaceState: () => {
+        this.emit();
+      },
       onSnapshot: (snapshot) => {
         const session = this.multiplayerClient?.getSessionInfo();
         if (!session || !session.sessionId || snapshot.sessionId !== session.sessionId) {
@@ -4330,6 +4418,7 @@ export class ColonyRuntime {
               racer.worldY = p.y;
               racer.heading = p.heading;
               racer.speed = p.speed;
+              racer.lastSeen = Date.now();
               racer.isPedestrian = isPed;
               racer.mode = p.mode;
               racer.seatedBusId = p.seatedBusId ?? null;
@@ -4368,6 +4457,15 @@ export class ColonyRuntime {
               ) {
                 modeChanged = true;
               }
+            }
+          }
+        }
+        if (this.sim.state.remoteRacers && this.sim.state.remoteRacers.size > 0) {
+          const now = Date.now();
+          for (const [id, r] of this.sim.state.remoteRacers.entries()) {
+            if (typeof r.lastSeen === "number" && now - r.lastSeen > 15_000) {
+              this.sim.state.remoteRacers.delete(id);
+              modeChanged = true;
             }
           }
         }
@@ -4708,12 +4806,160 @@ export class ColonyRuntime {
     this.emit();
   }
 
+  private authoritativeHomeTruth: HomeTruth | null = null;
+
+  getActiveLayoutRevisionId(): string | null {
+    return this.activeWorldLayout
+      ? worldLayoutRevisionId(this.activeWorldLayout.revision)
+      : null;
+  }
+
+  setAuthoritativeOwnedVehicle(
+    vehicle: { id: string; model: string; x: number; y: number; heading: number } | null,
+  ): void {
+    if (!vehicle) {
+      this.authoritativeCar = null;
+      this.ownedDrivePose = null;
+      this.emit();
+      return;
+    }
+    if (
+      typeof vehicle.id === "string" &&
+      vehicle.id.trim().length > 0 &&
+      typeof vehicle.model === "string" &&
+      vehicle.model.trim().length > 0 &&
+      typeof vehicle.x === "number" &&
+      Number.isFinite(vehicle.x) &&
+      typeof vehicle.y === "number" &&
+      Number.isFinite(vehicle.y)
+    ) {
+      const carSpec =
+        resolveOwnedCar([vehicle.model, vehicle.id]) ??
+        resolveOwnedCar([vehicle.model]) ??
+        resolveOwnedCar([vehicle.id]);
+      if (carSpec) {
+        this.authoritativeCar = carSpec;
+        const citizenId = this.operatorCitizenId();
+        if (citizenId) {
+          const stored = hasStoredCar(citizenId) ? loadCar(citizenId) : null;
+          if (!stored || stored.id !== carSpec.id) saveCar(citizenId, carSpec);
+        }
+        this.updateOperatorCar();
+      }
+      this.ownedDrivePose = {
+        x: vehicle.x,
+        y: vehicle.y,
+        heading:
+          typeof vehicle.heading === "number" && Number.isFinite(vehicle.heading)
+            ? vehicle.heading
+            : 0,
+        speed: 0,
+      };
+      this.emit();
+    }
+  }
+
+  getPhysicalCarPosition(): { x: number; y: number } | null {
+    if (this.ownedDrivePose) {
+      return { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
+    }
+    return null;
+  }
+
+  getAuthoritativeCar(): CarSpec | null {
+    return this.authoritativeCar;
+  }
+
+  setAuthoritativeHomeTruth(truth: HomeTruth | null): void {
+    this.authoritativeHomeTruth = truth;
+    this.emit();
+  }
+
+  getAuthoritativeHomeTruth(): HomeTruth | null {
+    return this.authoritativeHomeTruth;
+  }
+
+  /** Render-only readback of the operator's owned home driveway approach cells. */
+  getPlayerHomeDriveway(): {
+    plotId: string;
+    cells: readonly Cell[];
+    gate?: { x: number; y: number };
+    side?: number;
+  } | null {
+    if (this.authoritativeHomeTruth) {
+      const truth = this.authoritativeHomeTruth;
+      if (!isHomeOwned(truth)) return null;
+      if (truth.geometry?.driveway && truth.geometry.driveway.length > 0) {
+        return {
+          plotId: truth.plotId ?? (truth.geometry.plotId ?? "starter-home"),
+          cells: truth.geometry.driveway,
+          gate:
+            truth.geometry.door ??
+            (truth.geometry.houseZone
+              ? { x: truth.geometry.houseZone.x, y: truth.geometry.houseZone.y }
+              : undefined),
+        };
+      }
+      if (truth.plotId) {
+        const lot = this.neighborhood.lots.find(
+          (l) =>
+            l &&
+            (l.id === truth.plotId ||
+              l.id === `lot-${truth.plotId}` ||
+              l.id === `lot_${truth.plotId}`),
+        );
+        if (lot && lot.driveway && lot.driveway.length > 0) {
+          return {
+            plotId: lot.id,
+            cells: lot.driveway,
+            gate: lot.gate,
+            side: lot.side,
+          };
+        }
+      }
+      return null;
+    }
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId) return null;
+    const lot = this.neighborhood.lots.find(
+      (l) => l.ownerCitizenId === citizenId,
+    );
+    if (!lot || !lot.built || !lot.driveway || lot.driveway.length === 0) {
+      return null;
+    }
+    return {
+      plotId: lot.id,
+      cells: lot.driveway,
+      gate: lot.gate,
+      side: lot.side,
+    };
+  }
+
   getOperatorHomeTarget(): {
     x: number;
     y: number;
     lotId: string;
     name: string;
   } | null {
+    if (this.authoritativeHomeTruth) {
+      const truth = this.authoritativeHomeTruth;
+      if (!isHomeOwned(truth)) return null;
+      if (truth.layoutRevision && this.getActiveLayoutRevisionId()) {
+        if (!layoutRevisionsMatch(truth.layoutRevision, this.getActiveLayoutRevisionId())) {
+          return null;
+        }
+      }
+      const target = homeTargetCell(truth, this);
+      if (target) {
+        return {
+          x: target.x,
+          y: target.y,
+          lotId: truth.plotId ?? "starter-home",
+          name: truth.plotId ? `Plot ${truth.plotId}` : "Starter Home",
+        };
+      }
+      return null;
+    }
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return null;
     const lot = this.neighborhood.lots.find(
@@ -4729,10 +4975,17 @@ export class ColonyRuntime {
   }
 
   hasOperatorHome(): boolean {
+    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+      return this.getOperatorHomeTarget() !== null;
+    }
     const target = this.getOperatorHomeTarget();
     if (!target) return false;
     const lot = this.neighborhood.lots.find((l) => l.id === target.lotId);
     return !!(lot && lot.built);
+  }
+
+  getWorldGridSize(): number {
+    return this.sim?.state?.terrain?.size ?? 608;
   }
 
   claimStarterHome(target?: string | HomeTruth): boolean {
@@ -4742,13 +4995,16 @@ export class ColonyRuntime {
     let targetPlotId: string | null = null;
     let targetNeighbourhoodKey: string | null = null;
 
-    const isTruthObject = Boolean(target && typeof target === "object");
-    if (isTruthObject) {
-      const truth = target as HomeTruth;
+    const truth = typeof target === "object" ? target : undefined;
+    if (truth) {
       // Authority-bound resolution: only an unambiguously owned truth may claim a starter home
-      if (!isHomeOwned(truth)) {
+      if (truth.owned === false) {
+        // An explicit negative read is authoritative; do not resurrect a stale local lot.
+        this.isGpsNavigatingHome = false;
+        this.setAuthoritativeHomeTruth(truth);
         return false;
       }
+      if (!isHomeOwned(truth)) return false;
       targetPlotId = truth.plotId ?? null;
       targetNeighbourhoodKey = truth.neighbourhoodKey ?? null;
       // An authoritative HomeTruth must specify a server-allocated plot ID or neighbourhood key.
@@ -4822,7 +5078,7 @@ export class ColonyRuntime {
         return false; // No available lots in requested neighbourhood — fail closed, never fall back to unrelated lots
       }
     } else {
-      if (isTruthObject) {
+      if (truth) {
         return false; // Truth objects must never enter open land fallback
       }
       // Default open land fallback (no specific neighbourhood or plot requested)
@@ -4860,6 +5116,8 @@ export class ColonyRuntime {
     if (!lot.built) {
       this.buildHouse(lot.id);
     }
+    // Only a claim that resolved and passed the local authority checks may be projected.
+    if (truth) this.authoritativeHomeTruth = truth;
     this.isGpsNavigatingHome = true;
     this.emit();
     return true;
@@ -6260,12 +6518,13 @@ export class ColonyRuntime {
     terrainAuthority: MaterializedTerrainAuthority,
   ): void {
     const terrain = this.preflightTerrain(terrainAuthority);
-    if (this.seededPlacementSignatures === null)
+    if (this.seededPlacementSignatures === null) {
       this.seededPlacementSignatures = new Set(
         this.runtimeZonedPlacements(surfaceFrameId).map((placement) =>
           this.placementSignature(placement),
         ),
       );
+    }
     const surfaceRoadCells = new Set(
       candidate.roads.map((road) => `${road.x},${road.y}`),
     );
@@ -6727,9 +6986,16 @@ export class ColonyRuntime {
   /** Spec 149 / Task e81ea9de — Export standalone canonical transit authority v1. */
   exportCanonicalTransitAuthority(document?: WorldLayoutDocument): CanonicalTransitAuthority | null {
     const doc = document ?? this.captureWorldLayout();
+    const currentLayoutHash =
+      this.activeWorldLayout?.revision.contentHash ??
+      (document ? this.captureWorldLayout().revision.contentHash : doc.revision.contentHash);
+    // A pending terrain edit invalidates cached transit even if the caller omitted the document.
     const isCleanActive =
-      !!this.activeWorldLayout &&
-      this.activeWorldLayout.revision.contentHash === doc.revision.contentHash;
+      useRoadNetwork.getState().landscapeEdits.size === 0 &&
+      currentLayoutHash === doc.revision.contentHash &&
+      (doc.layoutId === `seed-${this.worldSeed}` ||
+        doc.worldId === `seed-${this.worldSeed}` ||
+        doc.layoutId === this.activeWorldLayout?.layoutId);
 
     let route = this.busRoute;
     let depot = this.busDepot;
@@ -7010,7 +7276,12 @@ export class ColonyRuntime {
     }));
 
     if (this.sim.state.remoteRacers && this.sim.state.remoteRacers.size > 0) {
-      for (const racer of this.sim.state.remoteRacers.values()) {
+      const now = Date.now();
+      for (const [id, racer] of [...this.sim.state.remoteRacers.entries()]) {
+        if (typeof racer.lastSeen === "number" && now - racer.lastSeen > 15_000) {
+          this.sim.state.remoteRacers.delete(id);
+          continue;
+        }
         subjects.push({
           subjectId: `peer:${racer.participantId}`,
           displayName: racer.username,
@@ -7917,7 +8188,6 @@ export class ColonyRuntime {
     plot.built = true;
     const joeStreet = streetDoorDir(plot);
     plot.blueprint = joeBlueprint(joeStreet);
-    retargetParcelAccess(plot, joeStreet);
     const home = {
       x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
       y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),
@@ -7956,14 +8226,13 @@ export class ColonyRuntime {
   private seedViw(): void {
     const lots = this.neighborhood.lots;
     // Spec 084 S6 — Viw takes lot_2, right beside Joe's shore plot (lots renumber by water
-    // distance). His crewhouse door is fixed EAST so the S2 side-walkway lays on every boot.
+    // distance). His fixed east-facing door was laid during the physical phase above.
     const plot = lots.length > 1 && !lots[1]!.reservedFor ? lots[1] : undefined;
     if (!plot) return;
     plot.reservedFor = VIW_ID;
     plot.ownerCitizenId = VIW_ID;
     plot.built = true;
     plot.blueprint = VIW_BLUEPRINT;
-    retargetParcelAccess(plot, "e");
     const home = {
       x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
       y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),

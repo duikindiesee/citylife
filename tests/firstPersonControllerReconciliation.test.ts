@@ -259,6 +259,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(mapModel.player).not.toBeNull();
     expect(mapModel.player!.x).toBeCloseTo(105.8, 1);
@@ -874,6 +875,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(mapModel.player).not.toBeNull();
     expect(mapModel.player!.x).toBeCloseTo(105.8, 1);
@@ -1015,6 +1017,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(mapModel.player).not.toBeNull();
     expect(mapModel.player!.x).toBeCloseTo(111.6, 1);
@@ -1158,6 +1161,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       width: 200,
       height: 132,
       padding: 8,
+      playerLocationAuthorized: true,
     });
     expect(mapModel.player).not.toBeNull();
     expect(mapModel.player!.x).toBeCloseTo(111.6, 1);

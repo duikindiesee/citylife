@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, type Page } from "@playwright/test";
 
 // Deterministic coverage for the PERMANENT signed-out activation-token redemption route (PWD.REC.9),
@@ -103,6 +104,8 @@ test.describe("Persistent activation-token redemption route (PWD.REC.9)", () => 
         }),
       });
     });
+
+    await stubPublishedStarterCatalogue(page);
 
     // 1) Request recovery — the owner stages a NEW password and gets a one-time REFERENCE to read out.
     await page.goto("/?login=1");

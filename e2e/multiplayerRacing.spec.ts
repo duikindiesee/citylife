@@ -78,14 +78,28 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       if (!cached) {
         const customDoc = reqWorldId === "seed-4242" ? defaultDoc : makeDoc(reqWorldId);
         const transit = reqWorldId === "seed-4242" ? defaultTransit : baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc);
+        const frame = customDoc.frames.find(({ kind, layer }) => kind === "region" && layer === "surface");
+        if (!frame) throw new Error("Synthetic racing catalogue requires a surface region");
+        const plotId = "citylife-central-racing-fixture";
         cached = JSON.stringify({
           published: true,
           manifest: {
+            schemaVersion: "citylife.starter-parcel-manifest/v1",
             worldId: reqWorldId,
             layoutRevision: customDoc.revision.contentHash,
+            sourceLayoutRevision: customDoc.revision.parentHash,
             layout: customDoc,
             transit,
-            plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+            plots: [{
+              plotId,
+              frameId: frame.id,
+              geometry: {
+                plotId,
+                worldId: reqWorldId,
+                layoutRevision: customDoc.revision.contentHash,
+                neighbourhoodKey: "citylife-central",
+              },
+            }],
           },
         });
         catalogueCache.set(reqWorldId, cached);

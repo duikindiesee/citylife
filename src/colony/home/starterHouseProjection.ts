@@ -67,13 +67,51 @@ export function deriveHomeSeed(truth: HomeTruth): number {
   );
 }
 
-/** The deterministic map placement (a cell in the bounded grid) for a deed. Derived from the same
- *  identity chain but on a second, independent hash axis so the x/y are not trivially correlated with
- *  the house seed. Same deed → same cell, always. Pure. */
+/** The deterministic map placement (a cell in the bounded grid) for a deed. Adopts published
+ *  server-owned coordinates or plot geometry when present; otherwise derives from the deed
+ *  identity chain so the same deed always lands on the same cell. Pure. */
 export function deriveHomePlacement(truth: HomeTruth): {
   readonly x: number;
   readonly y: number;
 } {
+  if (
+    typeof truth.x === "number" &&
+    Number.isFinite(truth.x) &&
+    typeof truth.y === "number" &&
+    Number.isFinite(truth.y)
+  ) {
+    return { x: truth.x, y: truth.y };
+  }
+  if (truth.geometry) {
+    if (
+      truth.geometry.door &&
+      Number.isFinite(truth.geometry.door.x) &&
+      Number.isFinite(truth.geometry.door.y)
+    ) {
+      return { x: truth.geometry.door.x, y: truth.geometry.door.y };
+    }
+    if (
+      truth.geometry.spawn &&
+      Number.isFinite(truth.geometry.spawn.x) &&
+      Number.isFinite(truth.geometry.spawn.y)
+    ) {
+      return { x: truth.geometry.spawn.x, y: truth.geometry.spawn.y };
+    }
+    if (
+      truth.geometry.houseZone &&
+      Number.isFinite(truth.geometry.houseZone.x) &&
+      Number.isFinite(truth.geometry.houseZone.y)
+    ) {
+      const hz = truth.geometry.houseZone;
+      const w = hz.width ?? (hz as any).w ?? 1;
+      const d = hz.depth ?? (hz as any).d ?? 1;
+      return {
+        x: Math.round(hz.x + (w - 1) / 2),
+        y: Math.round(hz.y + (d - 1) / 2),
+      };
+    }
+  }
+
   const seed = deriveHomeSeed(truth);
   const hx = hash32((seed ^ 0x2545f491) >>> 0);
   const hy = hash32((seed ^ 0x9e3779b9) >>> 0);

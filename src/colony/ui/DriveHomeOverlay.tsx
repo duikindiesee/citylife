@@ -20,6 +20,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -38,6 +39,9 @@ import {
   type HomeResidency,
   type ArrivalOutcome,
 } from "../home/driveHome";
+import { serverVehicleKeyOf } from "../car/carAcquisition";
+import { getAuthClient } from "../authClient";
+import { layoutRevisionsMatch } from "../home/starterProperty";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -78,7 +82,22 @@ export function DriveHomeOverlay({
   runtime,
 }: {
   onClose: () => void;
-  runtime?: { focusSurveyCell(x: number, y: number): boolean };
+  runtime?: {
+    focusSurveyCell(x: number, y: number): boolean;
+    getOwnedDrivePose?(): { x: number; y: number; heading?: number } | null;
+    getPhysicalCarPosition?(): { x: number; y: number } | null;
+    getActiveLayoutRevisionId?(): string | null;
+    worldLayoutDocument?(): any;
+    getOperatorUserId?(): string | null;
+    getAuthoritativeCar?(): { id: string } | null;
+    subscribe?(listener: () => void): () => void;
+    lots?(): any[];
+    getStarterCatalogueManifest?(): any;
+    plotGeometry?: { get: (id: string) => any };
+    getOperatorHomeTarget?(): { x: number; y: number; lotId: string } | null;
+    getWorldGridSize?(): number;
+    sim?: any;
+  };
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [residency, setResidency] = useState<HomeResidency | null>(null);
@@ -87,17 +106,68 @@ export function DriveHomeOverlay({
   const [pending, setPending] = useState(false);
   const [garageOpen, setGarageOpen] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [, setRuntimeTick] = useState(0);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const operationSeqRef = useRef(0);
+  const currentRuntimeRef = useRef(runtime);
+  const lastOperatorRef = useRef(runtime?.getOperatorUserId?.() ?? null);
+  const lastRevRef = useRef(runtime?.getActiveLayoutRevisionId?.() ?? null);
+
+  useEffect(() => {
+    currentRuntimeRef.current = runtime;
+    lastOperatorRef.current = runtime?.getOperatorUserId?.() ?? null;
+    lastRevRef.current = runtime?.getActiveLayoutRevisionId?.() ?? null;
+    operationSeqRef.current += 1;
+    setPending(false);
+    setOutcome(undefined);
+  }, [runtime]);
+
+  // Subscribe to runtime state changes so physical vehicle movement re-renders guidance, and same-object
+  // operator/revision changes immediately invalidate pending arrival operations
+  useEffect(() => {
+    if (!runtime || typeof runtime.subscribe !== "function") return;
+    const unsub = runtime.subscribe(() => {
+      setRuntimeTick((t) => t + 1);
+      const curOp = runtime.getOperatorUserId?.() ?? null;
+      const curRev = runtime.getActiveLayoutRevisionId?.() ?? null;
+      if (curOp !== lastOperatorRef.current || curRev !== lastRevRef.current) {
+        lastOperatorRef.current = curOp;
+        lastRevRef.current = curRev;
+        operationSeqRef.current += 1;
+        setPending(false);
+      }
+      setOutcome(undefined);
+    });
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [runtime]);
 
   // Load the authoritative residency (owned/RESIDENT/garage) truth. Fail-soft: a null read (signed out /
   // endpoint absent / malformed) surfaces the retry state and never a client-invented destination.
   useEffect(() => {
     let live = true;
     setPhase("loading");
+    const startUserId =
+      runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
     void (async () => {
       const res = await fetchHomeResidency();
-      if (!live) return;
+      if (!live || !mountedRef.current) return;
+      const currentUserId =
+        runtime?.getOperatorUserId?.() ?? getAuthClient().operator?.userId ?? null;
+      if (startUserId && currentUserId !== startUserId) {
+        setPhase("error");
+        return;
+      }
       setResidency(res);
-      if (!res || !homeTargetCell(res.truth)) {
+      if (!res || !homeTargetCell(res.truth, runtime)) {
         setPhase("error");
         return;
       }
@@ -105,28 +175,65 @@ export function DriveHomeOverlay({
       // player is RESIDENT, in which case a second device / relogin converges without re-driving.
       setCursor((cur) => {
         if (cur) return cur;
-        if (res.resident) return homeTargetCell(res.truth);
-        return dealershipStartCell(res.truth);
+        if (res.resident) return homeTargetCell(res.truth, runtime);
+        return dealershipStartCell(res.truth, runtime);
       });
       setPhase("ready");
     })();
     return () => {
       live = false;
     };
-  }, [reloadToken]);
+  }, [reloadToken, runtime]);
 
   const home = useMemo(
-    () => homeTargetCell(residency?.truth ?? null),
-    [residency],
+    () => homeTargetCell(residency?.truth ?? null, runtime),
+    [residency, runtime],
   );
+
+  const operatorUserId = runtime?.getOperatorUserId?.();
+  const authUserId = getAuthClient().operator?.userId ?? null;
+  const runtimeLayoutRevision = runtime?.getActiveLayoutRevisionId?.();
+  const truthLayoutRevision = residency?.truth?.layoutRevision;
+  const layoutMatches = runtime
+    ? Boolean(
+        runtimeLayoutRevision &&
+          truthLayoutRevision &&
+          layoutRevisionsMatch(runtimeLayoutRevision, truthLayoutRevision),
+      )
+    : true;
+  const isOperatorAuthed = runtime
+    ? Boolean(operatorUserId && authUserId && operatorUserId === authUserId)
+    : Boolean(authUserId);
+  const carEligible = Boolean(
+    isOperatorAuthed &&
+      layoutMatches &&
+      (runtime ? runtime.getAuthoritativeCar?.() : true),
+  );
+
+  const physicalCarPose = carEligible
+    ? (runtime?.getOwnedDrivePose?.() ??
+      runtime?.getPhysicalCarPosition?.() ??
+      null)
+    : null;
+  const physicalCarCell: Cell | null = physicalCarPose
+    ? { x: Math.round(physicalCarPose.x), y: Math.round(physicalCarPose.y) }
+    : null;
+  const activeCarCell = physicalCarCell ?? cursor;
+
   const guidance = useMemo(
-    () => computeRouteGuidance(cursor, home),
-    [cursor, home],
+    () => computeRouteGuidance(activeCarCell, home),
+    [activeCarCell, home],
   );
-  const withinBounds = useMemo(
-    () => (cursor && home ? isWithinArrivalBounds(cursor, home) : false),
-    [cursor, home],
-  );
+
+  const effectiveWithinBounds = useMemo(() => {
+    if (!home || !carEligible) return false;
+    if (runtime) {
+      if (!physicalCarCell) return false;
+      return isWithinArrivalBounds(physicalCarCell, home);
+    }
+    return cursor ? isWithinArrivalBounds(cursor, home) : false;
+  }, [home, carEligible, runtime, physicalCarCell, cursor]);
+
   const resident = residency?.resident === true;
   const garageUnlocked = isHomeGarageUnlocked(residency);
 
@@ -144,24 +251,178 @@ export function DriveHomeOverlay({
   }, [cursor, runtime]);
 
   const arrive = useCallback(() => {
-    if (pending || resident || !cursor || !withinBounds) return;
+    if (pending || resident || !home) return;
+    if (!carEligible) {
+      setOutcome({ kind: "rejected" });
+      return;
+    }
+    if (runtime) {
+      if (!physicalCarCell || !isWithinArrivalBounds(physicalCarCell, home)) {
+        setOutcome({ kind: "rejected" });
+        return;
+      }
+    }
+    if (!effectiveWithinBounds) return;
+
+    const targetCell = physicalCarCell ?? cursor;
+    if (!targetCell) return;
+
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
+      setOutcome({ kind: "rejected" });
+      return;
+    }
+    const startUserId = startAuthUserId ?? startRuntimeUserId;
+    if (!startUserId) {
+      setOutcome({ kind: "rejected" });
+      return;
+    }
+
+    const startRuntimeRev = runtime?.getActiveLayoutRevisionId?.() ?? null;
+    const startRevision =
+      startRuntimeRev ??
+      residency?.truth?.layoutRevision ??
+      null;
+
+    const opId = ++operationSeqRef.current;
+    const expectedRuntime = runtime;
+    const isCurrent = () => {
+      if (!mountedRef.current) return false;
+      if (operationSeqRef.current !== opId) return false;
+      if (currentRuntimeRef.current !== expectedRuntime) return false;
+      const curAuth = authClient.operator?.userId ?? null;
+      if (curAuth !== startAuthUserId) return false;
+      const curRtUser = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (curRtUser !== startRuntimeUserId) return false;
+      const curRev = expectedRuntime?.getActiveLayoutRevisionId?.() ?? null;
+      if (curRev !== startRuntimeRev) return false;
+      return true;
+    };
+
     setPending(true);
-    void postHomeArrival(cursor, residency?.truth ?? null).then((result) => {
-      setOutcome(result);
-      if (result.kind === "confirmed" || result.kind === "pending") {
-        // Reconcile against a FRESH re-fetch of the server truth (never a local guess) — this is what the
-        // garage unlock and the RESIDENT convergence bind to.
-        void fetchHomeResidency().then((fresh) => {
-          if (fresh) setResidency(fresh);
+
+    const carSpec = runtime?.getAuthoritativeCar?.() ?? null;
+    const vehicleKey = carSpec
+      ? serverVehicleKeyOf(carSpec.id)
+      : (residency?.truth as any)?.vehicleId
+        ? String((residency?.truth as any).vehicleId).trim()
+        : null;
+    const plotId = residency?.truth?.plotId ?? null;
+    const frameId = residency?.truth?.frameId ?? null;
+
+    void postHomeArrival(targetCell, residency?.truth ?? null, {
+      plotId,
+      frameId,
+      vehicleKey,
+      authority: expectedRuntime,
+      grid:
+        (expectedRuntime as any)?.getWorldGridSize?.() ??
+        (expectedRuntime as any)?.sim?.state?.terrain?.size ??
+        (expectedRuntime ? 608 : undefined),
+    }).then(async (result) => {
+      try {
+        if (!isCurrent()) return;
+        const midAuthUserId = authClient.operator?.userId ?? null;
+        const midRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+        if (expectedRuntime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
+          if (isCurrent()) {
+            setOutcome({ kind: "rejected" });
+          }
+          return;
+        }
+        if (!midAuthUserId || midAuthUserId !== startUserId) {
+          if (isCurrent()) {
+            setOutcome({ kind: "rejected" });
+          }
+          return;
+        }
+
+        const midRuntimeRev = expectedRuntime?.getActiveLayoutRevisionId?.() ?? null;
+        if (expectedRuntime && startRuntimeRev !== null && midRuntimeRev !== startRuntimeRev) {
+          if (result.kind !== "confirmed" && result.kind !== "pending") {
+            return;
+          }
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        if (result.kind !== "confirmed" && result.kind !== "pending") {
+          if (isCurrent()) {
+            setOutcome(result);
+          }
+          return;
+        }
+
+        const fresh = await fetchHomeResidency();
+        if (!isCurrent()) return;
+        const endAuthUserId = authClient.operator?.userId ?? null;
+        const endRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+        if (expectedRuntime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+        if (!endAuthUserId || endAuthUserId !== startUserId) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        const currentRuntimeRev = expectedRuntime?.getActiveLayoutRevisionId?.() ?? null;
+        if (expectedRuntime && (!currentRuntimeRev || currentRuntimeRev !== startRevision)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        const freshTruthRev = fresh?.truth?.layoutRevision ?? null;
+        if (!freshTruthRev || (startRevision && !layoutRevisionsMatch(freshTruthRev, startRevision))) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        if (!fresh || fresh.resident !== true) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        const freshPlotId = fresh.truth?.plotId ?? null;
+        if (!freshPlotId || (plotId && freshPlotId !== plotId)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+        const freshFrameId = fresh.truth?.frameId ?? null;
+        if (!freshFrameId || (frameId && freshFrameId !== frameId)) {
+          if (isCurrent()) setOutcome({ kind: "rejected" });
+          return;
+        }
+
+        if (isCurrent()) {
+          setResidency(fresh);
+          setOutcome(result);
+        }
+      } catch {
+        if (isCurrent()) {
+          setOutcome({ kind: "rejected" });
+        }
+      } finally {
+        if (isCurrent()) {
           setPending(false);
-        });
-      } else {
-        setPending(false);
+        }
       }
     });
-  }, [pending, resident, cursor, withinBounds, residency]);
+  }, [
+    pending,
+    resident,
+    home,
+    carEligible,
+    runtime,
+    physicalCarCell,
+    effectiveWithinBounds,
+    cursor,
+    residency,
+  ]);
 
-  const view = arrivalButtonView(resident, withinBounds, pending, outcome);
+  const view = arrivalButtonView(resident, effectiveWithinBounds, pending, outcome);
 
   // Keyboard navigation: WASD or Arrow keys drive the car, Escape exits the guidance HUD.
   useEffect(() => {
@@ -285,7 +546,7 @@ export function DriveHomeOverlay({
         </div>
       )}
 
-      {phase === "ready" && home && cursor && (
+      {phase === "ready" && home && activeCarCell && (
         <>
           {/* Live, mobile-ready driving guidance — a pure function of the cursor + server destination. */}
           <div
@@ -309,7 +570,7 @@ export function DriveHomeOverlay({
           {/* Where the car is + where home is (both server-derived) — display only. */}
           <div
             data-testid="drive-home-cursor"
-            data-cell={`${cursor.x},${cursor.y}`}
+            data-cell={`${activeCarCell.x},${activeCarCell.y}`}
             data-home={`${home.x},${home.y}`}
             style={{
               ...panelStyle,
@@ -321,7 +582,7 @@ export function DriveHomeOverlay({
             }}
           >
             <span style={{ color: "#7ab0d0" }}>
-              Car {cursor.x},{cursor.y}
+              Car {activeCarCell.x},{activeCarCell.y}
             </span>
             <span style={{ color: "#ffd25a" }}>
               Home {home.x},{home.y}

@@ -56,9 +56,9 @@ stranger veto every proposed fix indefinitely.
 
 It does not prove the caller **is** the principal they name. That is an identity question and only
 the auth boundary can answer it; a client-side module cannot verify a signature it has no key for.
-`setBugValidatorAuthority` is where that answer arrives — the Task API already refuses operator-gated
-actions without a user JWT holding an admin role (unauthenticated `operator-report` returns HTTP 401,
-"requires a user JWT with an admin role"). Until an authority is installed, the gate is allowlist-only.
+`setBugValidatorAuthority` is where that answer arrives. The shipped AuthClient wiring installs it
+from the signed-in JWT role/user identity; without a signed-in admin/operator session, validation is
+denied even when a caller names the configured principal.
 
 This is stated plainly rather than papered over, because a security note that overclaims is worse
 than none. What changed is real: the role name alone is no longer sufficient, and the check now

@@ -38,6 +38,41 @@ export interface BusNetworkMiniMapModel {
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
 }
 
+export function canShowPlayerLocationForAccount(input: {
+  isCityLifePlayer?: boolean | null;
+  authenticatedAccountKey?: string | null;
+  runtimeAccountKey?: string | null;
+}): boolean {
+  return (
+    input.isCityLifePlayer === true &&
+    typeof input.authenticatedAccountKey === "string" &&
+    input.authenticatedAccountKey.length > 0 &&
+    typeof input.runtimeAccountKey === "string" &&
+    input.runtimeAccountKey.length > 0 &&
+    input.authenticatedAccountKey === input.runtimeAccountKey
+  );
+}
+
+export function resolveLocalPlayerMapPosition(input: {
+  playerLocationAuthorized: boolean;
+  cameraCell?: { x: number; y: number } | null;
+  exactOwnPresence?: { x: number; y: number } | null;
+  drivingPosition?: { x: number; y: number } | null;
+  activeCitizenId?: string | null;
+  operatorCitizenId?: string | null;
+}): { x: number; y: number } | null {
+  if (input.playerLocationAuthorized !== true) return null;
+  if (input.drivingPosition) return input.drivingPosition;
+  if (
+    input.activeCitizenId &&
+    input.operatorCitizenId &&
+    input.activeCitizenId === input.operatorCitizenId
+  ) {
+    return input.exactOwnPresence ?? input.cameraCell ?? null;
+  }
+  return null;
+}
+
 interface Input {
   ways: RoadWay[];
   routeStops: { x: number; y: number }[];
@@ -59,6 +94,7 @@ interface Input {
   }[];
   player?: { x: number; y: number } | null;
   parkedCar?: { x: number; y: number } | null;
+  playerLocationAuthorized?: boolean;
   width: number;
   height: number;
   padding: number;
@@ -67,6 +103,7 @@ interface Input {
 export function buildBusNetworkMiniMapModel(
   input: Input,
 ): BusNetworkMiniMapModel {
+  const authorized = input.playerLocationAuthorized === true;
   // The map frame is derived only from fixed network geometry. Including moving buses or
   // the player here made the projection rescale every time a marker reached a new extreme.
   const network = [
@@ -137,7 +174,7 @@ export function buildBusNetworkMiniMapModel(
   }
 
   const parkedCars: MiniMapParkedCarPoint[] = [];
-  if (input.parkedCar) {
+  if (authorized && input.parkedCar) {
     parkedCars.push({
       id: "local-parked-car",
       ownerName: "You",
@@ -147,6 +184,7 @@ export function buildBusNetworkMiniMapModel(
   }
   if (input.parkedCars) {
     for (const pc of input.parkedCars) {
+      if (pc.isLocal && !authorized) continue;
       parkedCars.push({
         id: pc.id,
         ownerName: pc.ownerName,
@@ -184,7 +222,7 @@ export function buildBusNetworkMiniMapModel(
     busClusters,
     peers,
     parkedCars,
-    player: input.player ? projectMoving(input.player) : null,
+    player: authorized && input.player ? projectMoving(input.player) : null,
     bounds: { minX: rawMinX, minY: rawMinY, spanX, spanY },
   };
 }

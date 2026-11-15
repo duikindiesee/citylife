@@ -141,4 +141,43 @@ describe("bus layer visual model", () => {
     );
     rig.dispose();
   });
+
+  it("leaves windscreen aperture open and keeps lower shell strictly below passenger floor", () => {
+    const bus = buildBus();
+    const shell = bus.getObjectByName("bus-lower-shell") as THREE.Mesh;
+    const floor = bus.getObjectByName("bus-interior-floor") as THREE.Mesh;
+    const aisle = bus.getObjectByName("bus-interior-aisle") as THREE.Mesh;
+    expect(shell).toBeTruthy();
+    expect(floor).toBeTruthy();
+    expect(aisle).toBeTruthy();
+
+    const shellBox = new THREE.Box3().setFromObject(shell);
+    const floorBox = new THREE.Box3().setFromObject(floor);
+    const aisleBox = new THREE.Box3().setFromObject(aisle);
+
+    // Opaque lower shell must not enclose floor or aisle
+    expect(floorBox.min.y).toBeGreaterThan(shellBox.max.y);
+    expect(aisleBox.min.y).toBeGreaterThanOrEqual(floorBox.max.y);
+
+    // Front frame top/bottom and left/right pillars leave the windscreen aperture open
+    const frontTop = bus.getObjectByName("bus-front-frame-top") as THREE.Mesh;
+    const frontBottom = bus.getObjectByName("bus-front-frame-bottom") as THREE.Mesh;
+    const frontLeft = bus.getObjectByName("bus-front-frame-left") as THREE.Mesh;
+    const frontRight = bus.getObjectByName("bus-front-frame-right") as THREE.Mesh;
+    expect(frontTop).toBeTruthy();
+    expect(frontBottom).toBeTruthy();
+    expect(frontLeft).toBeTruthy();
+    expect(frontRight).toBeTruthy();
+
+    const topBox = new THREE.Box3().setFromObject(frontTop);
+    const bottomBox = new THREE.Box3().setFromObject(frontBottom);
+    const leftBox = new THREE.Box3().setFromObject(frontLeft);
+    const rightBox = new THREE.Box3().setFromObject(frontRight);
+
+    // Windscreen vertical aperture gap between top rail and bottom rail
+    expect(topBox.min.y).toBeGreaterThan(bottomBox.max.y + 0.8);
+    // Windscreen lateral aperture gap between left and right pillars
+    expect(leftBox.min.z).toBeGreaterThan(rightBox.max.z + 1.5);
+  });
+
 });
