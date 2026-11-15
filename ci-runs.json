@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-15T08:02:15.570Z",
+  "updatedAt": "2026-11-15T08:03:00.774Z",
   "runs": [
     {
       "runId": 43692576912,
@@ -38,6 +38,45 @@
           "startedAt": "2026-11-15T08:01:49Z",
           "completedAt": "2026-11-15T08:01:57Z",
           "durationSeconds": 8
+        }
+      ]
+    },
+    {
+      "runId": 43692576776,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/43692576776",
+      "event": "pull_request",
+      "branch": "candidate/client-rail9-party-race",
+      "sha": "6bd475ea231de28c3695236917cb6372f155fbe4",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/6bd475ea231de28c3695236917cb6372f155fbe4",
+      "pullRequestNumbers": "#582",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/582",
+      "pullRequests": [
+        {
+          "number": 582,
+          "url": "https://github.com/duikindiesee/citylife/pull/582"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-15T08:01:46Z",
+      "completedAt": "2026-11-15T08:02:42Z",
+      "durationSeconds": 56,
+      "runnerSummary": "GitHub Actions 1000013026",
+      "jobs": [
+        {
+          "id": 132746123108,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000013026",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-11-15T08:01:49Z",
+          "completedAt": "2026-11-15T08:02:41Z",
+          "durationSeconds": 52
         }
       ]
     },
@@ -12626,45 +12665,6 @@
           "startedAt": "2026-10-12T02:09:34Z",
           "completedAt": "2026-10-12T02:09:43Z",
           "durationSeconds": 9
-        }
-      ]
-    },
-    {
-      "runId": 38194685382,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38194685382",
-      "event": "pull_request",
-      "branch": "candidate/road-integration-candidate",
-      "sha": "0e2ee54ac129914e576ba43b1331819efd692563",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/0e2ee54ac129914e576ba43b1331819efd692563",
-      "pullRequestNumbers": "#564",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
-      "pullRequests": [
-        {
-          "number": 564,
-          "url": "https://github.com/duikindiesee/citylife/pull/564"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-12T02:09:30Z",
-      "completedAt": "2026-10-12T02:10:35Z",
-      "durationSeconds": 65,
-      "runnerSummary": "GitHub Actions 1000010981",
-      "jobs": [
-        {
-          "id": 114634647173,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010981",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-12T02:09:33Z",
-          "completedAt": "2026-10-12T02:10:34Z",
-          "durationSeconds": 61
         }
       ]
     }
