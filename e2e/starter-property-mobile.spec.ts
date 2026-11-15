@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
 
 // PLAYER.HOME.1C — prove the dark, server-truth starter-property step on a representative touch/mobile
@@ -143,6 +144,7 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
 }
 
 async function bootAs(page: Page, userId: string, s: HomeState): Promise<void> {
+  await stubPublishedStarterCatalogue(page);
   await routeAll(page, s);
   await page.addInitScript(
     ([key, session]) => {

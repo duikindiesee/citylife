@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, devices } from "@playwright/test";
 
 // PLAYER.FLAG.S3 — prove the fail-closed, default-OFF new-player-journey gate on a representative
@@ -87,6 +88,7 @@ async function bootAs(
   userId: string,
   enabled: boolean,
 ): Promise<void> {
+  await stubPublishedStarterCatalogue(page);
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({

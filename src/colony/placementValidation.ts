@@ -8,6 +8,8 @@ export interface PlotRect {
   h: number;
 }
 
+const ribbonBlockedCache = new WeakMap<RoadWay[], Map<number, Set<string>>>();
+
 /** Conservative rendered-ribbon footprint using the mesh's smoothing/width sampling, optionally
  * dilated for a verge. At water edges it may reserve a cell from a cross-section the mesh omits. */
 export function conservativeRoadRibbonBlockedCells(
@@ -15,6 +17,14 @@ export function conservativeRoadRibbonBlockedCells(
   terrain: Terrain,
   clearanceCells = 0,
 ): Set<string> {
+  let byClearance = ribbonBlockedCache.get(ways);
+  if (!byClearance) {
+    byClearance = new Map();
+    ribbonBlockedCache.set(ways, byClearance);
+  }
+  const cached = byClearance.get(clearanceCells);
+  if (cached) return cached;
+
   const out = new Set<string>();
   for (const key of ribbonCoverage(ways, terrain, () => 0).keys()) {
     const comma = key.indexOf(",");
@@ -24,6 +34,7 @@ export function conservativeRoadRibbonBlockedCells(
       for (let dx = -clearanceCells; dx <= clearanceCells; dx++)
         out.add(`${x + dx},${y + dy}`);
   }
+  byClearance.set(clearanceCells, out);
   return out;
 }
 

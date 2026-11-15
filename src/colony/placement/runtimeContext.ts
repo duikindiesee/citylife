@@ -42,8 +42,9 @@ export function createPlacementContext(input: {
   const logicalRoadCells = new Set(
     state.roads.map((road) => key(road.x, road.y)),
   );
+  const roadWays = (input.roadWays ?? state.roadWays ?? []) as RoadWay[];
   const renderedRoadCells = conservativeRoadRibbonBlockedCells(
-    [...(input.roadWays ?? state.roadWays ?? [])],
+    roadWays,
     state.terrain,
   );
   const occupiedCells = new Set<string>();

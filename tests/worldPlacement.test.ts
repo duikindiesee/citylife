@@ -71,6 +71,11 @@ const failureCodes = (result: {
 }): string[] => result.failures.map((failure) => failure.code);
 
 describe("WB.1c authoritative placement parity", () => {
+  let sharedRuntime: ColonyRuntime | undefined;
+  function getSharedRuntime(): ColonyRuntime {
+    if (!sharedRuntime) sharedRuntime = new ColonyRuntime(4242);
+    return sharedRuntime;
+  }
   it("uses one terrain contract for valid, wet, shore and non-buildable footprints", () => {
     const roadCell = "51,50";
     const valid = surveyZonedPlot({
@@ -197,7 +202,7 @@ describe("WB.1c authoritative placement parity", () => {
   });
 
   it("keeps public runtime preview equal to the pure validator", () => {
-    const runtime = new ColonyRuntime(4242);
+    const runtime = getSharedRuntime();
     const state = runtime.sim.state;
     const dryRoad = state.roads.find((road) => {
       const index = state.terrain.idx(road.x, road.y);
@@ -235,7 +240,7 @@ describe("WB.1c authoritative placement parity", () => {
   }, 20_000);
 
   it("commits one aliased runtime plot, maps it once, and rejects a stale replay", () => {
-    const runtime = new ColonyRuntime(4242);
+    const runtime = getSharedRuntime();
     const state = runtime.sim.state;
     const placementContext = createPlacementContext({
       state,
@@ -244,28 +249,38 @@ describe("WB.1c authoritative placement parity", () => {
       roadWays: state.roadWays,
     });
     const orientations: readonly PlacementOrientation[] = ["n", "s", "w", "e"];
-    const candidate = state.roads
-      .flatMap((road) =>
-        orientations.map((orientation) => {
-          const position =
-            orientation === "n"
-              ? { x: road.x, y: road.y + 1 }
-              : orientation === "s"
-                ? { x: road.x, y: road.y - 1 }
-                : orientation === "w"
-                  ? { x: road.x + 1, y: road.y }
-                  : { x: road.x - 1, y: road.y };
-          const survey = surveyZonedPlot({
-            context: placementContext,
-            ...position,
-            orientation,
-            sizeName: "COMPACT",
-            zone: "residential",
-          });
-          return { ...position, orientation, survey };
-        }),
-      )
-      .find(({ survey }) => survey.ok);
+    let candidate:
+      | {
+          x: number;
+          y: number;
+          orientation: PlacementOrientation;
+          survey: ReturnType<typeof surveyZonedPlot>;
+        }
+      | undefined;
+    for (const road of state.roads) {
+      for (const orientation of orientations) {
+        const position =
+          orientation === "n"
+            ? { x: road.x, y: road.y + 1 }
+            : orientation === "s"
+              ? { x: road.x, y: road.y - 1 }
+              : orientation === "w"
+                ? { x: road.x + 1, y: road.y }
+                : { x: road.x - 1, y: road.y };
+        const survey = surveyZonedPlot({
+          context: placementContext,
+          ...position,
+          orientation,
+          sizeName: "COMPACT",
+          zone: "residential",
+        });
+        if (survey.ok) {
+          candidate = { ...position, orientation, survey };
+          break;
+        }
+      }
+      if (candidate) break;
+    }
 
     expect(
       candidate,
