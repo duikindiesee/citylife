@@ -1708,6 +1708,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       });
 
       const raceId = clientA.getPartyRaceState()!.raceId;
+      const aliceParticipantId = clientA.getSessionInfo().participantId;
+      const bobParticipantId = clientB.getSessionInfo().participantId;
+      expect(aliceParticipantId).toBeTruthy();
+      expect(bobParticipantId).toBeTruthy();
+      expect(aliceParticipantId).not.toBe(bobParticipantId);
+      expect(clientA.getPartyRaceState()!.hostParticipantId).toBe(aliceParticipantId);
       expect(raceId).toBeTruthy();
       expect(clientB.getPartyRaceState()!.raceId).toBe(raceId);
       expect(clientA.getPartyRaceState()!.entrants).toHaveLength(1);
@@ -1847,9 +1853,14 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       const finalState = clientA.getPartyRaceState()!;
       expect(finalState.status).toBe("finished");
-      expect(finalState.winnerUserId).toBe("90001");
-      const aliceEntrant = finalState.entrants.find((e) => e.userId === "90001")!;
-      const bobEntrant = finalState.entrants.find((e) => e.userId === "90002")!;
+      expect(finalState.winnerParticipantId).toBe(aliceParticipantId);
+      expect(finalState).not.toHaveProperty("hostUserId");
+      expect(finalState).not.toHaveProperty("winnerUserId");
+      for (const entrant of finalState.entrants) {
+        expect(entrant).not.toHaveProperty("userId");
+      }
+      const aliceEntrant = finalState.entrants.find((e) => e.participantId === aliceParticipantId)!;
+      const bobEntrant = finalState.entrants.find((e) => e.participantId === bobParticipantId)!;
       expect(aliceEntrant.place).toBe(1);
       expect(aliceEntrant.elapsedMs).toBeGreaterThan(0);
       expect(bobEntrant.place).toBe(2);
@@ -1876,7 +1887,10 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       expect(clientB.getPartyRaceState()?.raceId).toBe(raceId);
       expect(clientB.getPartyRaceState()?.status).toBe("finished");
-      expect(clientB.getPartyRaceState()?.winnerUserId).toBe("90001");
+      expect(clientB.getSessionInfo().participantId).toBe(bobParticipantId);
+      expect(clientB.getPartyRaceState()?.winnerParticipantId).toBe(aliceParticipantId);
+      expect(clientB.getPartyRaceState()?.entrants.map((entrant) => entrant.participantId))
+        .toEqual(finalState.entrants.map((entrant) => entrant.participantId));
 
       clientA.disconnect();
       clientB.disconnect();

@@ -1112,7 +1112,6 @@ describe("PR#548/PR#547 Production Consumer Equivalence, Redraw & Controls", () 
 
     const sampleLobbyRace: PartyRaceState = {
       raceId: "race-lobby-42",
-      hostUserId: "host-1",
       hostParticipantId: "part-host-1",
       status: "lobby",
       createdAtMs: 1000,
@@ -1120,11 +1119,10 @@ describe("PR#548/PR#547 Production Consumer Equivalence, Redraw & Controls", () 
       countdownEndsAtMs: null,
       startedAtMs: null,
       finishedAtMs: null,
-      winnerUserId: null,
+      winnerParticipantId: null,
       checkpoints: [{ x: 10, z: 20, radiusMetres: 8 }],
       entrants: [
         {
-          userId: "host-1",
           participantId: "part-host-1",
           username: "HostPlayer",
           vehicleKey: "showroom:karoo-kaap-gt-v8",
@@ -1136,7 +1134,6 @@ describe("PR#548/PR#547 Production Consumer Equivalence, Redraw & Controls", () 
           joinedAtMs: 1000,
         },
         {
-          userId: "guest-2",
           participantId: "part-guest-2",
           username: "GuestPlayer",
           vehicleKey: "showroom:karoo-kaap-gt-v8",
@@ -1323,7 +1320,6 @@ describe("PR#548/PR#547 Production Consumer Equivalence, Redraw & Controls", () 
       raceId: "race-active-1",
       entrants: [
         {
-          userId: "user-host-1",
           username: "host_driver",
           participantId: "part-host-1",
           ready: true,
@@ -1335,7 +1331,6 @@ describe("PR#548/PR#547 Production Consumer Equivalence, Redraw & Controls", () 
           finishedAtMs: null,
         },
         {
-          userId: "user-guest-2",
           username: "guest_driver",
           participantId: "part-guest-2",
           ready: true,
@@ -1366,6 +1361,35 @@ describe("PR#548/PR#547 Production Consumer Equivalence, Redraw & Controls", () 
     await act(async () => {
       rootActive.unmount();
     });
+
+    // A finished peer DTO names the winner by participant reference, not account ID.
+    const winner = sampleLobbyRace.entrants[1]!;
+    const renderResult = async (winnerParticipantId: string | null | undefined) => {
+      const containerResult = document.createElement("div");
+      const rootResult = createRoot(containerResult);
+      mockPartyRaceState = {
+        ...sampleLobbyRace, status: "finished", winnerParticipantId: winnerParticipantId ?? null,
+      };
+      if (winnerParticipantId === undefined) Reflect.deleteProperty(mockPartyRaceState, "winnerParticipantId");
+      await act(async () => {
+        rootResult.render(React.createElement(MultiplayerStatusHUD, { runtime: mockRuntime }));
+      });
+      const result = findNode(containerResult, (n) => n.getAttribute?.("data-testid") === "party-race-result")!;
+      return { result, rootResult };
+    };
+    const { result, rootResult } = await renderResult(winner.participantId);
+    expect(result.getAttribute("data-winner-participant-id")).toBe(winner.participantId);
+    expect(result.getAttribute("data-winner-user-id")).toBeNull();
+    expect(getReactProps(result.children[0])?.children?.join?.("")).toContain(winner.username);
+    await act(async () => rootResult.unmount());
+    const { result: unknown, rootResult: rootUnknown } = await renderResult("unknown-participant");
+    expect(unknown.getAttribute("data-winner-participant-id")).toBe("");
+    expect(getReactProps(unknown.children[0])?.children?.join?.("")).toContain("Winner unavailable");
+    await act(async () => rootUnknown.unmount());
+    const { result: missing, rootResult: rootMissing } = await renderResult(undefined);
+    expect(missing.getAttribute("data-winner-participant-id")).toBe("");
+    expect(getReactProps(missing.children[0])?.children?.join?.("")).toContain("Winner unavailable");
+    await act(async () => rootMissing.unmount());
 
     // 5. Mount with no party race in fresh root to verify Invite button wiring
     const container3 = (globalThis as any).document.createElement("div");

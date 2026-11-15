@@ -142,15 +142,14 @@ export function MultiplayerStatusHUD({ runtime }: Props) {
           }}
         >
           {partyRace?.status === "finished" && (() => {
-            const winnerRef = partyRace.winnerParticipantId ?? partyRace.winnerUserId;
+            const winnerRef = partyRace.winnerParticipantId;
             const winnerEntrant = winnerRef
-              ? partyRace.entrants.find((e) => e.participantId === winnerRef || (e as any).userId === winnerRef)
+              ? partyRace.entrants.find((e) => e.participantId === winnerRef)
               : null;
             return (
               <div
                 data-testid="party-race-result"
-                data-winner-user-id={partyRace.winnerUserId || partyRace.winnerParticipantId || ""}
-                data-winner-participant-id={partyRace.winnerParticipantId || ""}
+                data-winner-participant-id={winnerEntrant?.participantId ?? ""}
                 style={{
                   background: "rgba(0, 255, 136, 0.12)",
                   border: "1px solid rgba(0, 255, 136, 0.45)",
@@ -159,11 +158,10 @@ export function MultiplayerStatusHUD({ runtime }: Props) {
                   color: "#d8ffe8",
                 }}
               >
-                <div style={{ fontWeight: "bold", color: winnerRef ? "#00ff88" : "#ffaa00" }}>
+                <div style={{ fontWeight: "bold", color: winnerEntrant ? "#00ff88" : "#ffaa00" }}>
                   🏆 Winner:{" "}
-                  {winnerRef
-                    ? (winnerEntrant?.username ?? winnerRef)
-                    : "No Winner (All DNF)"}
+                  {winnerEntrant?.username ??
+                    (winnerRef === null ? "No Winner (All DNF)" : "Winner unavailable")}
                 </div>
                 {partyRace.entrants.map((e) => {
                   const isDnf =

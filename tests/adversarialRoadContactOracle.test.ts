@@ -1044,7 +1044,6 @@ describe("Milestone 2 Adversarial Challenge: Road Contact Geometry Oracle & HUD 
   describe("5. MultiplayerStatusHUD Root Pointer Passthrough & Runtime Wiring (M2-03)", () => {
     const sampleLobbyRace: PartyRaceState = {
       raceId: "race-hud-adv-1",
-      hostUserId: "host-user-1",
       hostParticipantId: "part-host-1",
       status: "lobby",
       createdAtMs: 1000,
@@ -1052,11 +1051,10 @@ describe("Milestone 2 Adversarial Challenge: Road Contact Geometry Oracle & HUD 
       countdownEndsAtMs: null,
       startedAtMs: null,
       finishedAtMs: null,
-      winnerUserId: null,
+      winnerParticipantId: null,
       checkpoints: [{ x: 10, z: 20, radiusMetres: 8 }],
       entrants: [
         {
-          userId: "host-user-1",
           participantId: "part-host-1",
           username: "HostPlayer",
           vehicleKey: "showroom:karoo-kaap-gt-v8",
@@ -1068,7 +1066,6 @@ describe("Milestone 2 Adversarial Challenge: Road Contact Geometry Oracle & HUD 
           joinedAtMs: 1000,
         },
         {
-          userId: "guest-user-2",
           participantId: "part-guest-2",
           username: "GuestPlayer",
           vehicleKey: "showroom:karoo-kaap-gt-v8",

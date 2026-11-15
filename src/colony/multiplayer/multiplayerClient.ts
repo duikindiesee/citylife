@@ -70,7 +70,6 @@ export interface PartyRaceEntrant {
   joinedAtMs: number;
   disconnectedAtMs?: number | null;
   left?: boolean;
-  userId?: string;
 }
 
 export type PartyRaceStatus = "lobby" | "countdown" | "active" | "racing" | "finished" | "cancelled";
@@ -86,9 +85,7 @@ export interface PartyRaceState {
   finishedAtMs: number | null;
   checkpoints: PartyRaceCheckpoint[];
   entrants: PartyRaceEntrant[];
-  hostUserId?: string;
-  winnerUserId?: string | null;
-  winnerParticipantId?: string | null;
+  winnerParticipantId: string | null;
 }
 
 export interface ServerSnapshot {

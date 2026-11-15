@@ -133,7 +133,6 @@ describe("Adversarial Milestone 2: Session Identity & Reconnect Teardown (M2-01)
 
   const sampleRaceState: PartyRaceState = {
     raceId: "race-adv-999",
-    hostUserId: "1001",
     hostParticipantId: "part-1001",
     status: "lobby",
     createdAtMs: 1000,
@@ -141,11 +140,10 @@ describe("Adversarial Milestone 2: Session Identity & Reconnect Teardown (M2-01)
     countdownEndsAtMs: null,
     startedAtMs: null,
     finishedAtMs: null,
-    winnerUserId: null,
+    winnerParticipantId: null,
     checkpoints: [{ x: 10, z: 20, radiusMetres: 8, label: "CP1" }],
     entrants: [
       {
-        userId: "1001",
         participantId: "part-1001",
         username: "AdversaryRacer",
         vehicleKey: "showroom:karoo-kaap-gt-v8",

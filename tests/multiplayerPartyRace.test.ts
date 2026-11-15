@@ -116,7 +116,6 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
 
     const sampleRace: PartyRaceState = {
       raceId: "race-123",
-      hostUserId: "2001",
       hostParticipantId: "part-host",
       status: "lobby",
       createdAtMs: 1000,
@@ -124,11 +123,10 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
       countdownEndsAtMs: null,
       startedAtMs: null,
       finishedAtMs: null,
-      winnerUserId: null,
+      winnerParticipantId: null,
       checkpoints: [{ x: 10, z: 20, radiusMetres: 8, label: "Finish" }],
       entrants: [
         {
-          userId: "2001",
           participantId: "part-host",
           username: "RacerHost",
           vehicleKey: "showroom:karoo-kaap-gt-v8",
@@ -217,7 +215,7 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
     const finishedRace: PartyRaceState = {
       ...sampleRace,
       status: "finished",
-      winnerUserId: "2001",
+      winnerParticipantId: "part-host",
       finishedAtMs: 5000,
     };
     ws.onmessage?.({
@@ -238,7 +236,7 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
     });
 
     expect(client.getPartyRaceState()?.status).toBe("finished");
-    expect(client.getPartyRaceState()?.winnerUserId).toBe("2001");
+    expect(client.getPartyRaceState()?.winnerParticipantId).toBe("part-host");
     expect(events.at(-1)?.event).toBe("session_reconnected");
 
     // 5. Disconnect clears local partyRace state
@@ -282,7 +280,6 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
 
     const sampleRace: PartyRaceState = {
       raceId: "race-999",
-      hostUserId: "2001",
       hostParticipantId: "part-host",
       status: "lobby",
       createdAtMs: 1000,
@@ -290,7 +287,7 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
       countdownEndsAtMs: null,
       startedAtMs: null,
       finishedAtMs: null,
-      winnerUserId: null,
+      winnerParticipantId: null,
       checkpoints: [],
       entrants: [],
     };
@@ -395,7 +392,6 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
         event: "invited",
         partyRace: {
           raceId: "race-active-1",
-          hostUserId: "2003",
           hostParticipantId: "part-recon",
           status: "active",
           createdAtMs: 1000,
@@ -403,7 +399,7 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
           countdownEndsAtMs: null,
           startedAtMs: 3000,
           finishedAtMs: null,
-          winnerUserId: null,
+          winnerParticipantId: null,
           checkpoints: [],
           entrants: [],
         },
@@ -531,18 +527,21 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
     expect(state).not.toBeNull();
     expect(state?.hostParticipantId).toBe("p-charlie-001");
     expect(state?.winnerParticipantId).toBe("p-dana-002");
-    expect(state?.winnerUserId).toBeUndefined();
+    expect(state).not.toHaveProperty("winnerUserId");
+    expect(state).not.toHaveProperty("hostUserId");
 
     // Verify entrant opaque participantId is preserved and userId is absent
     const dana = state?.entrants.find((e) => e.participantId === "p-dana-002");
     expect(dana).toBeDefined();
     expect(dana?.username).toBe("Dana");
-    expect(dana?.userId).toBeUndefined();
+    for (const entrant of state?.entrants ?? []) {
+      expect(entrant).not.toHaveProperty("userId");
+    }
 
     // Verify winner resolution via opaque participant reference
-    const winnerRef = state?.winnerParticipantId ?? state?.winnerUserId;
+    const winnerRef = state?.winnerParticipantId;
     const winnerEntrant = state?.entrants.find(
-      (e) => e.participantId === winnerRef || (e as any).userId === winnerRef,
+      (e) => e.participantId === winnerRef,
     );
     expect(winnerEntrant?.username).toBe("Dana");
   });
