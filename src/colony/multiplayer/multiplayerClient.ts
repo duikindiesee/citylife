@@ -59,7 +59,6 @@ export interface PartyRaceCheckpoint {
 }
 
 export interface PartyRaceEntrant {
-  userId: string;
   participantId: string;
   username: string;
   vehicleKey: string | null;
@@ -69,13 +68,15 @@ export interface PartyRaceEntrant {
   elapsedMs: number | null;
   place: number | null;
   joinedAtMs: number;
+  disconnectedAtMs?: number | null;
+  left?: boolean;
+  userId?: string;
 }
 
 export type PartyRaceStatus = "lobby" | "countdown" | "active" | "racing" | "finished" | "cancelled";
 
 export interface PartyRaceState {
   raceId: string;
-  hostUserId: string;
   hostParticipantId: string;
   status: PartyRaceStatus;
   createdAtMs: number;
@@ -83,9 +84,11 @@ export interface PartyRaceState {
   countdownEndsAtMs: number | null;
   startedAtMs: number | null;
   finishedAtMs: number | null;
-  winnerUserId: string | null;
   checkpoints: PartyRaceCheckpoint[];
   entrants: PartyRaceEntrant[];
+  hostUserId?: string;
+  winnerUserId?: string | null;
+  winnerParticipantId?: string | null;
 }
 
 export interface ServerSnapshot {

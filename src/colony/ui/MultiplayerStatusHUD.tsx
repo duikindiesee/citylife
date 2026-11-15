@@ -141,47 +141,54 @@ export function MultiplayerStatusHUD({ runtime }: Props) {
             fontSize: "11px",
           }}
         >
-          {partyRace?.status === "finished" && (
-            <div
-              data-testid="party-race-result"
-              data-winner-user-id={partyRace.winnerUserId || ""}
-              style={{
-                background: "rgba(0, 255, 136, 0.12)",
-                border: "1px solid rgba(0, 255, 136, 0.45)",
-                borderRadius: 6,
-                padding: "6px 8px",
-                color: "#d8ffe8",
-              }}
-            >
-              <div style={{ fontWeight: "bold", color: partyRace.winnerUserId ? "#00ff88" : "#ffaa00" }}>
-                🏆 Winner:{" "}
-                {partyRace.winnerUserId
-                  ? (partyRace.entrants.find((e) => e.userId === partyRace.winnerUserId)?.username ?? partyRace.winnerUserId)
-                  : "No Winner (All DNF)"}
+          {partyRace?.status === "finished" && (() => {
+            const winnerRef = partyRace.winnerParticipantId ?? partyRace.winnerUserId;
+            const winnerEntrant = winnerRef
+              ? partyRace.entrants.find((e) => e.participantId === winnerRef || (e as any).userId === winnerRef)
+              : null;
+            return (
+              <div
+                data-testid="party-race-result"
+                data-winner-user-id={partyRace.winnerUserId || partyRace.winnerParticipantId || ""}
+                data-winner-participant-id={partyRace.winnerParticipantId || ""}
+                style={{
+                  background: "rgba(0, 255, 136, 0.12)",
+                  border: "1px solid rgba(0, 255, 136, 0.45)",
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                  color: "#d8ffe8",
+                }}
+              >
+                <div style={{ fontWeight: "bold", color: winnerRef ? "#00ff88" : "#ffaa00" }}>
+                  🏆 Winner:{" "}
+                  {winnerRef
+                    ? (winnerEntrant?.username ?? winnerRef)
+                    : "No Winner (All DNF)"}
+                </div>
+                {partyRace.entrants.map((e) => {
+                  const isDnf =
+                    (e as any).left ||
+                    (e as any).status === "left" ||
+                    (e.finishedAtMs !== null && e.place === null);
+                  return (
+                    <div
+                      key={e.participantId}
+                      data-testid={`party-race-entrant-result-${e.username}`}
+                      style={{ color: isDnf ? "#ffaaaa" : undefined }}
+                    >
+                      {isDnf
+                        ? `DNF — ${e.username} (Forfeited)`
+                        : `#${e.place ?? "-"} ${e.username} ${
+                            e.elapsedMs !== null
+                              ? `(${(e.elapsedMs / 1000).toFixed(2)}s)`
+                              : ""
+                          }`}
+                    </div>
+                  );
+                })}
               </div>
-              {partyRace.entrants.map((e) => {
-                const isDnf =
-                  (e as any).left ||
-                  (e as any).status === "left" ||
-                  (e.finishedAtMs !== null && e.place === null);
-                return (
-                  <div
-                    key={e.participantId}
-                    data-testid={`party-race-entrant-result-${e.username}`}
-                    style={{ color: isDnf ? "#ffaaaa" : undefined }}
-                  >
-                    {isDnf
-                      ? `DNF — ${e.username} (Forfeited)`
-                      : `#${e.place ?? "-"} ${e.username} ${
-                          e.elapsedMs !== null
-                            ? `(${(e.elapsedMs / 1000).toFixed(2)}s)`
-                            : ""
-                        }`}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+            );
+          })()}
 
           {(!partyRace ||
             partyRace.status === "cancelled" ||

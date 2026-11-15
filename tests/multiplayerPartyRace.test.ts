@@ -433,4 +433,117 @@ describe("MultiplayerClient Party Race Protocol & State Sync", () => {
       event: "session_reconnected",
     });
   });
+
+  it("consumes server c7d1d813 defensive race contract with opaque session-local participant references (R4)", async () => {
+    const client = new MultiplayerClient({
+      userId: "u-charlie-999",
+      username: "Charlie",
+      token: "valid-token-charlie",
+      vehicleKey: "car-falcon",
+    });
+
+    await client.connect("C7RACE");
+    const ws = MockWebSocket.instances.at(-1)!;
+    ws.readyState = MockWebSocket.OPEN;
+    ws.onopen?.();
+
+    // Server c7 session_joined establishes session and participantId
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-c7-race",
+        inviteCode: "C7RACE",
+        participantId: "p-charlie-001",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 1,
+        worldId: "seed-4242",
+        participants: [
+          {
+            participantId: "p-charlie-001",
+            username: "Charlie",
+            role: "host",
+            carKey: "car-falcon",
+            isDriving: true,
+            isSeatedBus: false,
+          },
+          {
+            participantId: "p-dana-002",
+            username: "Dana",
+            role: "guest",
+            carKey: "car-comet",
+            isDriving: true,
+            isSeatedBus: false,
+          },
+        ],
+      }),
+    });
+
+    // Server c7 party_race_state uses hostParticipantId and winnerParticipantId; entrants have NO userId
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "party_race_state",
+        sessionId: "sess-c7-race",
+        event: "finished",
+        partyRace: {
+          raceId: "race-c7-win",
+          hostParticipantId: "p-charlie-001",
+          status: "finished",
+          createdAtMs: 1000,
+          countdownMs: 3000,
+          countdownEndsAtMs: 4000,
+          startedAtMs: 4000,
+          finishedAtMs: 15000,
+          winnerParticipantId: "p-dana-002",
+          checkpoints: [
+            { x: 10, z: 20, radiusMetres: 8, label: "CP1" },
+            { x: 50, z: 60, radiusMetres: 8, label: "Finish" },
+          ],
+          entrants: [
+            {
+              participantId: "p-charlie-001",
+              username: "Charlie",
+              vehicleKey: "car-falcon",
+              ready: true,
+              checkpointIndex: 2,
+              finishedAtMs: 16500,
+              elapsedMs: 12500,
+              place: 2,
+              joinedAtMs: 1100,
+            },
+            {
+              participantId: "p-dana-002",
+              username: "Dana",
+              vehicleKey: "car-comet",
+              ready: true,
+              checkpointIndex: 2,
+              finishedAtMs: 15000,
+              elapsedMs: 11000,
+              place: 1,
+              joinedAtMs: 1200,
+            },
+          ],
+        },
+      }),
+    });
+
+    const state = client.getPartyRaceState();
+    expect(state).not.toBeNull();
+    expect(state?.hostParticipantId).toBe("p-charlie-001");
+    expect(state?.winnerParticipantId).toBe("p-dana-002");
+    expect(state?.winnerUserId).toBeUndefined();
+
+    // Verify entrant opaque participantId is preserved and userId is absent
+    const dana = state?.entrants.find((e) => e.participantId === "p-dana-002");
+    expect(dana).toBeDefined();
+    expect(dana?.username).toBe("Dana");
+    expect(dana?.userId).toBeUndefined();
+
+    // Verify winner resolution via opaque participant reference
+    const winnerRef = state?.winnerParticipantId ?? state?.winnerUserId;
+    const winnerEntrant = state?.entrants.find(
+      (e) => e.participantId === winnerRef || (e as any).userId === winnerRef,
+    );
+    expect(winnerEntrant?.username).toBe("Dana");
+  });
 });

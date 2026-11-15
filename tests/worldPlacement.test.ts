@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { Biome, type Terrain } from "../src/colony/terrain";
 import { createPlacementContext } from "../src/colony/placement/runtimeContext";
+import { conservativeRoadRibbonBlockedCells } from "../src/colony/placementValidation";
+import type { RoadWay } from "../src/colony/render/roadRibbon";
 import {
   surveyRoadStroke,
   surveyZonedPlot,
@@ -334,4 +336,97 @@ describe("WB.1c authoritative placement parity", () => {
     expect(failureCodes(staleReplay.survey)).toContain("STALE_LAYOUT_REVISION");
     expect(runtime.lots()).toHaveLength(before + 1);
   }, 30_000);
+});
+
+describe("conservativeRoadRibbonBlockedCells cache safety and mutation controls (R1)", () => {
+  it("evaluates deterministic blocked footprint for identical inputs without stale cache poisoning", () => {
+    const terrain = terrainFixture();
+    const way1: RoadWay = {
+      path: [
+        { x: 10, y: 10 },
+        { x: 10, y: 20 },
+      ],
+      width: 4,
+      kind: "street",
+    };
+    const ways: RoadWay[] = [way1];
+
+    const result1 = conservativeRoadRibbonBlockedCells(ways, terrain, 0);
+    expect(result1.size).toBeGreaterThan(0);
+
+    // Mutation control 1: Mutating the returned Set must not poison subsequent calls
+    const sizeBefore = result1.size;
+    result1.clear();
+    expect(result1.size).toBe(0);
+
+    const result2 = conservativeRoadRibbonBlockedCells(ways, terrain, 0);
+    expect(result2.size).toBe(sizeBefore);
+
+    // Mutation control 2: In-place mutation of ways array must immediately update the footprint
+    const way2: RoadWay = {
+      path: [
+        { x: 50, y: 50 },
+        { x: 60, y: 50 },
+      ],
+      width: 4,
+      kind: "street",
+    };
+    ways.push(way2);
+
+    const result3 = conservativeRoadRibbonBlockedCells(ways, terrain, 0);
+    expect(result3.size).toBeGreaterThan(sizeBefore);
+    expect(result3.has("55,50")).toBe(true);
+
+    // Mutation control 3: In-place path mutation must reflect in recalculated footprint
+    way2.path = [
+      { x: 80, y: 80 },
+      { x: 90, y: 80 },
+    ];
+    const result4 = conservativeRoadRibbonBlockedCells(ways, terrain, 0);
+    expect(result4.has("85,80")).toBe(true);
+    expect(result4.has("55,50")).toBe(false);
+  });
+
+  it("discriminates placement obstruction through createPlacementContext across dynamic road ways", () => {
+    const terrain = terrainFixture();
+    const state: any = {
+      roads: [],
+      roadsVersion: 1,
+      terrain,
+      neighborhood: { parcels: [] },
+      structures: [],
+      buildings: [],
+    };
+
+    // Initial context with no roads
+    const contextNoRoad = createPlacementContext({
+      state,
+      roadWays: [],
+    });
+    expect(contextNoRoad.renderedRoadCells.size).toBe(0);
+
+    // Context with a road way directly intersecting coordinates (10, 10)
+    const roadWay: RoadWay = {
+      path: [
+        { x: 5, y: 10 },
+        { x: 15, y: 10 },
+      ],
+      width: 4,
+      kind: "street",
+    };
+    const contextWithRoad = createPlacementContext({
+      state,
+      roadWays: [roadWay],
+    });
+    expect(contextWithRoad.renderedRoadCells.has("10,10")).toBe(true);
+
+    // Mutating input array in caller must not poison subsequent separate context
+    const waysList: RoadWay[] = [roadWay];
+    const contextA = createPlacementContext({ state, roadWays: waysList });
+    expect(contextA.renderedRoadCells.has("10,10")).toBe(true);
+
+    waysList.length = 0; // Empty the array in-place
+    const contextB = createPlacementContext({ state, roadWays: waysList });
+    expect(contextB.renderedRoadCells.size).toBe(0);
+  });
 });
