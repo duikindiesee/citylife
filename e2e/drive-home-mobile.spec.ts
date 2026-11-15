@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
 
 // PLAYER.HOME.1D.S2 — prove the dark, server-truth drive-home + home-garage step on a representative
@@ -144,6 +145,7 @@ async function bootAs(
   userId: string,
   s: DriveState,
 ): Promise<void> {
+  await stubPublishedStarterCatalogue(page);
   await routeAll(page, s);
   await page.addInitScript(
     ([key, session]) => {

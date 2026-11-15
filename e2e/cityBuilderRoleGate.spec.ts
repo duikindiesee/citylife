@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, type Page } from "@playwright/test";
 
 // Regression coverage for the P0 access bug: ColonyApp rendered BuilderPanel unconditionally, so a
@@ -10,8 +11,9 @@ import { test, expect, type Page } from "@playwright/test";
 
 const SESSION_STORAGE_KEY = "citylife.session.v5";
 
-function seedSession(page: Page, roles: string[]) {
-  return page.addInitScript(
+async function seedSession(page: Page, roles: string[]): Promise<void> {
+  await stubPublishedStarterCatalogue(page);
+  await page.addInitScript(
     ({ key, roles: sessionRoles }) => {
       const session = {
         token: "e2e-fake-token",

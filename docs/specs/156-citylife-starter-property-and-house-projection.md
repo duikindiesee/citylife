@@ -65,6 +65,10 @@ settlers and seed founder residences, wallet state and social profiles only afte
 An altered seed anchor is still validated against the ordinary terrain, road and shore rules; the
 exact seeded-placement match is not a general exception.
 
+Authenticated browser tests supply a published starter-catalogue fixture before navigation. The
+fixture matches the world, revision and plot/frame bindings; auth and feature-gate tests still
+exercise their original access controls without depending on a running gateway.
+
 ## Cost
 
 No in-world materials/labour — this is a player-journey UI slice over an existing authoritative backend.
