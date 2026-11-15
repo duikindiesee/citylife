@@ -2306,6 +2306,12 @@ export class ColonyRuntime {
         this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }
+    // Founder doors are deterministic seed geometry, not resident state. Both published layout
+    // surveys and boots must see the same anchors before exact seeded-placement preflight.
+    const [joePlot, viwPlot] = this.neighborhood.lots;
+    if (joePlot) retargetParcelAccess(joePlot, streetDoorDir(joePlot));
+    if (viwPlot && !viwPlot.reservedFor) retargetParcelAccess(viwPlot, "e");
+
     // WORLD.SURVEY.1 — a SURVEY boot stops here. Everything above built the physical world:
     // terrain, neighbourhoods, the commercial reserve, hamlets, parcels, the road network, the bus
     // route, the depot and the fleet geometry. Everything below populates it — stored social
@@ -4880,8 +4886,9 @@ export class ColonyRuntime {
     gate?: { x: number; y: number };
     side?: number;
   } | null {
-    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+    if (this.authoritativeHomeTruth) {
       const truth = this.authoritativeHomeTruth;
+      if (!isHomeOwned(truth)) return null;
       if (truth.geometry?.driveway && truth.geometry.driveway.length > 0) {
         return {
           plotId: truth.plotId ?? (truth.geometry.plotId ?? "starter-home"),
@@ -4934,8 +4941,9 @@ export class ColonyRuntime {
     lotId: string;
     name: string;
   } | null {
-    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+    if (this.authoritativeHomeTruth) {
       const truth = this.authoritativeHomeTruth;
+      if (!isHomeOwned(truth)) return null;
       if (truth.layoutRevision && this.getActiveLayoutRevisionId()) {
         if (!layoutRevisionsMatch(truth.layoutRevision, this.getActiveLayoutRevisionId())) {
           return null;
@@ -4987,14 +4995,16 @@ export class ColonyRuntime {
     let targetPlotId: string | null = null;
     let targetNeighbourhoodKey: string | null = null;
 
-    const isTruthObject = Boolean(target && typeof target === "object");
-    if (isTruthObject) {
-      const truth = target as HomeTruth;
-      this.authoritativeHomeTruth = truth;
+    const truth = typeof target === "object" ? target : undefined;
+    if (truth) {
       // Authority-bound resolution: only an unambiguously owned truth may claim a starter home
-      if (!isHomeOwned(truth)) {
+      if (truth.owned === false) {
+        // An explicit negative read is authoritative; do not resurrect a stale local lot.
+        this.isGpsNavigatingHome = false;
+        this.setAuthoritativeHomeTruth(truth);
         return false;
       }
+      if (!isHomeOwned(truth)) return false;
       targetPlotId = truth.plotId ?? null;
       targetNeighbourhoodKey = truth.neighbourhoodKey ?? null;
       // An authoritative HomeTruth must specify a server-allocated plot ID or neighbourhood key.
@@ -5068,7 +5078,7 @@ export class ColonyRuntime {
         return false; // No available lots in requested neighbourhood — fail closed, never fall back to unrelated lots
       }
     } else {
-      if (isTruthObject) {
+      if (truth) {
         return false; // Truth objects must never enter open land fallback
       }
       // Default open land fallback (no specific neighbourhood or plot requested)
@@ -5106,6 +5116,8 @@ export class ColonyRuntime {
     if (!lot.built) {
       this.buildHouse(lot.id);
     }
+    // Only a claim that resolved and passed the local authority checks may be projected.
+    if (truth) this.authoritativeHomeTruth = truth;
     this.isGpsNavigatingHome = true;
     this.emit();
     return true;
@@ -6974,15 +6986,16 @@ export class ColonyRuntime {
   /** Spec 149 / Task e81ea9de — Export standalone canonical transit authority v1. */
   exportCanonicalTransitAuthority(document?: WorldLayoutDocument): CanonicalTransitAuthority | null {
     const doc = document ?? this.captureWorldLayout();
-    const currentLayoutHash = this.activeWorldLayout
-      ? this.activeWorldLayout.revision.contentHash
-      : this.captureWorldLayout().revision.contentHash;
+    const currentLayoutHash =
+      this.activeWorldLayout?.revision.contentHash ??
+      (document ? this.captureWorldLayout().revision.contentHash : doc.revision.contentHash);
+    // A pending terrain edit invalidates cached transit even if the caller omitted the document.
     const isCleanActive =
-      !document ||
-      (currentLayoutHash === doc.revision.contentHash &&
-        (doc.layoutId === `seed-${this.worldSeed}` ||
-          doc.worldId === `seed-${this.worldSeed}` ||
-          doc.layoutId === this.activeWorldLayout?.layoutId));
+      useRoadNetwork.getState().landscapeEdits.size === 0 &&
+      currentLayoutHash === doc.revision.contentHash &&
+      (doc.layoutId === `seed-${this.worldSeed}` ||
+        doc.worldId === `seed-${this.worldSeed}` ||
+        doc.layoutId === this.activeWorldLayout?.layoutId);
 
     let route = this.busRoute;
     let depot = this.busDepot;
@@ -8175,7 +8188,6 @@ export class ColonyRuntime {
     plot.built = true;
     const joeStreet = streetDoorDir(plot);
     plot.blueprint = joeBlueprint(joeStreet);
-    retargetParcelAccess(plot, joeStreet);
     const home = {
       x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
       y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),
@@ -8214,14 +8226,13 @@ export class ColonyRuntime {
   private seedViw(): void {
     const lots = this.neighborhood.lots;
     // Spec 084 S6 — Viw takes lot_2, right beside Joe's shore plot (lots renumber by water
-    // distance). His crewhouse door is fixed EAST so the S2 side-walkway lays on every boot.
+    // distance). His fixed east-facing door was laid during the physical phase above.
     const plot = lots.length > 1 && !lots[1]!.reservedFor ? lots[1] : undefined;
     if (!plot) return;
     plot.reservedFor = VIW_ID;
     plot.ownerCitizenId = VIW_ID;
     plot.built = true;
     plot.blueprint = VIW_BLUEPRINT;
-    retargetParcelAccess(plot, "e");
     const home = {
       x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
       y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),

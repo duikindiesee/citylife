@@ -161,7 +161,8 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(testRt.claimStarterHome("nonexistent_hamlet_99")).toBe(false);
     expect(testRt.hasOperatorHome()).toBe(false);
 
-    // 5. Positive: Explicit neighbourhood key string 'coast4' resolves strictly to a coast4 lot
+    // 5. Positive: With no authority snapshot, the separate legacy path resolves 'coast4' strictly.
+    testRt.setAuthoritativeHomeTruth(null);
     const okKey = testRt.claimStarterHome("coast4");
     expect(okKey).toBe(true);
     expect(testRt.hasOperatorHome()).toBe(true);
@@ -198,6 +199,20 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(truthLot?.neighborhoodKey).toBe("coast4");
     expect(truthLot?.ownerCitizenId).toBe(opId);
     expect(truthLot?.built).toBe(true);
+
+    // A malformed claim cannot replace the previously verified ownership projection.
+    expect(testRt.claimStarterHome(mismatchedTruth as any)).toBe(false);
+    expect(testRt.getAuthoritativeHomeTruth()).toEqual(validTruth);
+    expect(testRt.getOperatorHomeTarget()).toEqual(truthTarget);
+
+    // A concrete unowned result withdraws the projection, even if local assignment remains built.
+    expect(testRt.claimStarterHome(unownedTruth as any)).toBe(false);
+    expect(testRt.getAuthoritativeHomeTruth()).toEqual(unownedTruth);
+    expect(testRt.getOperatorHomeTarget()).toBeNull();
+    expect(testRt.getPlayerHomeDriveway()).toBeNull();
+    expect(testRt.hasOperatorHome()).toBe(false);
+    expect(truthLot?.built).toBe(true);
+
   });
 
   it("ensures showroom catalog carries authentic GLB models for all display vehicles", async () => {

@@ -258,6 +258,43 @@ function genericPlacement(
 }
 
 describe("world layout import runtime preflight", () => {
+  it("accepts exact founder anchors at cold boot and rejects an altered seed anchor", () => {
+    const full = new ColonyRuntime(4242);
+    const base = full.captureWorldLayout();
+    const founder = base.placements.find(({ id }) => id === "placement:lot_2")!;
+    const door = founder.anchors.find(({ id }) => id === "entrance")!;
+    expect(door.cell).toEqual({ x: 230, y: 332 });
+
+    const booted = new ColonyRuntime(4242, { initialWorldLayout: base });
+    expect(booted.worldLayoutDocument()?.revision).toEqual(base.revision);
+    expect(booted.captureWorldLayout().placements.find(({ id }) => id === founder.id)).toEqual(founder);
+
+    const survey = new ColonyRuntime(4242, { surveyOnly: true });
+    const surveyed = survey.captureWorldLayout().placements.find(({ id }) => id === founder.id);
+    expect(surveyed).toEqual(founder);
+
+    const altered = child(base, {
+      placements: base.placements.map((placement) => placement.id === founder.id
+        ? {
+          ...placement,
+          anchors: placement.anchors.map((anchor) => anchor.id === "entrance"
+            ? { ...anchor, cell: { ...anchor.cell, x: anchor.cell.x - 1 } }
+            : anchor),
+        }
+        : placement),
+    });
+    const rejected = () => new ColonyRuntime(4242, { initialWorldLayout: altered });
+    expect(rejected).toThrow(expect.objectContaining({
+      name: "WorldLayoutPreflightError",
+      placementId: founder.id,
+      evidence: expect.arrayContaining([
+        "ELEVATION_BELOW_MINIMUM",
+        "RENDERED_ROAD_OVERLAP",
+        "SHORE_FORBIDDEN",
+      ]),
+    }));
+  }, WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS);
+
   it("rejects a correctly hashed catalog footprint on forbidden terrain before CAS and leaves live truth untouched", () => {
     const runtime = new ColonyRuntime(4242);
     const base = runtime.captureWorldLayout();

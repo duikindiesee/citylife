@@ -53,8 +53,17 @@ A guided mobile overlay (`StarterPropertyOverlay`) that:
   one house, never a second or a drifting one). Returns `null` for any non-`OWNED`/malformed truth, so
   the journey never advances on a blip.
 - **No client authority.** No localStorage authority anywhere; the projected house is a pure function of
-  the re-fetched server truth. City Builder stays inaccessible to `CITYLIFE_PLAYER` (unchanged
-  `canEnterCityBuilder` gate).
+  the re-fetched server truth. A mismatched claim cannot replace the current home projection. An explicit unowned read
+  hides that projection without falling back to a previously built local home.
+  City Builder stays inaccessible to `CITYLIFE_PLAYER` (unchanged `canEnterCityBuilder` gate).
+
+### Published layout at cold boot
+
+Lay the deterministic founder parcel access before capturing a survey or validating an initial
+published layout, so an exact seeded layout round-trips with the same entrance anchors. Restore
+settlers and seed founder residences, wallet state and social profiles only after layout preflight.
+An altered seed anchor is still validated against the ordinary terrain, road and shore rules; the
+exact seeded-placement match is not a general exception.
 
 ## Cost
 

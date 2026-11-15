@@ -1,7 +1,7 @@
 # Spec 169 — West Coast Long Beach (WORLD.LONGBEACH.1)
 
 - **Status:** proposed for review — design only, no source files touched.
-- **Depends on:** spec 084 (WORLD v2 sizing), spec 140 (no roads on beaches), spec 148 (road network one web), spec 149 (bus depot + fleet), spec 152 (authoritative spatial registry — the frame model this leans on), spec 168 (desert island retheme), ROAD.PLACEMENT.DECOUPLE.1.
+- **Depends on:** spec 084 (WORLD v2 sizing), spec 140 (no roads on beaches), spec 148 (road network one web), spec 149 (bus depot + fleet), spec 152 (authoritative spatial registry — the frame model this leans on), spec 168 (desert island retheme). ROAD.PLACEMENT.DECOUPLE.1 is deferred; it is not part of the party-race launch.
 - **Design provenance:** operator, verbatim — _"i want our placement of plots and our roads reworked. Maybe we could generate a much larger desert that is suited for hundreds of smaller neighborhoods and can be expanded on... call it a west coast long beach... with our blue gas giant still in the distance. i want amazing racing roads for the cars as critical."_ Developed by a Fable concept panel against the live source.
 - **Standing context:** desert island (Namaqualand read), kokerboom is the signature plant, the blue gas giant hangs on the horizon, and everything new ships behind a feature gate.
 
@@ -22,7 +22,7 @@
 | Steering yaw caps at **2.85 rad/s**. Minimum turn radius at avenue top speed: **3.1 cells (12.4 m), taken flat-out**                     | computed from `race.ts:242-254`         |
 | Off-track is `distance > 0.9` cells from the **centreline regardless of way width**                                                      | `race.ts:219`                           |
 | Bus route sorts stops **by angle about the centroid**; snap search caps at radius 18                                                     | `transit/busRoute.ts`                   |
-| Placement reserves the **routed** footprint; before ROAD.PLACEMENT.DECOUPLE.1 a road-geometry change moved the depot **310 cells**       | `placementValidation.ts`                |
+| Reviewed launch placement still reserves the rendered ribbon footprint. A routed-footprint policy may move the depot and needs separate compatibility review.       | `placementValidation.ts`                |
 | `surveyVenuePlacements` **gives up and leaves a parcel open** when no footprint fits                                                     | `render/venuePlacement.ts`              |
 | The gas giant is a mesh at a **fixed absolute world position** `(-1400, -100, -3400)`                                                    | `render/darkCity.ts:126-156`            |
 | Biome IDs are load-bearing for LAYOUT: reclassifying moisture moved the towns and broke three seed-pinned suites                         | spec 168                                |

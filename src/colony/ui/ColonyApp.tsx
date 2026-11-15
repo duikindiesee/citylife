@@ -831,7 +831,7 @@ export function ColonyApp({
           runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
         }
       } else {
-        runtime.setAuthoritativeHomeTruth(null);
+        runtime.setAuthoritativeHomeTruth(truth);
       }
     }).catch(() => {
       if (active && (runtime.getOperatorUserId?.() ?? currentUserId) === currentUserId) {
