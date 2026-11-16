@@ -103,14 +103,14 @@ function isFootprintClear(
   return true;
 }
 
-interface FootprintInspection {
+export interface FootprintInspection {
   front: number;
   center: number;
   rear: number;
   total: number;
 }
 
-function inspectFootprint(
+export function inspectFootprint(
   x: number,
   y: number,
   heading: number,

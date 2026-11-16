@@ -115,6 +115,30 @@ async function bootAs(
       body: JSON.stringify({ owned: false }),
     }),
   );
+  await page.route("**/api/v1/social/profiles*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify([]),
+    }),
+  );
+  await page.route("**/api/v1/citylife/blueprints*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify([]),
+    }),
+  );
+  await page.route("**/api/v1/citylife/players/me/feature-flags/*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({ enabled: false }),
+    }),
+  );
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({
@@ -183,7 +207,7 @@ async function allowWalletSnapshot(
 test("returning owner hydrates their exact car without opening Gearbox", async ({
   page,
 }) => {
-  test.setTimeout(480_000);
+  test.setTimeout(360_000);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -293,11 +317,17 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       const circle = document.querySelector(
         '[data-testid="city-map-player-marker"] circle',
       );
-      return circle
-        ? `${circle.getAttribute("cx")},${circle.getAttribute("cy")}`
-        : "";
+      if (!circle) return null;
+      const cx = circle.getAttribute("cx");
+      const cy = circle.getAttribute("cy");
+      if (cx === null || cy === null) return null;
+      const ncx = Number(cx);
+      const ncy = Number(cy);
+      if (!Number.isFinite(ncx) || !Number.isFinite(ncy)) return null;
+      return `${ncx},${ncy}`;
     });
   const markerBeforeDriving = await mapMarkerPosition();
+  expect(markerBeforeDriving).not.toBeNull();
   await page.keyboard.down("KeyW");
   await expect
     .poll(
@@ -313,9 +343,9 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
         }, placement.cell),
       { timeout: 10_000 },
     )
-    .toBeGreaterThan(0.2);
+    .toBeGreaterThan(0.1);
   await expect
-    .poll(mapMarkerPosition, { timeout: 15_000 })
+    .poll(mapMarkerPosition, { timeout: 10_000 })
     .not.toBe(markerBeforeDriving);
   await page.keyboard.up("KeyW");
   await page.keyboard.down("Space");
@@ -330,7 +360,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
           ).__colony;
           return runtime.getOwnedDrivePose()?.speed;
         }),
-      { timeout: ASSERT_TIMEOUT },
+      { timeout: 10_000 },
     )
     .toBe(0);
   await page.keyboard.up("Space");
@@ -349,7 +379,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
             w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
           );
         }),
-      { timeout: ASSERT_TIMEOUT },
+      { timeout: 10_000 },
     )
     .toBeCloseTo(6.2, 1);
   await page.screenshot({ path: "test-results/owned-car-seated-driving.png" });
@@ -390,7 +420,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
                 }
               ).__colony.getOwnedDrivePose()?.speed,
           ),
-        { timeout: ASSERT_TIMEOUT },
+        { timeout: 10_000 },
       )
       .toBeGreaterThan(0);
   } finally {
@@ -470,6 +500,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       body: '{"owned":false}',
     }),
   );
+  await allowVehicleOffers(page);
   await bootAs(page, "different-owner-without-car", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);

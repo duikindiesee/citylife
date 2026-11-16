@@ -25,6 +25,11 @@ import {
 import { STARTER_PLACEMENT_GRID } from "../src/colony/home/starterHouseProjection";
 import type { HomeTruth } from "../src/colony/home/starterProperty";
 import { getAuthClient } from "../src/colony/authClient";
+import { ColonyRuntime } from "../src/colony/runtime";
+import { inspectFootprint, stepOwnedDrive } from "../src/colony/car/ownedDriving";
+import { defaultCarSpec } from "../src/colony/car/carSpec";
+import { deriveStats } from "../src/colony/car/carParts";
+import { COLONY } from "../src/colony/config";
 
 // PLAYER.HOME.1D.S2 — the dark, server-truth drive-home slice. Everything below is the pure model
 // (geometry, guidance, classifiers, residency, button views) plus the fail-soft backend layer; no DOM.
@@ -507,5 +512,185 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
     });
     expect(res).toEqual({ kind: "rejected" });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("driveHome — R1-R3 physical simulation, footprint collisions, authoritative layout & seed validation", () => {
+  it("executes nonzero physical displacement through stepGuidedDrive and stepOwnedDrive", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId("demo-user");
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    expect(rt.getPhysicalCarPosition()).not.toBeNull();
+    const moved = rt.stepGuidedDrive("up");
+    expect(moved).toBe(true);
+    const pose = rt.getOwnedDrivePose();
+    expect(pose).not.toBeNull();
+    expect(pose!.y).toBeLessThan(366);
+    expect(pose!.heading).toBeCloseTo(-Math.PI / 2, 2);
+
+    // Direct stepOwnedDrive check
+    const stats = deriveStats(defaultCarSpec("test-operator"));
+    const directPose = stepOwnedDrive(
+      { x: 491, y: 366, heading: -Math.PI / 2, speed: 16 },
+      { throttle: true },
+      stats,
+      0.25,
+      () => true,
+    );
+    expect(directPose.y).toBeLessThan(366);
+    expect(Math.hypot(directPose.x - 491, directPose.y - 366)).toBeGreaterThan(0.5);
+  });
+
+  it("detects footprint collisions when bumper/corner overlaps obstacle while center is clear", () => {
+    // Center at (10.5, 10) is clear, but forward bumper corner extends into x >= 11
+    const canOccupyCornerBlocked = (x: number, y: number) => {
+      return Math.round(x) < 11;
+    };
+    const cfg = COLONY.ownedDriving;
+    const inspection = inspectFootprint(
+      10.5,
+      10,
+      0, // heading 0 points towards +x
+      canOccupyCornerBlocked,
+      cfg.halfLengthMetres,
+      cfg.halfWidthMetres,
+      cfg.cellMetres,
+    );
+    expect(inspection.total).toBeGreaterThan(0);
+
+    const stats = deriveStats(defaultCarSpec("test-operator"));
+    const stepped = stepOwnedDrive(
+      { x: 10.5, y: 10, heading: 0, speed: 16 },
+      { throttle: true },
+      stats,
+      0.25,
+      canOccupyCornerBlocked,
+    );
+    // Bumper collision prevents forward movement
+    expect(stepped.x).toBeLessThan(10.6);
+  });
+
+  it("refuses footprint traversal into solid house interior (isHomesteadDriveway & blockedStepReason)", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId("demo-user");
+    const homeTruthWithHouse: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "starter-home-frame:seed-4242",
+      onboardingState: "OWNED",
+      priceKco: 350,
+      x: 491,
+      y: 361,
+      geometry: {
+        plotId: "wood1_plot_1",
+        driveway: [
+          { x: 491, y: 363 },
+          { x: 491, y: 364 },
+          { x: 491, y: 365 },
+        ],
+        spawn: { x: 491, y: 363 },
+        door: { x: 491, y: 361 },
+        houseZone: { x: 490, y: 358, width: 4, depth: 3 },
+      },
+    };
+    rt.setAuthoritativeHomeTruth(homeTruthWithHouse);
+
+    // Inside solid houseZone: (491, 359)
+    expect((rt as any).isHomesteadDriveway(491, 359)).toBe(false);
+    expect((rt as any).blockedStepReason(491, 359)).toBe("building");
+
+    // On driveway: (491, 364)
+    expect((rt as any).isHomesteadDriveway(491, 364)).toBe(true);
+    expect((rt as any).blockedStepReason(491, 364)).toBeNull();
+  });
+
+  it("fails closed on mismatched layout revision", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId("demo-user");
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    rt.getActiveLayoutRevisionId = () => "active-rev-123";
+    rt.setAuthoritativeHomeTruth({
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "starter-home-frame:seed-4242",
+      layoutRevision: "rev-mismatched-content-hash",
+      onboardingState: "OWNED",
+      priceKco: 350,
+    });
+    expect(rt.stepGuidedDrive("up")).toBe(false);
+  });
+
+  it("fails closed on foreign world seed in frameId", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId("demo-user");
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    rt.setAuthoritativeHomeTruth({
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "starter-home-frame:seed-9999",
+      onboardingState: "OWNED",
+      priceKco: 350,
+    });
+    expect(rt.stepGuidedDrive("up")).toBe(false);
+    expect((rt as any).isHomesteadDriveway(491, 365)).toBe(false);
+  });
+
+  it("fails closed on unauthenticated operator", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId(null);
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    expect(rt.stepGuidedDrive("up")).toBe(false);
+  });
+
+  it("refuses arrival when physical vehicle is away even if cursor is at home", () => {
+    const home = { x: 491, y: 361 };
+    const physicalCarAway = { x: 491, y: 366 }; // 5 cells away, outside radius 2
+    expect(isWithinArrivalBounds(physicalCarAway, home)).toBe(false);
+
+    // Simulate overlay arrival check where cursor is at home but physical vehicle is away
+    const canArrive = (
+      physicalPos: Cell | null,
+      targetHome: Cell,
+      carEligible: boolean,
+    ): { kind: "confirmed" | "rejected" } => {
+      if (!carEligible || !physicalPos || !isWithinArrivalBounds(physicalPos, targetHome)) {
+        return { kind: "rejected" };
+      }
+      return { kind: "confirmed" };
+    };
+
+    expect(canArrive(physicalCarAway, home, true)).toEqual({ kind: "rejected" });
+    expect(canArrive(null, home, true)).toEqual({ kind: "rejected" });
+    expect(canArrive({ x: 491, y: 362 }, home, true)).toEqual({ kind: "confirmed" });
   });
 });

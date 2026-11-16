@@ -268,9 +268,7 @@ test("HOME.1D.S2: mobile drive to owned home, idempotent bounded arrival, RESIDE
 
   // The destination is server-derived and the arrival control starts 'far' (cannot submit until inside).
   const arrive = page.locator('[data-testid="drive-home-arrive"]');
-  await expect(arrive).toHaveAttribute("data-arrival-state", "far", {
-    timeout: ASSERT_TIMEOUT,
-  });
+  await expect(arrive).toHaveAttribute("data-arrival-state", "far");
 
   await page.screenshot({
     path: "test-results/home1d-s2-guidance.png",

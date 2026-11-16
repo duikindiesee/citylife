@@ -178,6 +178,11 @@ export function DriveHomeOverlay({
       setCursor((cur) => {
         if (cur) return cur;
         if (res.resident) return homeTargetCell(res.truth, runtime);
+        const pose =
+          runtime?.getOwnedDrivePose?.() ??
+          runtime?.getPhysicalCarPosition?.() ??
+          null;
+        if (pose) return { x: Math.round(pose.x), y: Math.round(pose.y) };
         return dealershipStartCell(res.truth, runtime);
       });
       setPhase("ready");
@@ -241,11 +246,17 @@ export function DriveHomeOverlay({
 
   const move = useCallback(
     (dir: "up" | "down" | "left" | "right") => {
-      const effectiveGrid = resolveGridSize(runtime, home);
       if (runtime && typeof runtime.stepGuidedDrive === "function") {
         const moved = runtime.stepGuidedDrive(dir);
         if (!moved) return;
+        const newPose = runtime.getOwnedDrivePose?.();
+        if (newPose) {
+          setCursor({ x: Math.round(newPose.x), y: Math.round(newPose.y) });
+          setOutcome(undefined);
+          return;
+        }
       }
+      const effectiveGrid = resolveGridSize(runtime, home);
       setCursor((cur) => (cur ? stepCell(cur, dir, effectiveGrid) : cur));
       // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
       setOutcome(undefined);
