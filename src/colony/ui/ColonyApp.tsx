@@ -4710,7 +4710,6 @@ export function ColonyApp({
             fails. */}
         {/* Spec 175: Bottom-right corner action rail is suppressed when driving, keeping mobile drive pedals clear and uncluttered */}
         {!builderActive &&
-          !runtime.getOwnedDrivePose() &&
           !showroomOpen &&
           !homeOpen &&
           !driveHomeOpen &&

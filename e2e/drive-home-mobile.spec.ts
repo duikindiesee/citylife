@@ -109,6 +109,29 @@ const OWNED_TRUTH = {
 };
 
 async function routeAll(page: Page, s: DriveState): Promise<void> {
+  await page.route("**/api/ledger/me/wallet", (route: Route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        userId: "demo-user",
+        currency: "KCO",
+        balance: 1000,
+      }),
+    });
+  });
+  await page.route("**/citylife/players/me/vehicle", (route: Route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        owned: true,
+        vehicleKey: "karoo-x19-targa",
+      }),
+    });
+  });
   await page.route(FLAG_GLOB, (route: Route) => {
     if (s.flagMode === "unavailable") return route.abort("failed");
     const enabled = s.flagMode === "on";
@@ -245,7 +268,9 @@ test("HOME.1D.S2: mobile drive to owned home, idempotent bounded arrival, RESIDE
 
   // The destination is server-derived and the arrival control starts 'far' (cannot submit until inside).
   const arrive = page.locator('[data-testid="drive-home-arrive"]');
-  await expect(arrive).toHaveAttribute("data-arrival-state", "far");
+  await expect(arrive).toHaveAttribute("data-arrival-state", "far", {
+    timeout: ASSERT_TIMEOUT,
+  });
 
   await page.screenshot({
     path: "test-results/home1d-s2-guidance.png",

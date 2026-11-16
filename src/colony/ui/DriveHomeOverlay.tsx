@@ -35,6 +35,7 @@ import {
   dealershipStartCell,
   isWithinArrivalBounds,
   stepCell,
+  resolveGridSize,
   type Cell,
   type HomeResidency,
   type ArrivalOutcome,
@@ -86,6 +87,7 @@ export function DriveHomeOverlay({
     focusSurveyCell(x: number, y: number): boolean;
     getOwnedDrivePose?(): { x: number; y: number; heading?: number } | null;
     getPhysicalCarPosition?(): { x: number; y: number } | null;
+    stepGuidedDrive?(dir: "up" | "down" | "left" | "right"): boolean;
     getActiveLayoutRevisionId?(): string | null;
     worldLayoutDocument?(): any;
     getOperatorUserId?(): string | null;
@@ -237,11 +239,19 @@ export function DriveHomeOverlay({
   const resident = residency?.resident === true;
   const garageUnlocked = isHomeGarageUnlocked(residency);
 
-  const move = useCallback((dir: "up" | "down" | "left" | "right") => {
-    setCursor((cur) => (cur ? stepCell(cur, dir) : cur));
-    // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
-    setOutcome(undefined);
-  }, []);
+  const move = useCallback(
+    (dir: "up" | "down" | "left" | "right") => {
+      const effectiveGrid = resolveGridSize(runtime, home);
+      if (runtime && typeof runtime.stepGuidedDrive === "function") {
+        const moved = runtime.stepGuidedDrive(dir);
+        if (!moved) return;
+      }
+      setCursor((cur) => (cur ? stepCell(cur, dir, effectiveGrid) : cur));
+      // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
+      setOutcome(undefined);
+    },
+    [runtime, home],
+  );
 
   // Smoothly center the 3D camera over the driving cursor as the vehicle moves through the city.
   useEffect(() => {
@@ -306,9 +316,7 @@ export function DriveHomeOverlay({
     const carSpec = runtime?.getAuthoritativeCar?.() ?? null;
     const vehicleKey = carSpec
       ? serverVehicleKeyOf(carSpec.id)
-      : (residency?.truth as any)?.vehicleId
-        ? String((residency?.truth as any).vehicleId).trim()
-        : null;
+      : null;
     const plotId = residency?.truth?.plotId ?? null;
     const frameId = residency?.truth?.frameId ?? null;
 

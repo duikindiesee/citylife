@@ -272,7 +272,7 @@ import {
   layoutRevisionsMatch,
   type HomeTruth,
 } from "./home/starterProperty";
-import { homeTargetCell } from "./home/driveHome";
+import { homeTargetCell, dealershipStartCell } from "./home/driveHome";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
 import {
@@ -2934,12 +2934,27 @@ export class ColonyRuntime {
         return;
       }
       const pose = this.ownedDrivePose;
-      const entrance = pose ?? this.commercialDistrict?.garagePad?.roadTarget;
+      let entrance = pose ?? this.commercialDistrict?.garagePad?.roadTarget;
+      const homeTruth = this.authoritativeHomeTruth;
+      const isResident =
+        homeTruth &&
+        (homeTruth.onboardingState === "RESIDENT" ||
+          homeTruth.isResident === true ||
+          homeTruth.status === "RESIDENT" ||
+          homeTruth.arrivalStatus === "RESIDENT");
+      if (!pose && homeTruth && isHomeOwned(homeTruth) && !isResident) {
+        const start = dealershipStartCell(homeTruth, this);
+        if (start) {
+          entrance = { x: start.x, y: start.y };
+        }
+      }
       if (
         entrance &&
-        this.sim.state.roadSet.has(
+        (this.sim.state.roadSet.has(
           `${Math.round(entrance.x)},${Math.round(entrance.y)}`,
-        )
+        ) ||
+          this.isRoadSurface(entrance.x, entrance.y) ||
+          (homeTruth && isHomeOwned(homeTruth) && !isResident))
       ) {
         this.renderer.setOperatorCar(ownedCar, {
           x: entrance.x,
@@ -2958,19 +2973,21 @@ export class ColonyRuntime {
               `${Math.round(entrance.x) + dx},${Math.round(entrance.y) + dy}`,
             ),
           );
-          if (ahead) {
-            this.ownedDrivePose = {
-              x: entrance.x,
-              y: entrance.y,
-              heading: Math.atan2(ahead[1], ahead[0]),
-              speed: 0,
-            };
-            this.ownedDriveSeated = true;
-            useRoadNetwork.setState({
-              builderActive: false,
-              worldViewActive: false,
-            });
+          this.ownedDrivePose = {
+            x: entrance.x,
+            y: entrance.y,
+            heading: ahead ? Math.atan2(ahead[1], ahead[0]) : 0,
+            speed: 0,
+          };
+          this.ownedDriveSeated = true;
+          if (this.sim.state.operatorCar) {
+            this.sim.state.operatorCar.cell = { x: entrance.x, y: entrance.y };
+            this.sim.state.operatorCar.heading = this.ownedDrivePose.heading;
           }
+          useRoadNetwork.setState({
+            builderActive: false,
+            worldViewActive: false,
+          });
         }
         return;
       }
@@ -4762,14 +4779,39 @@ export class ColonyRuntime {
 
   /** Spec 175: Test whether a coordinate is on the operator citizen's owned homestead driveway/yard. */
   isHomesteadDriveway(ix: number, iy: number): boolean {
-    const citizenId = this.operatorCitizenId();
-    if (!citizenId) return false;
-    const lot = this.neighborhood.lots.find(
-      (l) => l.ownerCitizenId === citizenId,
-    );
+    let lot: any = undefined;
+    if (this.authoritativeHomeTruth && isHomeOwned(this.authoritativeHomeTruth)) {
+      const truth = this.authoritativeHomeTruth;
+      if (truth.geometry?.driveway?.some((c) => c.x === ix && c.y === iy)) {
+        return true;
+      }
+      if (
+        truth.geometry?.spawn &&
+        Math.round(truth.geometry.spawn.x) === ix &&
+        Math.round(truth.geometry.spawn.y) === iy
+      ) {
+        return true;
+      }
+      if (truth.plotId) {
+        lot = this.neighborhood?.lots?.find(
+          (l) =>
+            l &&
+            (l.id === truth.plotId ||
+              l.id === `lot-${truth.plotId}` ||
+              l.id === `lot_${truth.plotId}`),
+        );
+      }
+    }
+    if (!lot) {
+      const citizenId = this.operatorCitizenId();
+      if (!citizenId) return false;
+      lot = this.neighborhood.lots.find(
+        (l) => l.ownerCitizenId === citizenId,
+      );
+    }
     if (!lot) return false;
     // Driveway, gate, or door access cells are always drivable
-    if (lot.driveway?.some((c) => c.x === ix && c.y === iy)) return true;
+    if (lot.driveway?.some((c: { x: number; y: number }) => c.x === ix && c.y === iy)) return true;
     if (lot.gate && lot.gate.x === ix && lot.gate.y === iy) return true;
     if (lot.doorX === ix && lot.doorY === iy) return true;
     // Yard within lot bounds
@@ -4785,6 +4827,7 @@ export class ColonyRuntime {
     // Solid house interior blocks
     const hz = lot.houseZone;
     if (
+      hz &&
       ix > hz.x &&
       ix < hz.x + hz.w - 1 &&
       iy > hz.y &&
@@ -4864,6 +4907,105 @@ export class ColonyRuntime {
       return { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
     }
     return null;
+  }
+
+  stepGuidedDrive(dir: "up" | "down" | "left" | "right"): boolean {
+    const ownedCar = this.currentPlayerOwnedCarSpec();
+    if (!this.operatorUserId || !this.authoritativeCar || !ownedCar) return false;
+    if (!this.ownedDrivePose || !this.ownedDriveSeated) return false;
+
+    const d = {
+      up: { dx: 0, dy: -1 },
+      down: { dx: 0, dy: 1 },
+      left: { dx: -1, dy: 0 },
+      right: { dx: 1, dy: 0 },
+    }[dir];
+
+    const tx = this.ownedDrivePose.x + d.dx;
+    const ty = this.ownedDrivePose.y + d.dy;
+
+    const terrain = this.sim?.state?.terrain;
+    const size = terrain?.size ?? 608;
+    const ix = Math.round(tx);
+    const iy = Math.round(ty);
+
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+    if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
+
+    // Municipal buses
+    const activeBuses = this.busPoses();
+    for (let i = 0; i < activeBuses.length; i++) {
+      const b = activeBuses[i]!;
+      const dxB = tx - b.x;
+      const dyB = ty - b.y;
+      const cosB = Math.cos(b.heading);
+      const sinB = Math.sin(b.heading);
+      const along = dxB * cosB + dyB * sinB;
+      const across = -dxB * sinB + dyB * cosB;
+      if (Math.abs(along) < 1.7 && Math.abs(across) < 0.52) {
+        return false;
+      }
+    }
+
+    // Commercial garage pad & obstacles
+    const garagePad = this.commercialDistrict?.garagePad;
+    if (garagePad && isPointInGarageVicinity(tx, ty, garagePad)) {
+      if (!this.isGaragePadDrivable(tx, ty, garagePad)) {
+        const local = localFromGridCoordinates(garagePad, tx, ty);
+        if (
+          Math.abs(local.x) <= garagePad.w / 2 + 0.8 &&
+          Math.abs(local.z) <= garagePad.h / 2 + 0.5
+        ) {
+          return false;
+        }
+        const model = this.getGarageModel();
+        if (
+          model &&
+          isPointInsideGarageObstacle(local.x, local.z, model.obstacles, 0.08)
+        ) {
+          return false;
+        }
+      }
+    } else if (this.isRoadSurface(tx, ty)) {
+      // Passable road surface
+    } else if (terrain && (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)) {
+      return false;
+    } else if (this.isHomesteadDriveway(ix, iy)) {
+      // Passable homestead driveway
+    } else {
+      if (
+        this.sim?.state?.buildings?.some(
+          (b: { x: number; y: number }) => Math.round(b.x) === ix && Math.round(b.y) === iy,
+        )
+      ) {
+        return false;
+      }
+      if (
+        this.sim?.state?.structures?.some(
+          (s: { x: number; y: number }) => Math.round(s.x) === ix && Math.round(s.y) === iy,
+        )
+      ) {
+        return false;
+      }
+      if (this.blockedStepReason(tx, ty) !== null) {
+        return false;
+      }
+    }
+
+    const heading = Math.atan2(d.dy, d.dx);
+    this.ownedDrivePose = {
+      x: tx,
+      y: ty,
+      heading,
+      speed: 0,
+    };
+    if (this.sim?.state?.operatorCar) {
+      this.sim.state.operatorCar.cell = { x: tx, y: ty };
+      this.sim.state.operatorCar.heading = heading;
+    }
+    this.renderer?.setOperatorCar(ownedCar, { x: tx, y: ty });
+    this.emit();
+    return true;
   }
 
   getAuthoritativeCar(): CarSpec | null {
@@ -7828,6 +7970,10 @@ export class ColonyRuntime {
         return null; // Walkable!
       }
       return "building";
+    }
+
+    if (this.isHomesteadDriveway(ix, iy)) {
+      return null;
     }
 
     const fromInsideOccupied = fromKey

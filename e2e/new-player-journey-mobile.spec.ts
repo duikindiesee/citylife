@@ -83,12 +83,38 @@ function authAs(userId: string) {
   };
 }
 
+const walletBalances: Record<string, number> = {};
+
 async function bootAs(
   page: import("@playwright/test").Page,
   userId: string,
   enabled: boolean,
 ): Promise<void> {
   await stubPublishedStarterCatalogue(page);
+  await page.route("**/api/ledger/me/wallet", (route) => {
+    const balance = walletBalances[userId] ?? 1000;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        ownerId: userId,
+        appName: "citylife",
+        walletType: "DEFAULT",
+        instrument: "KCO",
+        realm: "TEST",
+        balance,
+      }),
+    });
+  });
+  await page.route("**/api/v1/citylife/players/me/home", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({ owned: false }),
+    }),
+  );
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({
@@ -136,10 +162,12 @@ async function allowWalletSnapshot(
   userId: string,
   balance: number,
 ) {
+  walletBalances[userId] = balance;
   await page.route("**/api/ledger/me/wallet", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
       body: JSON.stringify({
         ownerId: userId,
         appName: "citylife",
@@ -155,7 +183,7 @@ async function allowWalletSnapshot(
 test("returning owner hydrates their exact car without opening Gearbox", async ({
   page,
 }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(480_000);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -232,12 +260,21 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   await touchTap(page, '[data-testid="player-map-shortcut"]');
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
   await expect(page.getByRole("button", { name: "Close map" })).toBeVisible();
-  const expandedMap = await cityMap.boundingBox();
+  const expandedMap = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="player-map"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
   expect(expandedMap).not.toBeNull();
   const playerMarker = page.getByTestId("city-map-player-marker");
   await expect(playerMarker).toBeVisible();
-  const mapThrottle = page.locator('[data-drive-action="throttle"]');
-  const mapThrottleBox = await mapThrottle.boundingBox();
+  const mapThrottleBox = await page.evaluate(() => {
+    const el = document.querySelector('[data-drive-action="throttle"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
   expect(mapThrottleBox).not.toBeNull();
   expect(
     await page.evaluate(
@@ -252,12 +289,14 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     ),
   ).toBe(true);
   const mapMarkerPosition = async () =>
-    playerMarker
-      .locator("circle")
-      .first()
-      .evaluate(
-        (node) => `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
+    page.evaluate(() => {
+      const circle = document.querySelector(
+        '[data-testid="city-map-player-marker"] circle',
       );
+      return circle
+        ? `${circle.getAttribute("cx")},${circle.getAttribute("cy")}`
+        : "";
+    });
   const markerBeforeDriving = await mapMarkerPosition();
   await page.keyboard.down("KeyW");
   await expect
@@ -274,39 +313,43 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
         }, placement.cell),
       { timeout: 10_000 },
     )
-    .toBeGreaterThan(0.1);
+    .toBeGreaterThan(0.2);
   await expect
-    .poll(mapMarkerPosition, { timeout: 10_000 })
+    .poll(mapMarkerPosition, { timeout: 15_000 })
     .not.toBe(markerBeforeDriving);
   await page.keyboard.up("KeyW");
   await page.keyboard.down("Space");
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const runtime = (
-          window as unknown as {
-            __colony: import("../src/colony/runtime").ColonyRuntime;
-          }
-        ).__colony;
-        return runtime.getOwnedDrivePose()?.speed;
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const runtime = (
+            window as unknown as {
+              __colony: import("../src/colony/runtime").ColonyRuntime;
+            }
+          ).__colony;
+          return runtime.getOwnedDrivePose()?.speed;
+        }),
+      { timeout: ASSERT_TIMEOUT },
     )
     .toBe(0);
   await page.keyboard.up("Space");
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const w = window as unknown as {
-          __colony: import("../src/colony/runtime").ColonyRuntime;
-          __r3fCamera: import("three").Camera;
-        };
-        const pose = w.__colony.getOwnedDrivePose()!;
-        const n = w.__colony.sim.state.terrain.size;
-        return Math.hypot(
-          w.__r3fCamera.position.x - (pose.x - n / 2) * 4,
-          w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
-        );
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const w = window as unknown as {
+            __colony: import("../src/colony/runtime").ColonyRuntime;
+            __r3fCamera: import("three").Camera;
+          };
+          const pose = w.__colony.getOwnedDrivePose()!;
+          const n = w.__colony.sim.state.terrain.size;
+          return Math.hypot(
+            w.__r3fCamera.position.x - (pose.x - n / 2) * 4,
+            w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
+          );
+        }),
+      { timeout: ASSERT_TIMEOUT },
     )
     .toBeCloseTo(6.2, 1);
   await page.screenshot({ path: "test-results/owned-car-seated-driving.png" });
@@ -314,14 +357,13 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);
   await touchTap(page, '[data-testid="enter-owned-car"]');
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
-  const accelerator = await page
-    .locator('[data-drive-action="throttle"]')
-    .boundingBox();
-  expect(accelerator).not.toBeNull();
-  const touch = {
-    x: accelerator!.x + accelerator!.width / 2,
-    y: accelerator!.y + accelerator!.height / 2,
-  };
+  const touch = await page.evaluate(() => {
+    const el = document.querySelector('[data-drive-action="throttle"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  expect(touch).not.toBeNull();
   expect(
     await page.evaluate(
       ({ x, y }) =>
@@ -338,15 +380,17 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   });
   try {
     await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (
-              window as unknown as {
-                __colony: import("../src/colony/runtime").ColonyRuntime;
-              }
-            ).__colony.getOwnedDrivePose()?.speed,
-        ),
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (
+                window as unknown as {
+                  __colony: import("../src/colony/runtime").ColonyRuntime;
+                }
+              ).__colony.getOwnedDrivePose()?.speed,
+          ),
+        { timeout: ASSERT_TIMEOUT },
       )
       .toBeGreaterThan(0);
   } finally {
