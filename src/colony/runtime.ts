@@ -2588,6 +2588,7 @@ export class ColonyRuntime {
   setOperatorUserId(userId: string | null): void {
     const nextUserId = userId && userId.trim() ? userId.trim() : null;
     if (nextUserId !== this.operatorUserId) {
+      this.authoritativeHomeTruth = null;
       this.starterCatalogueManifest = null;
       this.authoritativeNeighbourhoodKeys = [];
       this.ownedDriveInputGeneration++;
@@ -2597,6 +2598,8 @@ export class ColonyRuntime {
       this.lastAppliedSnapshotSeq = 0;
       this.ownedDriveInput = {};
       this.ownedDriveSeated = false;
+      this.guidedDriveActiveUntil = 0;
+      this.guidedTargetHeading = null;
       this.sim.state.remoteRacers?.clear();
       if (this.sim.state.operatorCar) {
         this.sim.state.operatorCar = null as any;
@@ -3059,17 +3062,24 @@ export class ColonyRuntime {
     }
     const activeRev = this.getActiveLayoutRevisionId();
     if (
-      activeRev &&
-      homeTruth.layoutRevision &&
+      !activeRev ||
+      !homeTruth.layoutRevision ||
       !layoutRevisionsMatch(activeRev, homeTruth.layoutRevision)
     ) {
       return null;
     }
-    if (homeTruth.frameId) {
-      const m = homeTruth.frameId.match(/seed-(\d+)/);
-      if (m && Number(m[1]) !== this.worldSeed) {
-        return null;
-      }
+    if (!homeTruth.frameId || !homeTruth.frameId.includes(`seed-${this.worldSeed}`)) {
+      return null;
+    }
+    if (!homeTruth.plotId) {
+      return null;
+    }
+    if (
+      homeTruth.geometry &&
+      homeTruth.geometry.plotId &&
+      homeTruth.geometry.plotId !== homeTruth.plotId
+    ) {
+      return null;
     }
     const driveway = this.getPlayerHomeDriveway();
     if (!driveway?.cells || driveway.cells.length === 0) {
@@ -3114,6 +3124,8 @@ export class ColonyRuntime {
   private ownedDriveSeated = false;
   private preTransitionSeated = false;
   private ownedDriveInputGeneration = 0;
+  private guidedDriveActiveUntil = 0;
+  private guidedTargetHeading: number | null = null;
 
   /** Changes synchronously when input authority changes, even before React renders. */
   getOwnedDriveInputGeneration(): number {
@@ -3409,6 +3421,8 @@ export class ColonyRuntime {
     car.speed = 0;
     this.ownedDriveSeated = false;
     this.ownedDriveInput = {};
+    this.guidedDriveActiveUntil = 0;
+    this.guidedTargetHeading = null;
     this.fpTeleportRequest = {
       ...exitCell,
       yaw: -car.heading - Math.PI / 2,
@@ -4660,6 +4674,22 @@ export class ColonyRuntime {
         }
       }
 
+      // Buildings and static structures MUST ALWAYS block — never exempt!
+      if (
+        this.sim.state.buildings.some(
+          (b) => Math.round(b.x) === ix && Math.round(b.y) === iy,
+        )
+      ) {
+        return false;
+      }
+      if (
+        this.sim.state.structures?.some(
+          (s) => Math.round(s.x) === ix && Math.round(s.y) === iy,
+        )
+      ) {
+        return false;
+      }
+
       // Public road ribbons are elevated, paved surfaces (bridges, causeways, coastal avenues)
       // and are always drivable regardless of water or terrain elevation underneath.
       if (this.isRoadSurface(x, y)) return true;
@@ -4673,19 +4703,6 @@ export class ColonyRuntime {
         return true;
       }
 
-      // Buildings and static structures block
-      if (
-        this.sim.state.buildings.some(
-          (b) => Math.round(b.x) === ix && Math.round(b.y) === iy,
-        )
-      )
-        return false;
-      if (
-        this.sim.state.structures.some(
-          (s) => Math.round(s.x) === ix && Math.round(s.y) === iy,
-        )
-      )
-        return false;
       const stepReason = this.blockedStepReason(x, y);
       if (stepReason !== null) return false;
       return true;
@@ -4701,6 +4718,28 @@ export class ColonyRuntime {
   tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
+
+    if (this.guidedDriveActiveUntil > 0) {
+      if (Date.now() > this.guidedDriveActiveUntil) {
+        this.guidedDriveActiveUntil = 0;
+        this.guidedTargetHeading = null;
+        this.setOwnedDriveInput({});
+      } else if (this.guidedTargetHeading !== null && this.ownedDrivePose) {
+        let diff = this.guidedTargetHeading - this.ownedDrivePose.heading;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        const left = diff < -0.08;
+        const right = diff > 0.08;
+        if (this.ownedDriveInput.left !== left || this.ownedDriveInput.right !== right) {
+          this.setOwnedDriveInput({
+            throttle: true,
+            left,
+            right,
+            brake: false,
+          });
+        }
+      }
+    }
 
     const { canOccupy, isRoad, isFootprintValid } =
       this.getOwnedDriveCollisionCheckers();
@@ -4718,38 +4757,43 @@ export class ColonyRuntime {
     if (car) {
       car.cell = { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
       car.heading = this.ownedDrivePose.heading;
-      if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
-        const now = Date.now();
-        if (now - this.lastMultiplayerInputSentAt >= 50) {
-          this.lastMultiplayerInputSentAt = now;
-          this.multiplayerInputSeq++;
-          const throttleVal = this.ownedDriveInput.throttle ? 1 : this.ownedDriveInput.reverse ? -1 : 0;
-          const steerVal = this.ownedDriveInput.right ? 1 : this.ownedDriveInput.left ? -1 : 0;
-          this.multiplayerClient.sendDrivingInput({
-            seq: this.multiplayerInputSeq,
-            epoch: this.multiplayerClient.getModeEpoch(),
-            throttle: throttleVal,
-            steer: steerVal,
-            brake: Boolean(this.ownedDriveInput.brake),
-          });
-        }
-        if (this.multiplayerClient.getProtocolVersion() === 1) {
-          const terrain = this.sim.state.terrain;
-          const size = terrain.size;
-          const worldX = (this.ownedDrivePose.x - size / 2) * 4;
-          const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
-          const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
-          this.multiplayerClient.sendPose({
-            x: worldX,
-            y: worldY,
-            z: worldZ,
-            heading: this.ownedDrivePose.heading,
-            speed: this.ownedDrivePose.speed,
-            mode: "driving",
-          });
-        }
+      this.renderer?.setOperatorCar(ownedCar, {
+        x: this.ownedDrivePose.x,
+        y: this.ownedDrivePose.y,
+      });
+    }
+    if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
+      const now = Date.now();
+      if (now - this.lastMultiplayerInputSentAt >= 50) {
+        this.lastMultiplayerInputSentAt = now;
+        this.multiplayerInputSeq++;
+        const throttleVal = this.ownedDriveInput.throttle ? 1 : this.ownedDriveInput.reverse ? -1 : 0;
+        const steerVal = this.ownedDriveInput.right ? 1 : this.ownedDriveInput.left ? -1 : 0;
+        this.multiplayerClient.sendDrivingInput({
+          seq: this.multiplayerInputSeq,
+          epoch: this.multiplayerClient.getModeEpoch(),
+          throttle: throttleVal,
+          steer: steerVal,
+          brake: Boolean(this.ownedDriveInput.brake),
+        });
+      }
+      if (this.multiplayerClient.getProtocolVersion() === 1) {
+        const terrain = this.sim.state.terrain;
+        const size = terrain.size;
+        const worldX = (this.ownedDrivePose.x - size / 2) * 4;
+        const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
+        const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
+        this.multiplayerClient.sendPose({
+          x: worldX,
+          y: worldY,
+          z: worldZ,
+          heading: this.ownedDrivePose.heading,
+          speed: this.ownedDrivePose.speed,
+          mode: "driving",
+        });
       }
     }
+    this.emit();
   }
 
   tickWalkingMultiplayer(): void {
@@ -4874,32 +4918,40 @@ export class ColonyRuntime {
 
     let lot: any = undefined;
     const truth = this.authoritativeHomeTruth;
-    if (truth && isHomeOwned(truth) && truth.owned) {
+    if (truth) {
+      if (!isHomeOwned(truth) || !truth.owned) {
+        return false;
+      }
       // Validate layout revision
       const activeRev = this.getActiveLayoutRevisionId();
       if (
-        activeRev &&
-        truth.layoutRevision &&
+        !activeRev ||
+        !truth.layoutRevision ||
         !layoutRevisionsMatch(activeRev, truth.layoutRevision)
       ) {
         return false;
       }
       // Validate world seed from frameId
-      if (truth.frameId) {
-        const m = truth.frameId.match(/seed-(\d+)/);
-        if (m && Number(m[1]) !== this.worldSeed) {
-          return false;
-        }
+      if (!truth.frameId || !truth.frameId.includes(`seed-${this.worldSeed}`)) {
+        return false;
       }
-      if (truth.plotId) {
-        lot = this.neighborhood?.lots?.find(
-          (l: any) =>
-            l &&
-            (l.id === truth.plotId ||
-              l.id === `lot-${truth.plotId}` ||
-              l.id === `lot_${truth.plotId}`),
-        );
+      if (!truth.plotId) {
+        return false;
       }
+      if (
+        truth.geometry &&
+        truth.geometry.plotId &&
+        truth.geometry.plotId !== truth.plotId
+      ) {
+        return false;
+      }
+      lot = this.neighborhood?.lots?.find(
+        (l: any) =>
+          l &&
+          (l.id === truth.plotId ||
+            l.id === `lot-${truth.plotId}` ||
+            l.id === `lot_${truth.plotId}`),
+      );
     } else {
       const citizenId = this.operatorCitizenId();
       if (!citizenId) return false;
@@ -5079,23 +5131,32 @@ export class ColonyRuntime {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.operatorUserId || !this.authoritativeCar || !ownedCar) return false;
     if (!this.ownedDrivePose) return false;
-    this.ownedDriveSeated = true;
 
-    // Check layout revision match
+    // Check layout revision match and complete canonical contract
     const activeRev = this.getActiveLayoutRevisionId();
     const truth = this.authoritativeHomeTruth;
-    if (
-      truth &&
-      activeRev &&
-      truth.layoutRevision &&
-      !layoutRevisionsMatch(activeRev, truth.layoutRevision)
-    ) {
-      return false;
-    }
-    // Check world seed match from frameId
-    if (truth?.frameId) {
-      const m = truth.frameId.match(/seed-(\d+)/);
-      if (m && Number(m[1]) !== this.worldSeed) {
+    if (truth) {
+      if (!isHomeOwned(truth) || !truth.owned) {
+        return false;
+      }
+      if (
+        !activeRev ||
+        !truth.layoutRevision ||
+        !layoutRevisionsMatch(activeRev, truth.layoutRevision)
+      ) {
+        return false;
+      }
+      if (!truth.frameId || !truth.frameId.includes(`seed-${this.worldSeed}`)) {
+        return false;
+      }
+      if (!truth.plotId) {
+        return false;
+      }
+      if (
+        truth.geometry &&
+        truth.geometry.plotId &&
+        truth.geometry.plotId !== truth.plotId
+      ) {
         return false;
       }
     }
@@ -5108,12 +5169,12 @@ export class ColonyRuntime {
     }[dir];
 
     const targetHeading = Math.atan2(d.dy, d.dx);
-    const { canOccupy, isRoad, isFootprintValid } =
+    const { canOccupy, isFootprintValid } =
       this.getOwnedDriveCollisionCheckers();
 
     const cfg = COLONY.ownedDriving;
 
-    // Inspect target heading footprint before movement
+    // Inspect target heading footprint before movement: check both rotation at current pose and forward step
     const targetInspection = inspectFootprint(
       this.ownedDrivePose.x,
       this.ownedDrivePose.y,
@@ -5128,82 +5189,37 @@ export class ColonyRuntime {
       return false;
     }
 
-    // Physical simulation substeps via stepOwnedDrive
-    const initialPose: OwnedDrivePose = {
-      ...this.ownedDrivePose,
-      heading: targetHeading,
-      speed: 16,
-    };
-    const newPose = stepOwnedDrive(
-      initialPose,
-      { throttle: true },
-      deriveStats(ownedCar),
-      0.25,
+    const stepAheadInspection = inspectFootprint(
+      this.ownedDrivePose.x + d.dx * 0.5,
+      this.ownedDrivePose.y + d.dy * 0.5,
+      targetHeading,
       canOccupy,
-      isRoad,
+      cfg.halfLengthMetres,
+      cfg.halfWidthMetres,
+      cfg.cellMetres,
       isFootprintValid,
     );
-
-    const distMoved = Math.hypot(
-      newPose.x - this.ownedDrivePose.x,
-      newPose.y - this.ownedDrivePose.y,
-    );
-    if (distMoved < 0.5) {
+    if (stepAheadInspection.total > 0) {
       return false;
     }
 
-    const targetX = this.ownedDrivePose.x + d.dx;
-    const targetY = this.ownedDrivePose.y + d.dy;
-    const finalX =
-      Math.hypot(newPose.x - targetX, newPose.y - targetY) < 0.2
-        ? targetX
-        : newPose.x;
-    const finalY =
-      Math.hypot(newPose.x - targetX, newPose.y - targetY) < 0.2
-        ? targetY
-        : newPose.y;
+    // Seating and controller input application occur ONLY after all validation passes
+    this.ownedDriveSeated = true;
 
-    this.ownedDrivePose = {
-      x: finalX,
-      y: finalY,
-      heading: targetHeading,
-      speed: 0,
-    };
-    if (this.sim?.state?.operatorCar) {
-      this.sim.state.operatorCar.cell = { x: finalX, y: finalY };
-      this.sim.state.operatorCar.heading = targetHeading;
-    }
-    this.renderer?.setOperatorCar(ownedCar, { x: finalX, y: finalY });
+    let diff = targetHeading - this.ownedDrivePose.heading;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    const left = diff < -0.08;
+    const right = diff > 0.08;
 
-    if (
-      this.multiplayerClient &&
-      this.multiplayerClient.getStatus() === "connected"
-    ) {
-      this.multiplayerInputSeq++;
-      this.multiplayerClient.sendDrivingInput({
-        seq: this.multiplayerInputSeq,
-        epoch: this.multiplayerClient.getModeEpoch(),
-        throttle: 1,
-        steer: 0,
-        brake: false,
-      });
-      if (this.multiplayerClient.getProtocolVersion() === 1) {
-        const terrain = this.sim.state.terrain;
-        const size = terrain.size;
-        const worldX = (finalX - size / 2) * 4;
-        const worldZ = (finalY - size / 2) * 4;
-        const worldY = terrain.worldY(Math.round(finalX), Math.round(finalY));
-        this.multiplayerClient.sendPose({
-          x: worldX,
-          y: worldY,
-          z: worldZ,
-          heading: targetHeading,
-          speed: 0,
-          mode: "driving",
-          force: true,
-        });
-      }
-    }
+    this.setOwnedDriveInput({
+      throttle: true,
+      left,
+      right,
+      brake: false,
+    });
+    this.guidedDriveActiveUntil = Date.now() + 350;
+    this.guidedTargetHeading = targetHeading;
     this.emit();
     return true;
   }

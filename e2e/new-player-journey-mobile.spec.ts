@@ -341,12 +341,15 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
           const pose = runtime.getOwnedDrivePose();
           return pose ? Math.hypot(pose.x - start.x, pose.y - start.y) : 0;
         }, placement.cell),
-      { timeout: 10_000 },
     )
     .toBeGreaterThan(0.1);
   await expect
-    .poll(mapMarkerPosition, { timeout: 10_000 })
-    .not.toBe(markerBeforeDriving);
+    .poll(async () => {
+      const pos = await mapMarkerPosition();
+      if (!pos || pos === markerBeforeDriving) return null;
+      return pos;
+    })
+    .toEqual(expect.stringMatching(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/));
   await page.keyboard.up("KeyW");
   await page.keyboard.down("Space");
   await expect
@@ -360,7 +363,6 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
           ).__colony;
           return runtime.getOwnedDrivePose()?.speed;
         }),
-      { timeout: 10_000 },
     )
     .toBe(0);
   await page.keyboard.up("Space");
@@ -379,7 +381,6 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
             w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
           );
         }),
-      { timeout: 10_000 },
     )
     .toBeCloseTo(6.2, 1);
   await page.screenshot({ path: "test-results/owned-car-seated-driving.png" });
@@ -420,7 +421,6 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
                 }
               ).__colony.getOwnedDrivePose()?.speed,
           ),
-        { timeout: 10_000 },
       )
       .toBeGreaterThan(0);
   } finally {
