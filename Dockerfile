@@ -12,7 +12,7 @@ FROM node:24-alpine AS build
 WORKDIR /app
 # APP_VERSION is the CI build version (major.minor.run_number, see .github/workflows/docker.yml). It is
 # inlined into the bundle as VITE_APP_VERSION so the running app can report which build it is.
-ARG APP_VERSION=dev
+ARG APP_VERSION=
 ENV VITE_APP_VERSION=$APP_VERSION
 # UI.VERSION.1 — the exact commit and build time. These MUST be passed in: .dockerignore excludes
 # .git, so there is no repository inside this stage for vite to ask, and a build without them
@@ -29,7 +29,7 @@ RUN npm run build
 # Stage 2: serve the static dist/ with nginx, proxying /kooker -> gateway at runtime.
 FROM nginx:alpine
 # Stamp the version onto the image so `docker inspect` / GHCR shows exactly what is deployed.
-ARG APP_VERSION=dev
+ARG APP_VERSION=
 LABEL org.opencontainers.image.title="citylife" \
       org.opencontainers.image.version="$APP_VERSION" \
       org.opencontainers.image.source="https://github.com/duikindiesee/citylife"

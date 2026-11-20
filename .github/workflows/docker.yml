@@ -123,11 +123,12 @@ jobs:
           BUMP_VER="${{ needs.version-bump.outputs.new-version }}"
           PKG_VER=$(node -p "require('./package.json').version")
           VERSION="${BUMP_VER:-$PKG_VER}"
-          if [[ "$GITHUB_REF" == "refs/heads/devmain" ]]; then VERSION="devmain"; fi
+          if [[ "$GITHUB_REF" == "refs/heads/devmain" ]]; then VERSION="${VERSION}-devmain.${GITHUB_SHA:0:7}"; fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          # UI.VERSION.1 — the exact build identity baked into the bundle. Short SHA because this
-          # is rendered in a corner of the game; the full SHA is still on the image via type=sha.
+          # UI.VERSION.1 — the exact build identity baked into the bundle. Pass full 40-hex SHA
+          # for devmain provenance while keeping short SHA in logs.
           echo "sha_short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "sha_full=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "CityLife version: ${VERSION} (bump=${BUMP_VER} pkg=${PKG_VER}) sha=${GITHUB_SHA:0:7}"
 
@@ -162,7 +163,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.version }}
-            GIT_SHA=${{ steps.ver.outputs.sha_short }}
+            GIT_SHA=${{ steps.ver.outputs.sha_full }}
             BUILD_TIME=${{ steps.ver.outputs.built_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
