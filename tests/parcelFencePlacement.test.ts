@@ -10,18 +10,20 @@ describe("starter fence and garage placement",()=>{
   const p=parcelFencePlacements(parcel,sim.state.terrain.size);
   expect(p.filter(x=>x.piece==="panel").length).toBeGreaterThan(0);
   expect(p.filter(x=>x.piece==="gate-driveway")).toHaveLength(1);
-  expect(p.some(x=>x.piece==="post-end")).toBe(true);
+  expect(p.some(x=>x.piece==="post-line" || x.piece==="post-corner" || x.piece==="post-end")).toBe(true);
   expect(parcel.fence.some(c=>Math.abs(c.x-parcel.gate.x)+Math.abs(c.y-parcel.gate.y)===1)).toBe(true);
   expect(parcelFencePlacements({...parcel,fenceType:"wall"},sim.state.terrain.size)).toEqual([]);
  });
- it("centres two abutting panels at each edge quarter point",()=>{
+ it("places two abutting panels and a midpoint post on every ordinary edge",()=>{
   const p=parcelFencePlacements(parcel,sim.state.terrain.size).filter(x=>x.piece==="panel");
   for(const cell of parcel.fence)for(const [dx,dy,rotationY] of [[1,0,0],[0,1,Math.PI/2]] as const){
    if(!parcel.fence.some(other=>other.x===cell.x+dx&&other.y===cell.y+dy))continue;
-   if((cell.x===parcel.gate.x&&cell.y===parcel.gate.y)||(cell.x+dx===parcel.gate.x&&cell.y+dy===parcel.gate.y))continue;
+   if(cell.x===parcel.gate.x&&cell.y===parcel.gate.y&&dx===1)continue;
    const a=[(cell.x-sim.state.terrain.size/2)*4,(cell.y-sim.state.terrain.size/2)*4],b=[(cell.x+dx-sim.state.terrain.size/2)*4,(cell.y+dy-sim.state.terrain.size/2)*4];
    const centres=p.filter(panel=>panel.rotationY===rotationY&&Math.abs(panel.position[0]-(a[0]+(b[0]-a[0])*.25))<1e-6&&Math.abs(panel.position[2]-(a[1]+(b[1]-a[1])*.25))<1e-6||panel.rotationY===rotationY&&Math.abs(panel.position[0]-(a[0]+(b[0]-a[0])*.75))<1e-6&&Math.abs(panel.position[2]-(a[1]+(b[1]-a[1])*.75))<1e-6).map(panel=>rotationY===0?panel.position[0]:panel.position[2]).sort((x,y)=>x-y);
    expect(centres).toHaveLength(2);expect(centres[0]).toBeCloseTo(rotationY===0?a[0]+1:a[1]+1,6);expect(centres[1]-centres[0]).toBeCloseTo(2,6);
+   const midpoint=rotationY===0?[(a[0]+b[0])/2,a[1]]:[a[0],(a[1]+b[1])/2];
+   expect(parcelFencePlacements(parcel,sim.state.terrain.size).some(q=>q.piece==="post-line"&&Math.abs(q.position[0]-midpoint[0])<.001&&Math.abs(q.position[2]-midpoint[1])<.001)).toBe(true);
   }
  });
  it("puts garage front on driveway centreline and keeps its footprint in house zone",()=>{

@@ -12,10 +12,10 @@ const box=(p,n,d,m,pos)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(...d),m);
 function pickets(p,a,b,y=1.15){const count=Math.floor((b-a+.064)/.144);for(let i=0;i<count;i++){const x=a+i*(b-a)/(count-1);box(p,`Picket_${i+1}`, [.08,y,.035],white,[x,y/2,0]);}}
 function panel(){const r=new THREE.Group();r.name="Picket_Fence_Panel";box(r,"Rail_Lower",[2,.09,.07],white,[0,.34,0]);box(r,"Rail_Upper",[2,.09,.07],white,[0,.89,0]);pickets(r,-.96,.96);return r;}
 function post(kind){const r=new THREE.Group();r.name=`Picket_Fence_Post_${kind}`;box(r,"Post_Shaft",[.09,1.3,.09],white,[0,.65,0]);box(r,"Post_Cap",[.13,.055,.13],white,[0,1.3275,0]); if(kind==="corner")box(r,"Corner_Return",[.13,.12,.13],orange,[0,1.22,0]);if(kind==="end")box(r,"End_Band",[.105,.035,.105],orange,[0,.13,0]);return r;}
-function gate(width,name){const r=new THREE.Group();r.name=name;const leafW=width/2-.025;
+function gate(width,name){const r=new THREE.Group();r.name=name;const leafW=width/2-.01,hingeOffset=width/2-.045;
  // Static posts are deliberately separate; every moving bar and picket is under a leaf pivot.
  for(const x of [-width/2,width/2])box(r,"Gate_Post_Shaft",[.09,1.3,.09],white,[x,.65,0]);
- for(const [i,hingeX] of [[0,-width/2],[1,width/2]]){const leaf=new THREE.Group();leaf.name=i===0?"gate_leaf_left":"gate_leaf_right";leaf.position.x=hingeX;r.add(leaf);
+ for(const [i,hingeX] of [[0,-hingeOffset],[1,hingeOffset]]){const leaf=new THREE.Group();leaf.name=i===0?"gate_leaf_left":"gate_leaf_right";leaf.position.x=hingeX;r.add(leaf);
    // Each leaf's local X axis runs from its hinge toward the centre. This keeps the pivot at
    // the post while the closed leaves meet at X=0 and swing fully clear when opened.
    const direction=i===0?1:-1,center=direction*leafW/2;

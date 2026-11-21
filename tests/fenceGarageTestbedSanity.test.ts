@@ -36,13 +36,13 @@ describe("fence garage testbed assets and parcel",()=>{
   expect(garageFootprintInside(parcel,garage,sim.state.terrain.size)).toBe(true);
   const info=testbedParcelInfo(parcel,sim.state.terrain.size),roadDelta=[info.roadCentreWorld[0]-info.drivewayWorld[0]![0],info.roadCentreWorld[2]-info.drivewayWorld[0]![2]];
   expect(roadDelta[0]*info.streetDir[0]+roadDelta[1]*info.streetDir[1]).toBeGreaterThan(0);
-  const shots=["aerial","street-gate","driveway-approach","garage-closed","garage-open"] as const;
+  const shots=["aerial","street-gate","driveway-approach","garage-closed","garage-open","board"] as const;
   const shotPositions=shots.map(mode=>testbedCameraPose(mode,0,info).position.join(","));
   expect(shotPositions[3]).toBe(shotPositions[4]);
   expect(new Set(shotPositions.slice(0,4)).size).toBe(4);
   expect(parcel.fence.some(c=>(Math.abs(c.x-parcel.gate.x)+Math.abs(c.y-parcel.gate.y))===1)).toBe(true);
   const gateCellEdges=placements.filter(p=>p.piece==="panel"&&Math.abs(p.position[0]-info.gateWorld[0])<2.01&&Math.abs(p.position[2]-info.gateWorld[2])<2.01);
-  expect(gateCellEdges).toHaveLength(0);
+  expect(gateCellEdges.length).toBe(0); // gate lane stays clear; neighboring edges remain panelled.
  });
  it("keeps every moving gate mesh under a leaf and clears the lane when open",async()=>{
   const bytes=readFileSync(new URL("../public/assets/citylife/props/picket-fence-gate-driveway.glb",import.meta.url));

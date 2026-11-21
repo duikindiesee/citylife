@@ -9,8 +9,8 @@ Make the first claimed property legible before a full house build exists: a smal
 ## Integration plan
 
 1. `claimStarterHome(target, { starterGarageFirst: true })` can set `starterGarage` and mark the plot built only when `ColonyRuntime.STARTER_GARAGE_FIRST` is enabled. Existing callers retain the full-house path.
-2. `ParcelFence` renders only `fenceType: "fence"` using the checked-in GLB kit. Pure `parcelFencePlacements` derives ring panels, posts, and driveway gate from parcel cells.
-3. The local testbed uses one generated real parcel and displays the sign; it is served as a standalone dev HTML entry and is not added to Vite's production input map.
+2. `ParcelFence` renders `fenceType: "fence"` using the checked-in GLB kit. Each 4 m ring edge has cell-centre posts plus a midpoint post and two 2 m panels; the street gate edge keeps a 3.7 m opening and one outer panel on either side meeting the gate posts. Unsold, unbuilt, unreserved fence parcels show a canvas-texture For Sale board beside the gate with the spec 085 house-zone deed total and area rate. The 350 KCO reference is the server starter HOME price, not the parcel land price.
+3. The local testbed uses one generated real parcel; unsold mode (`?claimed=0`) shows the priced For Sale board and is served as a standalone dev HTML entry, not added to Vite's production input map.
 4. The dev testbed uses deterministic named camera shots and a 14-second drive trajectory. Garage door animation is sampled from shot time, with `?door=open|closed` overrides; it does not depend on camera proximity.
 5. Keep placement in world metres (`src/colony/scale.ts`: 1 unit = 1 m, `CELL_SIZE = 4`), Y-up and +Z authored facade orientation.
 6. The standalone fence/garage test bed publishes parcel, driveway, garage, road centreline, and generated carriageway coordinates as `window.__testbed.info`. The 4 x 8 m garage sits with its front at the inland edge of the final driveway cell and its footprint inside the house zone. Road paving is outside the fence: a 9 m carriageway centred 7 m street-ward of the first driveway cell, with a kerb and concrete driveway/apron.
@@ -22,7 +22,11 @@ The first generated gate's leaf descendants did move with their pivots, but the 
 
 ## Round 9 gate ownership and panel spacing
 
-`ParcelFence` owns exactly one driveway gate and accepts `gateOpen` from 0 (closed) to 1 (open), defaulting to closed for existing consumers. The testbed supplies its timeline and `?gate=closed` override to that same gate; it must not mount another GLB instance. `debugScene()` includes per-name instance counts for visible top-level scene pieces. Each 4 m fence edge places panel centres at its quarter and three-quarter points, producing two 2 m bays that abut without gaps or overlap.
+`ParcelFence` owns exactly one driveway gate and accepts `gateOpen` from 0 (closed) to 1 (open), defaulting to closed for existing consumers. The testbed supplies its timeline and `?gate=closed` override to that same gate; it must not mount another GLB instance. `debugScene()` includes per-name instance counts for visible top-level scene pieces. Each ordinary 4 m fence edge places panel centres at its quarter and three-quarter points, producing two 2 m bays that abut without gaps or overlap. Round 10 changes the street gate edge to outer panels terminating at the gate posts.
+
+## Round 10 unsold parcel board and post support
+
+Ordinary 4 m ring edges now carry posts at 0, 2, and 4 m, with 2 m panels centred at 1 and 3 m. The gate cell is a gap in the fence ring; the driveway-gate GLB owns the two posts at ±1.85 m, and only the outer 2 m panels run from the neighbouring cell-centre posts to those gate posts. Unsold fenced parcels display a canvas-2D board with full parcel dimensions, area, the spec 085 house-zone price, and the 0.0375 KCO/m² area rate. The testbed defaults to a claimed garage (`?claimed=1`) and uses `?claimed=0` for the board view.
 
 ## Dimensions and reference sources
 

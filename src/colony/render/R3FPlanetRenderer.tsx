@@ -67,6 +67,7 @@ import { useThree, useFrame } from "@react-three/fiber";
 import { VoxelHouseMesh } from "./VoxelHouseMesh";
 import { GlbHouse } from "./GlbHouse";
 import { ParcelFence } from "./ParcelFence";
+import { ForSaleBoard } from "./ForSaleBoard";
 import { StarterGarage } from "./StarterGarage";
 import { ZoneLotOverlay } from "./ZoneLotOverlay";
 import { padSeatY } from "./useTerrainLeveling";
@@ -139,6 +140,14 @@ function ZoneManager({
       const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
         padSeatY(state.terrain, hz.x, hz.y, hz.w, hz.d);
       for (const lot of state.neighborhood.lots) {
+        if (!lot.ownerCitizenId && !lot.built && !lot.starterGarage && !lot.reservedFor && lot.fenceType === "fence") {
+          const t = state.terrain;
+          const distToWater = t.distToWater[t.idx(Math.round(lot.x),Math.round(lot.y))] ?? 999;
+          elements.push(<React.Suspense key={`for-sale-${lot.id}`} fallback={null}>
+            <ParcelFence parcel={lot} mapSize={size}/>
+            <ForSaleBoard parcel={lot} mapSize={size} distToWater={distToWater}/>
+          </React.Suspense>);
+        }
         if (lot.built) {
           if (lot.starterGarage) {
             elements.push(<React.Suspense key={`starter-garage-${lot.id}`} fallback={null}>
