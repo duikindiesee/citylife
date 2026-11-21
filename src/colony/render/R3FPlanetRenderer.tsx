@@ -66,6 +66,8 @@ import { useThree, useFrame } from "@react-three/fiber";
 
 import { VoxelHouseMesh } from "./VoxelHouseMesh";
 import { GlbHouse } from "./GlbHouse";
+import { ParcelFence } from "./ParcelFence";
+import { StarterGarage } from "./StarterGarage";
 import { ZoneLotOverlay } from "./ZoneLotOverlay";
 import { padSeatY } from "./useTerrainLeveling";
 import { useWorldAssets } from "../stores/useWorldAssets";
@@ -138,6 +140,13 @@ function ZoneManager({
         padSeatY(state.terrain, hz.x, hz.y, hz.w, hz.d);
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
+          if (lot.starterGarage) {
+            elements.push(<React.Suspense key={`starter-garage-${lot.id}`} fallback={null}>
+              <ParcelFence parcel={lot} mapSize={state.terrain.size} />
+              <StarterGarage parcel={lot} mapSize={state.terrain.size} />
+            </React.Suspense>);
+            continue;
+          }
           if (lot.zone === "commercial") {
             const hz = lot.houseZone;
             commercialLots.push({

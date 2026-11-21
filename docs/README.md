@@ -46,6 +46,8 @@ repo, on protected `main` (PRs + review only).
 20. **[tasks/next-build-acceptance-blockers.md](tasks/next-build-acceptance-blockers.md)** — Next-build acceptance blockers resolution: showroom geometry clearance, coastal road grounding, testing diagnostic HUD, top-bar UI integration, and wallet/purchase edge-case hardening.
 21. **[tasks/bus-transit-stop-alignment-and-rider-flow.md](tasks/bus-transit-stop-alignment-and-rider-flow.md)** — Bus transit route alignment to 3D ribbon roads, stop furniture verge calibration, and automated next-stop rider onboarding/offboarding flow.
 22. **[tasks/road-intersections-and-signal-poles.md](tasks/road-intersections-and-signal-poles.md)** — Road intersection geometry, safe verge clearance for signal poles, and crosswalk termination pruning.
+23. **[specs/180-picket-fence-and-garage-first-starter-home.md](specs/180-picket-fence-and-garage-first-starter-home.md)** — Opt-in starter garage, parcel fence rendering, and local dev testbed.
+24. **[assets/ASSET-INVENTORY.md](assets/ASSET-INVENTORY.md)** — Checked-in GLB inventory and generated asset provenance.
 
 ---
 

@@ -1002,6 +1002,8 @@ export class WorldLayoutPreflightError extends Error {
 }
 
 export class ColonyRuntime {
+  /** Spec 180 stays opt-in until the starter garage-first slice is accepted. */
+  static readonly STARTER_GARAGE_FIRST = false;
   readonly sim: ColonySim;
   private renderer: PlanetRenderer | null = null;
   private raf = 0;
@@ -4735,7 +4737,7 @@ export class ColonyRuntime {
     return !!(lot && lot.built);
   }
 
-  claimStarterHome(target?: string | HomeTruth): boolean {
+  claimStarterHome(target?: string | HomeTruth, opts: { starterGarageFirst?: boolean } = {}): boolean {
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return false;
 
@@ -4857,7 +4859,10 @@ export class ColonyRuntime {
       if (!assigned) return false;
     }
 
-    if (!lot.built) {
+    if (opts.starterGarageFirst === true && ColonyRuntime.STARTER_GARAGE_FIRST) {
+      lot.starterGarage = true;
+      lot.built = true;
+    } else if (!lot.built) {
       this.buildHouse(lot.id);
     }
     this.isGpsNavigatingHome = true;

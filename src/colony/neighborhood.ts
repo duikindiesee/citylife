@@ -41,6 +41,8 @@ export interface Parcel {
   doorX: number;
   doorY: number;
   ownerCitizenId?: string;
+  /** Opt-in starter garage-first presentation; legacy claims continue to build the full house. */
+  starterGarage?: boolean;
   /** Spec 078 — a permanently reserved FOUNDER parcel (Joe the Crab). Never auto-assigned to a newcomer
    *  and not freed by ordinary demolition. */
   reservedFor?: string;
