@@ -46,7 +46,8 @@ repo, on protected `main` (PRs + review only).
 20. **[tasks/next-build-acceptance-blockers.md](tasks/next-build-acceptance-blockers.md)** — Next-build acceptance blockers resolution: showroom geometry clearance, coastal road grounding, testing diagnostic HUD, top-bar UI integration, and wallet/purchase edge-case hardening.
 21. **[tasks/bus-transit-stop-alignment-and-rider-flow.md](tasks/bus-transit-stop-alignment-and-rider-flow.md)** — Bus transit route alignment to 3D ribbon roads, stop furniture verge calibration, and automated next-stop rider onboarding/offboarding flow.
 22. **[tasks/road-intersections-and-signal-poles.md](tasks/road-intersections-and-signal-poles.md)** — Road intersection geometry, safe verge clearance for signal poles, and crosswalk termination pruning.
-23. **[specs/181-plot-ownership-and-land-purchase.md](specs/181-plot-ownership-and-land-purchase.md)** — Proposed server-authoritative plot ownership and land purchase: neighbourhood-scoped parcels, player-chosen plots, exclusive deeds, per-m² pricing, and for-sale boards.
+23. **[specs/181-plot-ownership-and-land-purchase.md](specs/181-plot-ownership-and-land-purchase.md)** — Proposed server-authoritative plot ownership and land purchase: neighbourhood-scoped parcels, player-chosen plots, exclusive deeds, decided 22 Nov 2026 plot tiers and 0.27 KCO/m² full-parcel pricing, and for-sale boards.
+24. **[specs/182-starter-economy.md](specs/182-starter-economy.md)** — Proposed starter-economy contract: raise the player grant to ≥ 1,300 KCO so a new player can afford the 350 KCO starter house and the 950 KCO gold Fiat X19; records grant touchpoints, wallet and house-price inconsistencies, and a deferred player earn loop.
 
 ---
 
