@@ -5,8 +5,8 @@ import * as THREE from "three";
 import type { Parcel } from "../neighborhood";
 import { starterGaragePlacement } from "./starterGaragePlacement";
 import { FLAT_GROUND, type GroundAt } from "./kitGround";
-export function StarterGarage({parcel,mapSize,doorTime=0,groundAt=FLAT_GROUND}: {parcel:Parcel;mapSize:number;doorTime?:number;groundAt?:GroundAt}) {
- const pose=useMemo(()=>starterGaragePlacement(parcel,mapSize,groundAt),[parcel,mapSize,groundAt]);
+export function StarterGarage({parcel,mapSize,doorTime=0,groundAt=FLAT_GROUND,floorY}: {parcel:Parcel;mapSize:number;doorTime?:number;groundAt?:GroundAt;floorY?:number}) {
+ const pose=useMemo(()=>starterGaragePlacement(parcel,mapSize,groundAt,floorY),[parcel,mapSize,groundAt,floorY]);
  const {scene}=useGLTF("/assets/citylife/props/starter-garage.glb");
  const clone=useMemo(()=>scene.clone(true),[scene]);
  const {invalidate}=useThree();

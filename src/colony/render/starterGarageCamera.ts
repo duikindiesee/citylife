@@ -2,11 +2,11 @@ import type { Parcel } from "../neighborhood";
 import type { Cell } from "../pathfind";
 import { CELL_SIZE } from "../scale";
 import { starterGaragePlacement, parcelStreetDirection } from "./starterGaragePlacement";
-export type TestbedCameraMode = "aerial"|"street-gate"|"driveway-approach"|"garage-closed"|"garage-open"|"drive"|"walk"|"board"|"street-mixed"|"for-sale-board"|"street-view";
+export type TestbedCameraMode = "aerial"|"street-gate"|"driveway-approach"|"garage-closed"|"garage-open"|"drive"|"walk"|"board"|"street-mixed"|"for-sale-board"|"street-view"|"slope-aerial"|"slope-side";
 export function resolveTestbedCameraMode(raw:string|null):TestbedCameraMode {
  const aliases:Record<string,TestbedCameraMode>={"01-aerial":"aerial","02-street-gate":"street-gate","03-driveway-approach":"driveway-approach","04-garage-door-closed":"garage-closed","05-garage-door-open":"garage-open",garage:"garage-closed"};
  const mode=raw??"aerial";
- return aliases[mode]??(mode==="aerial"||mode==="street-gate"||mode==="driveway-approach"||mode==="garage-closed"||mode==="garage-open"||mode==="drive"||mode==="walk"||mode==="board"||mode==="street-mixed"||mode==="for-sale-board"||mode==="street-view"?mode:"aerial");
+ return aliases[mode]??(mode==="aerial"||mode==="street-gate"||mode==="driveway-approach"||mode==="garage-closed"||mode==="garage-open"||mode==="drive"||mode==="walk"||mode==="board"||mode==="street-mixed"||mode==="for-sale-board"||mode==="street-view"||mode==="slope-aerial"||mode==="slope-side"?mode:"aerial");
 }
 export interface TestbedParcelInfo {
  parcelCells:{minX:number;maxX:number;minY:number;maxY:number}; gateWorld:[number,number,number];
@@ -33,6 +33,8 @@ export function testbedCameraPose(mode:TestbedCameraMode,t:number,info:TestbedPa
  const {gateWorld:g,garageWorld:garage,streetDir:d,roadCentreWorld:r,drivewayWorld:path}=info;
  const left:[number,number]=[-d[1],d[0]];
  const at=(p:[number,number,number],a:number,b:number=0,c:number=0):[number,number,number]=>[p[0]+d[0]*a+left[0]*c,p[1]+b,p[2]+d[1]*a+left[1]*c];
+ if(mode==="slope-aerial") return {position:at(g,45,30,-35),lookAt:at(g,0,5,0)};
+ if(mode==="slope-side") return {position:at(g,0,2,35),lookAt:at(g,0,2,-5)};
  const door=v(garage[0]+d[0]*4,1.5,garage[2]+d[1]*4);
  if(mode==="aerial") return {position:at(g,45,28),lookAt:door};
  if(mode==="street-mixed") return {position:at(g,8,45,-20),lookAt:at(g,60,0,0)};

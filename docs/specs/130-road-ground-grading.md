@@ -48,3 +48,17 @@ hollow under a flush road is invisible and not worth a berm). Pinned by
 `tests/terrainLevelingFinite.test.ts` ("ground above a road surface is ALWAYS cut").
 Remaining tail: between grading cells the terrain mesh interpolates, so a sharp crest
 can still shave mid-cell on ridges — per-vertex grading is the follow-up if it shows.
+
+## Amendment — S4 sloped parcel testbed (2026-11-22)
+
+The fence/garage dev testbed now accepts `?fixture=downhill|uphill|gentle|flat`; omitted and
+`flat` retain the flat capture mode. Sloped fixtures use the real seeded runtime terrain and
+parcel grading, a metre-spaced 180 m terrain window, draped carriage/verge, driveway, pad,
+banks and retaining walls, and the metre-scale estate house GLB. The `slope-aerial` and
+`slope-side` camera modes frame the grade. Capture metadata is exposed at
+`window.__testbed.info`, including the fixture, graded parcel, house corners, garage floor,
+board placement, and ground samples for every fence post.
+
+Pure acceptance lives in `tests/slopeTestbed.test.ts`; the selectors and house pose are
+framework-free in `src/colony/testbed/slopeFixtures.ts` and
+`src/colony/render/housePlacement.ts`.

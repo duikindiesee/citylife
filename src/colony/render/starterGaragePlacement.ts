@@ -6,13 +6,13 @@ export { parcelStreetDirection } from "../parcelGeometry";
 
 export interface GaragePlacement { position:[number,number,number]; rotationY:number; garageFloorY:number }
 /** Center the 4 m frontage on the driveway, with the door at its inland end. */
-export function starterGaragePlacement(parcel: Parcel, mapSize: number, groundAt: GroundAt = FLAT_GROUND): GaragePlacement {
+export function starterGaragePlacement(parcel: Parcel, mapSize: number, groundAt: GroundAt = FLAT_GROUND, floorY?: number): GaragePlacement {
  const inland=parcel.driveway[parcel.driveway.length-1] ?? parcel.gate, street=parcelStreetDirection(parcel);
  const x=(inland.x-mapSize/2)*CELL_SIZE, z=(inland.y-mapSize/2)*CELL_SIZE;
  const rotationY=Math.atan2(street[0],street[1]);
  // Front face is at the inland edge of the final driveway cell; body extends 8 m inland.
  const doorX=inland.x,doorY=inland.y;
- const garageFloorY=groundAt(doorX,doorY);
+ const garageFloorY=floorY ?? groundAt(doorX,doorY);
  return {position:[x-street[0]*6,garageFloorY,z-street[1]*6],rotationY,garageFloorY};
 }
 

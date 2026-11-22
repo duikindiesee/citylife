@@ -21,6 +21,11 @@ commercial reserve is claimed at the avenue's inland end as the spec-079 land-ba
 avenue (asphalt + kerbs + dashes), street (packed earth), path (gravel driveways + walkways) — rendered
 as per-kind merged ribbons, never per-cell pads.
 
+When the scheduled GRAND smallholding cannot fit at its nominal final slot, parcel layout scans up to
+40 remaining columns in the existing corridor, respecting the side's parcel gap. The opposite side's
+final slot receives the same attempt if no GRAND has been placed. A standard parcel is the fallback
+at the nominal column only after those corridor columns fail; layout never extends the corridor.
+
 New parcel tiers (both with houseUHalf = uHalf - 2, creating the REAL 1-cell side strip between house
 zone and fence that makes e/w-door walkways possible by construction — today's BIG abuts the fence):
 
