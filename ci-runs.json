@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-22T19:19:25.924Z",
+  "updatedAt": "2026-11-22T19:20:52.607Z",
   "runs": [
+    {
+      "runId": 45060169208,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/45060169208",
+      "event": "pull_request",
+      "branch": "forge/picket-fence-starter-garage",
+      "sha": "577e71939beb32188db4faa746e0975b7964edfe",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/577e71939beb32188db4faa746e0975b7964edfe",
+      "pullRequestNumbers": "#583",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/583",
+      "pullRequests": [
+        {
+          "number": 583,
+          "url": "https://github.com/duikindiesee/citylife/pull/583"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-22T19:20:16Z",
+      "completedAt": "2026-11-22T19:20:37Z",
+      "durationSeconds": 21,
+      "runnerSummary": "GitHub Actions 1000013198",
+      "jobs": [
+        {
+          "id": 137324086822,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000013198",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-11-22T19:20:20Z",
+          "completedAt": "2026-11-22T19:20:36Z",
+          "durationSeconds": 16
+        }
+      ]
+    },
     {
       "runId": 45060002498,
       "workflowName": "Build CityLife Debug APK",
@@ -13284,45 +13323,6 @@
           "startedAt": "2026-10-14T11:51:19Z",
           "completedAt": "2026-10-14T11:52:02Z",
           "durationSeconds": 43
-        }
-      ]
-    },
-    {
-      "runId": 38559511759,
-      "workflowName": "Secret scan",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38559511759",
-      "event": "push",
-      "branch": "main",
-      "sha": "143897ba14a7bb4a2e1d1220babcfd81d6d1b264",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/143897ba14a7bb4a2e1d1220babcfd81d6d1b264",
-      "pullRequestNumbers": "#566",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/566",
-      "pullRequests": [
-        {
-          "number": 566,
-          "url": "https://github.com/duikindiesee/citylife/pull/566"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-14T11:51:14Z",
-      "completedAt": "2026-10-14T11:51:27Z",
-      "durationSeconds": 13,
-      "runnerSummary": "GitHub Actions 1000011158",
-      "jobs": [
-        {
-          "id": 115836825744,
-          "name": "Gitleaks full-history scan",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000011158",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-24.04"
-          ],
-          "startedAt": "2026-10-14T11:51:19Z",
-          "completedAt": "2026-10-14T11:51:27Z",
-          "durationSeconds": 8
         }
       ]
     }
