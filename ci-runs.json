@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-22T17:44:13.783Z",
+  "updatedAt": "2026-11-22T17:44:40.797Z",
   "runs": [
+    {
+      "runId": 45051051580,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/45051051580",
+      "event": "pull_request",
+      "branch": "forge/picket-fence-starter-garage",
+      "sha": "d8989005ce224d1ce03616c5c48f56e14af450e4",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/d8989005ce224d1ce03616c5c48f56e14af450e4",
+      "pullRequestNumbers": "#583",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/583",
+      "pullRequests": [
+        {
+          "number": 583,
+          "url": "https://github.com/duikindiesee/citylife/pull/583"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-22T17:43:35Z",
+      "completedAt": "2026-11-22T17:44:30Z",
+      "durationSeconds": 55,
+      "runnerSummary": "GitHub Actions 1000013173",
+      "jobs": [
+        {
+          "id": 137296021902,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000013173",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-11-22T17:43:38Z",
+          "completedAt": "2026-11-22T17:44:30Z",
+          "durationSeconds": 52
+        }
+      ]
+    },
     {
       "runId": 45051051534,
       "workflowName": "Secret scan",
@@ -13342,85 +13381,6 @@
           "startedAt": "2026-10-14T03:54:02Z",
           "completedAt": "2026-10-14T03:54:49Z",
           "durationSeconds": 47
-        }
-      ]
-    },
-    {
-      "runId": 38480395637,
-      "workflowName": "CI",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38480395637",
-      "event": "push",
-      "branch": "main",
-      "sha": "624a1b08c9200cff440aeec80d60b030d5ba4eef",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/624a1b08c9200cff440aeec80d60b030d5ba4eef",
-      "pullRequestNumbers": "#564",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
-      "pullRequests": [
-        {
-          "number": 564,
-          "url": "https://github.com/duikindiesee/citylife/pull/564"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "failure",
-      "startedAt": "2026-10-13T22:50:01Z",
-      "completedAt": "2026-10-14T05:01:58Z",
-      "durationSeconds": 22317,
-      "runnerSummary": "kooker1-citylife-gpu",
-      "jobs": [
-        {
-          "id": 115581271895,
-          "name": "e2e-browser",
-          "status": "completed",
-          "conclusion": "failure",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-13T23:13:09Z",
-          "completedAt": "2026-10-13T23:38:14Z",
-          "durationSeconds": 1505
-        },
-        {
-          "id": 115581272026,
-          "name": "unit-and-build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-13T22:50:05Z",
-          "completedAt": "2026-10-13T23:13:06Z",
-          "durationSeconds": 1381
-        },
-        {
-          "id": 115597849744,
-          "name": "verify",
-          "status": "completed",
-          "conclusion": "failure",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-14T05:01:49Z",
-          "completedAt": "2026-10-14T05:01:57Z",
-          "durationSeconds": 8
         }
       ]
     }
