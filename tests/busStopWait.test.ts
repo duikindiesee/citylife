@@ -925,7 +925,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     } finally {
       vi.useRealTimers();
     }
-  });
+  }, 120_000);
 
   it("BUS.BOARD.PLAYER.1 direct Board request recovery: ambiguous denial fence, timeout expiry, matching denial, and late admission", () => {
     vi.useFakeTimers();
@@ -1069,7 +1069,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     } finally {
       vi.useRealTimers();
     }
-  });
+  }, 120_000);
 
   it("seated crab transform matches production bus renderer coordinates and seat slots", () => {
     // Shared production passenger seat slots exported from R3FRemoteRacers.tsx

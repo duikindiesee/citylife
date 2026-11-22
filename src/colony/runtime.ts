@@ -3068,7 +3068,7 @@ export class ColonyRuntime {
     ) {
       return null;
     }
-    if (!homeTruth.frameId || !homeTruth.frameId.includes(`seed-${this.worldSeed}`)) {
+    if (!this.frameMatchesWorldSeed(homeTruth.frameId)) {
       return null;
     }
     if (!homeTruth.plotId) {
@@ -4932,7 +4932,7 @@ export class ColonyRuntime {
         return false;
       }
       // Validate world seed from frameId
-      if (!truth.frameId || !truth.frameId.includes(`seed-${this.worldSeed}`)) {
+      if (!this.frameMatchesWorldSeed(truth.frameId)) {
         return false;
       }
       if (!truth.plotId) {
@@ -5046,16 +5046,24 @@ export class ColonyRuntime {
       return true;
     }
 
-    // Yard within lot bounds
+    // Yard within lot bounds (lot.x, lot.y is parcel center; gate sits on street edge)
     if (lot) {
       const xHalf = (lot.w - 1) / 2;
-      const x0 = Math.min(lot.x, lot.x - xHalf);
-      const x1 = Math.max(lot.x + lot.w - 1, lot.x + xHalf);
-      const y0 = Math.min(lot.y, lot.gate ? lot.gate.y : lot.y);
-      const y1 = Math.max(
-        lot.y + lot.h - 1,
-        lot.gate ? lot.gate.y + lot.h - 1 : lot.y + lot.h - 1,
-      );
+      const x0 = lot.x - xHalf;
+      const x1 = lot.x + xHalf;
+      const yHalf = (lot.h - 1) / 2;
+      const hasGateWithSide =
+        lot.gate && (lot.side === 1 || lot.side === -1);
+      const y0 = hasGateWithSide
+        ? lot.side === 1
+          ? lot.gate.y
+          : lot.gate.y - lot.h + 1
+        : lot.y - yHalf;
+      const y1 = hasGateWithSide
+        ? lot.side === 1
+          ? lot.gate.y + lot.h - 1
+          : lot.gate.y
+        : lot.y + yHalf;
       if (ix >= x0 && ix <= x1 && iy >= y0 && iy <= y1) {
         return true;
       }
@@ -5080,6 +5088,20 @@ export class ColonyRuntime {
     return this.activeWorldLayout
       ? worldLayoutRevisionId(this.activeWorldLayout.revision)
       : null;
+  }
+
+  private frameMatchesWorldSeed(frameId: string | null | undefined): boolean {
+    if (!frameId || !Number.isFinite(this.worldSeed)) return false;
+    const expectedWorldId = `seed-${this.worldSeed}`;
+    const worldSegment = frameId.match(/(?:^|:)world:([^:]+)(?::|$)/);
+    if (worldSegment) {
+      return worldSegment[1] === expectedWorldId;
+    }
+    const escapedWorldId = expectedWorldId.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    return new RegExp(`(?:^|:)${escapedWorldId}(?::|$)`).test(frameId);
   }
 
   setAuthoritativeOwnedVehicle(
@@ -5153,7 +5175,7 @@ export class ColonyRuntime {
       ) {
         return false;
       }
-      if (!truth.frameId || !truth.frameId.includes(`seed-${this.worldSeed}`)) {
+      if (!this.frameMatchesWorldSeed(truth.frameId)) {
         return false;
       }
       if (!truth.plotId) {
@@ -8184,6 +8206,33 @@ export class ColonyRuntime {
       const d = (hz as any).depth ?? (hz as any).d ?? 1;
       if (ix >= hz.x && ix < hz.x + w && iy >= hz.y && iy < hz.y + d) {
         return "building";
+      }
+    }
+    if (this.neighborhood?.lots?.length) {
+      const fromIx = from ? Math.round(from.x) : null;
+      const fromIy = from ? Math.round(from.y) : null;
+      for (const lot of this.neighborhood.lots) {
+        const hz = lot?.houseZone;
+        if (!hz) continue;
+        const w = (hz as { width?: number; w?: number }).width ?? hz.w ?? 1;
+        const d = (hz as { depth?: number; d?: number }).depth ?? hz.d ?? 1;
+        if (ix >= hz.x && ix < hz.x + w && iy >= hz.y && iy < hz.y + d) {
+          const isOwnedDoorThreshold =
+            lot.doorX === ix &&
+            lot.doorY === iy &&
+            this.isHomesteadDriveway(ix, iy);
+          const fromInsideSameHouseInterior =
+            fromIx !== null &&
+            fromIy !== null &&
+            fromIx >= hz.x &&
+            fromIx < hz.x + w &&
+            fromIy >= hz.y &&
+            fromIy < hz.y + d &&
+            !(lot.doorX === fromIx && lot.doorY === fromIy);
+          if (!isOwnedDoorThreshold && !fromInsideSameHouseInterior) {
+            return "building";
+          }
+        }
       }
     }
 

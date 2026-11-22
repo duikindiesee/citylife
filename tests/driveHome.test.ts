@@ -858,6 +858,84 @@ describe("driveHome — C1-C3 physical controller, authority fencing, and mounte
     expect((rt as any).blockedStepReason(491, 364)).toBeNull();
   });
 
+  it("enforces anchored world seed matching in frameId across propertyRoadEntrance, isHomesteadDriveway, and stepGuidedDrive", () => {
+    const baseTruth: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "OWNED",
+      priceKco: 350,
+      geometry: {
+        plotId: "wood1_plot_1",
+        driveway: [
+          { x: 491, y: 363 },
+          { x: 491, y: 364 },
+          { x: 491, y: 365 },
+        ],
+        spawn: { x: 491, y: 363 },
+      },
+    };
+
+    // Negative 1: worldSeed=424 must reject seed-4242 (prefix bypass prevention)
+    const rt424 = new ColonyRuntime(424);
+    rt424.setOperatorUserId("demo-user");
+    rt424.getActiveLayoutRevisionId = () => "canonical-rev-424";
+    rt424.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    const prefixSpoofTruth: HomeTruth = {
+      ...baseTruth,
+      layoutRevision: "canonical-rev-424",
+    };
+    rt424.setAuthoritativeHomeTruth(prefixSpoofTruth);
+    expect(rt424.stepGuidedDrive("down")).toBe(false);
+    expect(rt424.isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt424 as any).propertyRoadEntrance(prefixSpoofTruth)).toBeNull();
+
+    // Negative 2: worldSeed=4242 must reject seed-42420 (suffix bypass prevention)
+    const suffixSpoofTruth: HomeTruth = {
+      ...baseTruth,
+      frameId: "universe:citylife:world:seed-42420:region:surface:region:player-parcel-wood1_plot_1",
+    };
+    rt.setAuthoritativeHomeTruth(suffixSpoofTruth);
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt as any).propertyRoadEntrance(suffixSpoofTruth)).toBeNull();
+
+    // Negative 3: worldSeed=4242 must reject spoofed downstream segment containing seed-4242
+    const segmentSpoofTruth: HomeTruth = {
+      ...baseTruth,
+      frameId: "universe:citylife:world:seed-9999:region:surface:region:seed-4242",
+    };
+    rt.setAuthoritativeHomeTruth(segmentSpoofTruth);
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt as any).propertyRoadEntrance(segmentSpoofTruth)).toBeNull();
+
+    // Positive control 1: world-level frameId "universe:citylife:world:seed-4242"
+    const worldFrameTruth: HomeTruth = {
+      ...baseTruth,
+      frameId: "universe:citylife:world:seed-4242",
+    };
+    rt.setAuthoritativeHomeTruth(worldFrameTruth);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(true);
+    expect((rt as any).propertyRoadEntrance(worldFrameTruth)).not.toBeNull();
+    expect(rt.stepGuidedDrive("right")).toBe(true);
+
+    // Positive control 2: full parcel frameId
+    rt.setAuthoritativeHomeTruth(baseTruth);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(true);
+    expect((rt as any).propertyRoadEntrance(baseTruth)).not.toBeNull();
+    expect(rt.stepGuidedDrive("right")).toBe(true);
+  });
+
   it("clears authoritativeHomeTruth and resets input on operator user switch to eliminate stale geometry retention", () => {
     rt.setOperatorUserId("user-alice");
     rt.setAuthoritativeHomeTruth({

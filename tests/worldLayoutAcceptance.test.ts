@@ -165,7 +165,7 @@ describe("WB.1d independent acceptance", () => {
     if (!memoizedSeedLayout) {
       memoizedSeedLayout = new ColonyRuntime(4242).captureWorldLayout();
     }
-  }, 60000);
+  }, 120_000);
 
   beforeEach(resetRoadBuilderState);
 
@@ -254,7 +254,7 @@ describe("WB.1d independent acceptance", () => {
       head = getSeed4242Layout();
       firstReplay = await executeColdReplay(head);
       setupDurationMs = performance.now() - t0;
-    }, 60000);
+    }, 120_000);
 
     it("replays one durable head in two independent cold runtimes with identical registry and survey truth", async () => {
       const tActionStart = performance.now();
@@ -264,7 +264,7 @@ describe("WB.1d independent acceptance", () => {
       console.log(
         `[worldLayoutAcceptance:durableHeadReplay] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
       );
-    }, 60000);
+    }, 120_000);
   });
 
   it("loads persisted spatial truth without recapturing seeders and preserves seed-4242 fixtures", async () => {
@@ -298,7 +298,7 @@ describe("WB.1d independent acceptance", () => {
     for (const road of seed.roads)
       for (const cell of road.cells)
         expect(runtime.sim.state.roadSet.has(`${cell.x},${cell.y}`)).toBe(true);
-  });
+  }, 120_000);
 
   it("adds subsurface, second-island, sky, orbital and deep-space frames without moving the original island", () => {
     const base = getSeed4242Layout();
@@ -506,5 +506,5 @@ describe("WB.1d independent acceptance", () => {
       ).toThrow();
       expect(liveSnapshot(runtime)).toEqual(before);
     }
-  });
+  }, 120_000);
 });

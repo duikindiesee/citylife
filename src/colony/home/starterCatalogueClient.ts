@@ -130,6 +130,8 @@ export function parsePublishedStarterWorld(
     const geom = object(plot.geometry, "Invalid plot geometry");
     if (
       typeof plot.plotId !== "string" ||
+      plot.plotId === "." ||
+      plot.plotId === ".." ||
       !/^[A-Za-z0-9_.:-]{1,120}$/.test(plot.plotId) ||
       typeof plot.frameId !== "string" ||
       plotIds.has(plot.plotId) ||

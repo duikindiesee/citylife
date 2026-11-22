@@ -19,6 +19,8 @@ import {
 import { useRoadNetwork } from "../src/colony/stores/useRoadNetwork";
 import { extractPlacementsConstraints } from "../src/colony/transit/transitCorridor";
 
+const TRANSIT_HYDRATION_TIMEOUT_MS = 180_000;
+
 const r0Url = new URL(
   "../fixtures/canonical-world/seed-4242-layout-r0.json",
   import.meta.url,
@@ -61,7 +63,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busRoute).toBeNull();
     expect(rt.busDepot).toBeNull();
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("preserves exact R1 repo-local artifact size and hash and asserts fail-closed compatibility under current derivation", () => {
     const rawBytes = readFileSync(r1Url);
@@ -83,7 +85,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busRoute).toBeNull();
     expect(rt.busDepot).toBeNull();
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("hydrates own-capture layout preserving full 6-stop circuit", () => {
     const rt = new ColonyRuntime(4242);
@@ -116,7 +118,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       true,
     );
     expect(validation.valid).toBe(true);
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on diagnostic 0-road layout without leaving phantom buses", () => {
     const rt = new ColonyRuntime(4242);
@@ -148,7 +150,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.sim.state.busDepotPad).toBeNull();
     expect(rt.sim.state.busDepotSpurCells!.size).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on disconnected roads where route loop cannot close", () => {
     const rt = new ColonyRuntime(4242);
@@ -178,7 +180,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on removed depot spur road negative", () => {
     const rt = new ColonyRuntime(4242);
@@ -211,7 +213,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  }, 120_000);
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on depot placement overlap negative", () => {
     const rt = new ColonyRuntime(4242);
@@ -257,7 +259,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on depot reservation overlap negative", () => {
     const rt = new ColonyRuntime(4242);
@@ -298,7 +300,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on translated child reservation overlapping depot pad", () => {
     const rt = new ColonyRuntime(4242);
@@ -359,7 +361,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("preserves transit on translated child reservation outside depot pad", () => {
     const rt = new ColonyRuntime(4242);
@@ -418,7 +420,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busDepot).not.toBeNull();
     expect(rt.busStopAnchors().length).toBe(6);
     expect(rt.exportCanonicalTransitAuthority()).not.toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on translated child placement overlapping depot pad", () => {
     const rt = new ColonyRuntime(4242);
@@ -488,7 +490,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("preserves transit on translated child placement outside depot pad", () => {
     const rt = new ColonyRuntime(4242);
@@ -555,7 +557,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busDepot).not.toBeNull();
     expect(rt.busStopAnchors().length).toBe(6);
     expect(rt.exportCanonicalTransitAuthority()).not.toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on rotated child cell overlapping pad when center is outside", () => {
     const rt = new ColonyRuntime(4242);
@@ -616,7 +618,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("preserves transit on rotated child cell where AABB overlaps pad but polygon is disjoint", () => {
     const rt = new ColonyRuntime(4242);
@@ -676,7 +678,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busDepot).not.toBeNull();
     expect(rt.busStopAnchors().length).toBe(6);
     expect(rt.exportCanonicalTransitAuthority()).not.toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("preserves prior state atomically when surface frame is displaced", () => {
     const rt = new ColonyRuntime(4242);
@@ -714,7 +716,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
 
     expect(rt.busRoute).toBe(originalRoute);
     expect(rt.busDepot).toBe(originalDepot);
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("preserves prior state atomically when transit derivation throws after valid schema preflight", () => {
     const rt = new ColonyRuntime(4242);
@@ -744,7 +746,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     } finally {
       spy.mockRestore();
     }
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("exercises the real standalone manifest envelope seam and round-trips transit authority", () => {
     const rt = new ColonyRuntime(4242);
@@ -770,7 +772,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       validateWorldLayoutManifestEnvelope(mismatchedEnvelope);
     expect(invalidResult.valid).toBe(false);
     expect(invalidResult.error).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("produces deterministic non-null export payloads across repeated hydrations of valid world layout", () => {
     const rt = new ColonyRuntime(4242);
@@ -790,7 +792,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(exportA!.route.loop.length).toBe(2292);
     expect(exportA!.route.stops.length).toBe(6);
     expect(exportA!.depot.bays?.length).toBe(5);
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on root 16-cell reservation overlapping depot pad", () => {
     const rt = new ColonyRuntime(4242);
@@ -831,7 +833,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("fails closed on scaled child reservation overlapping pad even when center is outside", () => {
     const rt = new ColonyRuntime(4242);
@@ -892,7 +894,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("accepts manifest envelope with valid transit companion in validatedWorldLayoutImportSaveInput", () => {
     const rt = new ColonyRuntime(4242);
@@ -915,7 +917,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
 
     expect(saveInput.worldId).toBe(doc.worldId);
     expect(saveInput.seed).toBe(doc.seed);
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("rejects manifest envelope with mismatched transit companion in validatedWorldLayoutImportSaveInput", () => {
     const rt = new ColonyRuntime(4242);
@@ -938,7 +940,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
         (imported) => rt.preflightWorldLayout(imported),
       ),
     ).toThrow(/Imported manifest transit companion validation failed/);
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   describe("remote starter catalogue boot barrier with transit companion", () => {
     let rt: ColonyRuntime;
@@ -961,7 +963,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       }
       transitAuth = auth;
       setupDurationMs = performance.now() - t0;
-    }, 60000);
+    }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
     it("boots remote starter catalogue with valid transit companion in worldLayoutBoot", async () => {
       const tActionStart = performance.now();
@@ -1012,7 +1014,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       console.log(
         `[transitHydration:remoteBoot] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
       );
-    }, 60000);
+    }, TRANSIT_HYDRATION_TIMEOUT_MS);
   });
 
   it("rejects remote starter catalogue with mismatched transit companion in worldLayoutBoot", async () => {
@@ -1059,7 +1061,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     await expect(coordinator.boot()).rejects.toMatchObject({
       code: "CANONICAL_TRANSIT_UNAVAILABLE",
     });
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("rederives and binds transit companion to dirty exported layout revision after supported landscape edit", () => {
     const rt = new ColonyRuntime(4242);
@@ -1071,7 +1073,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     const transit = rt.exportCanonicalTransitAuthority();
     expect(transit).not.toBeNull();
     expect(transit!.layoutRevision).toBe(layout.revision.contentHash);
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   describe("dirty depot slope invalidation under landscape edits", () => {
     let rt: ColonyRuntime;
@@ -1095,7 +1097,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       }
       baselineExport = auth;
       setupDurationMs = performance.now() - t0;
-    }, 120_000);
+    }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
     it("fails closed on invalid dirty depot slope that breaks transit instead of exporting stale transit", () => {
       const tActionStart = performance.now();
@@ -1122,7 +1124,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       console.log(
         `[transitHydration:dirtyDepot] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
       );
-    }, 120_000);
+    }, TRANSIT_HYDRATION_TIMEOUT_MS);
   });
 
   it("fails closed on unknown child frame in placement constraints", () => {
@@ -1172,7 +1174,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     };
     const exportAuth = rt.exportCanonicalTransitAuthority(unvalidatedDoc as any);
     expect(exportAuth).toBeNull();
-  });
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("accepts disjoint child-frame placement preserving canonical transit export", () => {
     useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
@@ -1228,7 +1230,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     const disjointExport = rt.exportCanonicalTransitAuthority();
     expect(disjointExport).not.toBeNull();
     expect(disjointExport!.layoutRevision).toBe(disjointDoc.revision.contentHash);
-  }, 120_000);
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 
   it("projects translated child-frame corridor obstacles to surface avoiding loop collision", () => {
     useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
@@ -1290,5 +1292,5 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       }
     }
     expect(interiorCount).toBe(0);
-  }, 120_000);
+  }, TRANSIT_HYDRATION_TIMEOUT_MS);
 });

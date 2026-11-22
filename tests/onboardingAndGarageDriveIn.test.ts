@@ -87,6 +87,63 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     const houseCenterX = Math.round(lot!.houseZone.x + lot!.houseZone.w / 2);
     const houseCenterY = Math.round(lot!.houseZone.y + lot!.houseZone.d / 2);
     expect(rt.isHomesteadDriveway(houseCenterX, houseCenterY)).toBe(false);
+
+    // Non-door lot.houseZone interior blocks as "building" without authoritativeHomeTruth
+    expect(rt.getAuthoritativeHomeTruth()).toBeNull();
+    expect((rt as any).blockedStepReason(houseCenterX, houseCenterY)).toBe("building");
+    expect(
+      (rt as any).blockedStepReason(houseCenterX, houseCenterY, {
+        x: drivewayX,
+        y: drivewayY,
+      }),
+    ).toBe("building");
+    expect(
+      (rt as any).blockedSegmentReason(
+        { x: drivewayX, y: drivewayY },
+        { x: houseCenterX, y: houseCenterY },
+      ),
+    ).toBe("building");
+
+    // Owned door threshold remains walkable when stepping onto it
+    expect((rt as any).blockedStepReason(drivewayX, drivewayY)).toBeNull();
+    const prevDriveway =
+      lot!.driveway?.find(
+        (c: { x: number; y: number }) => c.x !== drivewayX || c.y !== drivewayY,
+      ) ?? { x: drivewayX, y: drivewayY };
+    expect(
+      (rt as any).blockedStepReason(drivewayX, drivewayY, prevDriveway),
+    ).toBeNull();
+
+    // Unowned / other lot door and houseZone interior both block as "building" (with and without `from`)
+    const otherLot = (rt as any).neighborhood.lots.find(
+      (l: any) =>
+        l.id !== lot!.id &&
+        l.ownerCitizenId !== opId &&
+        l.houseZone &&
+        typeof l.doorX === "number" &&
+        typeof l.doorY === "number",
+    );
+    expect(otherLot).toBeTruthy();
+    const otherCenterX = Math.round(otherLot.houseZone.x + otherLot.houseZone.w / 2);
+    const otherCenterY = Math.round(otherLot.houseZone.y + otherLot.houseZone.d / 2);
+    expect((rt as any).blockedStepReason(otherLot.doorX, otherLot.doorY)).toBe(
+      "building",
+    );
+    expect(
+      (rt as any).blockedStepReason(otherLot.doorX, otherLot.doorY, {
+        x: otherLot.doorX,
+        y: otherLot.doorY,
+      }),
+    ).toBe("building");
+    expect((rt as any).blockedStepReason(otherCenterX, otherCenterY)).toBe(
+      "building",
+    );
+    expect(
+      (rt as any).blockedStepReason(otherCenterX, otherCenterY, {
+        x: otherLot.doorX,
+        y: otherLot.doorY,
+      }),
+    ).toBe("building");
   });
 
   it("enforces authority-bound and neighbourhood-matched starter home resolution (MoJoJo finding)", () => {

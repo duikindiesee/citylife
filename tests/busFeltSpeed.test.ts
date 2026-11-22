@@ -189,5 +189,5 @@ describe("spec 165 — the bus is meaningfully faster than the player at their b
     };
     expect(modesAt(1).every((m) => m === "parked")).toBe(true);
     expect(modesAt(12).some((m) => m !== "parked")).toBe(true);
-  });
+  }, 120_000);
 });

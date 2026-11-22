@@ -3,6 +3,7 @@ import { createWorldLayoutDocument } from "../src/colony/spatial/worldLayoutDocu
 const auth = vi.hoisted(() => ({ operator: { userId: "a" }, getValidToken: vi.fn() }));
 vi.mock("../src/colony/authClient", () => ({ getAuthClient: () => auth }));
 import { fetchPublishedStarterWorld, parsePublishedStarterWorld } from "../src/colony/home/starterWorldCatalogue";
+import { parsePublishedStarterWorld as parsePublishedStarterWorldClient } from "../src/colony/home/starterCatalogueClient";
 const transform = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } };
 const layout = createWorldLayoutDocument({
   worldId: "seed-4242",
@@ -54,6 +55,14 @@ describe("published starter world bootstrap", () => {
     wrong.manifest.layoutRevision = "b".repeat(64);
     expect(() => parsePublishedStarterWorld(wrong, "seed-4242")).toThrow();
     expect(() => parsePublishedStarterWorld(body(), "other-world")).toThrow();
+
+    for (const dotId of [".", ".."]) {
+      const dotPlot = body();
+      dotPlot.manifest.plots[0]!.plotId = dotId;
+      dotPlot.manifest.plots[0]!.geometry.plotId = dotId;
+      expect(() => parsePublishedStarterWorld(dotPlot, "seed-4242")).toThrow();
+      expect(() => parsePublishedStarterWorldClient(dotPlot, "seed-4242")).toThrow();
+    }
   });
   it("does not turn missing or unavailable catalogues into empty land", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 404 })));

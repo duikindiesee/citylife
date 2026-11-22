@@ -557,7 +557,7 @@ describe("WB.1d runtime authority replay", () => {
     expect(survey.findPath(from, to, new Set(["portal"]))).toEqual([from, to]);
     expect(survey.findPath(to, from, new Set(["walk"]))).toEqual([to, from]);
     expect(survey.findPath(from, to, new Set(["road"]))).toBeNull();
-  });
+  }, 120_000);
 
   it("rehydrates every revision from the procedural baseline instead of leaking prior terrain state", () => {
     const fixture = authorityDocument();

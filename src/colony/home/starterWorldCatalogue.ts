@@ -22,7 +22,8 @@ export function parsePublishedStarterWorld(raw: unknown, worldId: string): Publi
   const plotGeometry = new Map<string, StarterParcelGeometry>();
   for (const entry of manifest.plots) {
     const plot = object(entry), geometry = object(plot.geometry);
-    if (typeof plot.plotId !== "string" || !/^[A-Za-z0-9_.:-]{1,120}$/.test(plot.plotId) ||
+    if (typeof plot.plotId !== "string" || plot.plotId === "." || plot.plotId === ".." ||
+        !/^[A-Za-z0-9_.:-]{1,120}$/.test(plot.plotId) ||
         typeof plot.frameId !== "string" || plotIds.has(plot.plotId) || frameIds.has(plot.frameId) ||
         geometry.plotId !== plot.plotId || geometry.worldId !== worldId ||
         geometry.layoutRevision !== layout.revision.contentHash ||
