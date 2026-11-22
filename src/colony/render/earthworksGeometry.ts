@@ -54,45 +54,42 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
   for (let i = 0; i < 4; i++) quad("pad", PAD, [[corners[i]!, grading.padY], [corners[(i + 1) % 4]!, grading.padY], [corners[(i + 1) % 4]!, grading.padY], [corners[i]!, grading.padY]]);
 
   const platform = grading.technique === "house-platform" || grading.technique === "level-pad";
-  const stepCells = 0.5 / CELL_SIZE;
-  const perimeterDepth = Math.max(...corners.map(p => Math.abs(grading.padY - groundAt(p[0], p[1]))));
-  const tiers = Math.max(1, Math.ceil(perimeterDepth / 1.6));
   for (let e = 0; e < 4; e++) {
     const a = corners[e]!, b = corners[(e + 1) % 4]!, len = Math.hypot((b[0] - a[0]) * CELL_SIZE, (b[1] - a[1]) * CELL_SIZE), count = Math.max(1, Math.ceil(len / 0.5));
     const edge: Point[] = Array.from({ length: count + 1 }, (_, i) => [a[0] + (b[0] - a[0]) * i / count, a[1] + (b[1] - a[1]) * i / count]);
     const dx = b[0] - a[0], dz = b[1] - a[1], n = Math.hypot(dx, dz) || 1, outward: Point = [dz / n, -dx / n];
-    const deltas = edge.map(p => grading.padY - groundAt(p[0], p[1]));
-    for (let i = 0; i < count; i++) {
-      const p = edge[i]!, q = edge[i + 1]!, ga = groundAt(p[0], p[1]), gb = groundAt(q[0], q[1]), da = deltas[i]!, db = deltas[i + 1]!;
-      if (Math.max(Math.abs(da), Math.abs(db)) <= 0.15) continue;
-      if (da >= 0 && db >= 0 && platform) {
-        const lengthA = Math.min(Math.max(0, 2 * da), grading.banks.reduce((m, bank) => Math.max(m, bank.lengthM), 0));
-        const lengthB = Math.min(Math.max(0, 2 * db), grading.banks.reduce((m, bank) => Math.max(m, bank.lengthM), 0));
-        const farA: Point = [p[0] + outward[0] * lengthA / CELL_SIZE, p[1] + outward[1] * lengthA / CELL_SIZE], farB: Point = [q[0] + outward[0] * lengthB / CELL_SIZE, q[1] + outward[1] * lengthB / CELL_SIZE];
-        quad("bank", BANK, [[p, grading.padY], [q, grading.padY], [farB, groundAt(...farB)], [farA, groundAt(...farA)]]);
-      } else {
-        const emitTiers = (sign: "fill" | "cut", depthA: number, depthB: number) => {
-          if (depthA <= 0 && depthB <= 0) return;
-          const level = (depth: number, k: number) => grading.padY + (sign === "fill" ? -1 : 1) * depth * k / tiers;
+    const delta = edge.map(p => grading.padY - groundAt(...p));
+    const cls = (d: number): "fill" | "cut" | "level" => Math.abs(d) <= 0.15 ? "level" : d > 0 ? "fill" : "cut";
+    let start = 0;
+    while (start < count) {
+      const type = cls((delta[start]! + delta[start + 1]!) / 2);
+      let end = start + 1;
+      while (end < count && cls((delta[end]! + delta[end + 1]!) / 2) === type) end++;
+      const p = edge[start]!, q = edge[end]!, da = delta[start]!, db = delta[end]!;
+      if (type !== "level") {
+        if (type === "fill" && platform) {
+          const depth = Math.max(0, da, db), bankMax = grading.banks.reduce((m, bank) => Math.max(m, bank.lengthM), 0), length = Math.min(2 * depth, bankMax);
+          const farA: Point = [p[0] + outward[0] * length / CELL_SIZE, p[1] + outward[1] * length / CELL_SIZE], farB: Point = [q[0] + outward[0] * length / CELL_SIZE, q[1] + outward[1] * length / CELL_SIZE];
+          quad("bank", BANK, [[p, grading.padY], [q, grading.padY], [farB, groundAt(...farB)], [farA, groundAt(...farA)]]);
+        } else {
+          const sign = type;
+          const maxDepth = Math.max(Math.abs(da), Math.abs(db)), tiers = Math.max(1, Math.ceil(maxDepth / 1.6));
+          const offsetPoint = (v: Point, tier: number): Point => [v[0] + outward[0] * tier / CELL_SIZE, v[1] + outward[1] * tier / CELL_SIZE];
           for (let k = 0; k < tiers; k++) {
-            const offset = k / CELL_SIZE;
-            const pa: Point = [p[0] + outward[0] * offset, p[1] + outward[1] * offset], pb: Point = [q[0] + outward[0] * offset, q[1] + outward[1] * offset];
-            const topA = level(depthA, k), topB = level(depthB, k), benchA = level(depthA, k + 1), benchB = level(depthB, k + 1);
-            const gaAt = groundAt(...pa), gbAt = groundAt(...pb), last = k === tiers - 1;
-            const bottomA = last ? Math.min(benchA, gaAt) : benchA;
-            const bottomB = last ? Math.min(benchB, gbAt) : benchB;
-            const faceTopA = sign === "fill" ? topA : Math.min(ga + 0.05, topA), faceTopB = sign === "fill" ? topB : Math.min(gb + 0.05, topB);
-            wallQuad(pa, pb, bottomA, bottomB, faceTopA, faceTopB);
-            copingQuad(pa, pb, faceTopA, faceTopB, 0.25);
-            if (!last) {
-              const nextA: Point = [pa[0] + outward[0] / CELL_SIZE, pa[1] + outward[1] / CELL_SIZE], nextB: Point = [pb[0] + outward[0] / CELL_SIZE, pb[1] + outward[1] / CELL_SIZE];
-              quad("bench", BANK, [[pa, benchA], [pb, benchB], [nextB, benchB], [nextA, benchA]]);
-            }
+            const pa = offsetPoint(p, k), pb = offsetPoint(q, k), nextA = offsetPoint(p, k + 1), nextB = offsetPoint(q, k + 1);
+            const top = sign === "fill" ? grading.padY - k * maxDepth / tiers : grading.padY + k * maxDepth / tiers;
+            const nextTop = sign === "fill" ? grading.padY - (k + 1) * maxDepth / tiers : grading.padY + (k + 1) * maxDepth / tiers;
+            const topA = sign === "cut" ? groundAt(...pa) + 0.05 : top;
+            const topB = sign === "cut" ? groundAt(...pb) + 0.05 : top;
+            const bottomA = k === tiers - 1 ? Math.min(nextTop, groundAt(...nextA) - 0.3) : nextTop;
+            const bottomB = k === tiers - 1 ? Math.min(nextTop, groundAt(...nextB) - 0.3) : nextTop;
+            wallQuad(pa, pb, bottomA, bottomB, topA, topB);
+            copingQuad(pa, pb, topA, topB, 0.25);
+            if (k < tiers - 1) quad("bench", BANK, [[pa, nextTop], [pb, nextTop], [nextB, nextTop], [nextA, nextTop]]);
           }
-        };
-        emitTiers("fill", Math.max(0, da), Math.max(0, db));
-        emitTiers("cut", Math.max(0, -da), Math.max(0, -db));
+        }
       }
+      start = end;
     }
   }
 

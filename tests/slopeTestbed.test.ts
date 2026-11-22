@@ -140,6 +140,25 @@ describe("sloped fence and garage testbed fixtures", () => {
       for (const item of pieces) counts[kind]![item.kind] = (counts[kind]![item.kind] ?? 0) + (item.vertices?.length ?? 0) / 12;
       expect(pieces.some(piece => (piece.kind === "wall" || piece.kind === "bank" || piece.kind === "bench") && (piece.vertices?.length ?? 0) > 0), `${kind} must render earthworks`).toBe(true);
       const wallQuads=pieces.filter(piece=>piece.kind==="wall"&&piece.material==="#9a948a"&&piece.vertices).flatMap(piece=>Array.from({length:piece.vertices!.length/12},(_,i)=>piece.vertices!.slice(i*12,i*12+12)));
+      const wallRuns: number[][][] = [];
+      for (const quad of wallQuads) {
+        const ax=quad[0]!,az=quad[2]!,bx=quad[3]!,bz=quad[5]!,dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz), dir:[number,number]=[dx/len,dz/len];
+        const mid=(quad[7]!+quad[10]!)/2;
+        let run=wallRuns.find(group=>{const first=group[0]!, fdx=first[3]!-first[0]!, fdz=first[5]!-first[2]!, fl=Math.hypot(fdx,fdz), fdir:[number,number]=[fdx/fl,fdz/fl], fmid=(first[7]!+first[10]!)/2, fmx=(first[0]!+first[3]!+first[6]!+first[9]!)/4, fmz=(first[2]!+first[5]!+first[8]!+first[11]!)/4, mx=(quad[0]!+quad[3]!+quad[6]!+quad[9]!)/4, mz=(quad[2]!+quad[5]!+quad[8]!+quad[11]!)/4, firstOffset=(fmx-first[0]!)*fdir[1]-(fmz-first[2]!)*fdir[0], quadOffset=(mx-first[0]!)*fdir[1]-(mz-first[2]!)*fdir[0];return (fdx/fl)*dir[0]+(fdz/fl)*dir[1]>.98&&Math.abs(fmid-mid)<=.2&&Math.abs(quadOffset-firstOffset)<=.3;});
+        if(!run){run=[];wallRuns.push(run);} run.push(quad);
+      }
+      for(const run of wallRuns){
+        const vertices=run.flatMap(q=>[[q[0]!,q[1]!,q[2]!],[q[3]!,q[4]!,q[5]!],[q[6]!,q[7]!,q[8]!],[q[9]!,q[10]!,q[11]!]]);
+        const first=run[0]!, dx=first[3]!-first[0]!,dz=first[5]!-first[2]!, length=Math.hypot(dx,dz), dir:[number,number]=[dx/length,dz/length];
+        const tops=run.flatMap(q=>[[q[6]!,q[7]!,q[8]!],[q[9]!,q[10]!,q[11]!]]);
+        const positions=tops.map(v=>v[0]!*dir[0]+v[2]!*dir[1]), ys=tops.map(v=>v[1]!);
+        const min=Math.min(...positions), max=Math.max(...positions), minY=Math.min(...ys), maxY=Math.max(...ys);
+        const firstAtMin=tops.find(v=>Math.abs(v[0]!*dir[0]+v[2]!*dir[1]-min)<1e-5)!, firstAtMax=tops.find(v=>Math.abs(v[0]!*dir[0]+v[2]!*dir[1]-max)<1e-5)!;
+        const residual=Math.max(...positions.map((x,i)=>{const t=(x-min)/(max-min||1), expected=firstAtMin[1]!+(firstAtMax[1]!-firstAtMin[1]!)*t;return Math.abs(ys[i]!-expected);}));
+        expect(maxY-minY<=.04||residual<=.04,`${kind} masonry run top must be flat or linear`).toBe(true);
+        for(const v of tops){const t=(v[0]!*dir[0]+v[2]!*dir[1]-min)/(max-min||1), expected=firstAtMin[1]!+(firstAtMax[1]!-firstAtMin[1]!)*t;expect(Math.abs(v[1]!-expected),`${kind} masonry top has no spikes`).toBeLessThanOrEqual(.08);}
+        for(const q of run) for(const [to,bo] of [[7,1],[10,4]]) {const x=q[to-1]!,y=q[to]!,z=q[to+1]!,gx=x/CELL_SIZE+fixture.mapSize/2,gy=z/CELL_SIZE+fixture.mapSize/2;expect(y-Math.max(q[bo]!,fixture.groundAt(gx,gy)),`${kind} masonry face visible height`).toBeLessThanOrEqual(2.05);}
+      }
       const benchQuads=pieces.filter(piece=>(piece.kind==="bench"||piece.kind==="bank")&&piece.vertices).flatMap(piece=>Array.from({length:piece.vertices!.length/12},(_,i)=>piece.vertices!.slice(i*12,i*12+12)));
       const wallTopVertices=wallQuads.flatMap(quad=>[[quad[0]!,quad[1]!,quad[2]!],[quad[3]!,quad[4]!,quad[5]!],[quad[6]!,quad[7]!,quad[8]!],[quad[9]!,quad[10]!,quad[11]!]]);
       for(const piece of pieces.filter(piece=>piece.kind==="wall"&&piece.material==="#7d776e"&&piece.vertices)) for(let q=0;q<piece.vertices!.length;q+=12) {
