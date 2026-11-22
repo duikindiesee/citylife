@@ -31,15 +31,16 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     expect(auth!.layoutRevision).toBe(doc.revision.contentHash);
 
     // Route loop & stops
-    expect(auth!.route.loop.length).toBe(2292);
+    expect(auth!.route.loop.length).toBe(2310);
     expect(auth!.route.stops.length).toBe(6);
     expect(auth!.route.stopAnchors).toBeDefined();
     expect(auth!.route.stopAnchors!.length).toBe(6);
 
+    // Spec 180 R11: re-pinned from the live seed-4242 export after the real-measure plot layout (was x129 y350, loop 2292).
     // Depot site, spur, bays
     expect(auth!.depot.site).toBeDefined();
-    expect(auth!.depot.site!.x).toBe(129);
-    expect(auth!.depot.site!.y).toBe(350);
+    expect(auth!.depot.site!.x).toBe(198);
+    expect(auth!.depot.site!.y).toBe(290);
     expect(auth!.depot.site!.w).toBe(12);
     expect(auth!.depot.site!.h).toBe(7);
     expect(auth!.depot.site!.inward).toEqual({ x: 0, y: -1 });
