@@ -19,7 +19,9 @@ function assertNonBlank(file: string): void {
 test("garage showroom: exterior fit, interior plinth, two-vehicle selection", async ({
   page,
 }) => {
-  test.setTimeout(300_000);
+  // Software WebGL (SwiftShader) renders both the world scene and the showroom turntable across
+  // 4 full-viewport captures; 540s gives SwiftShader sufficient headroom through showroom-exit.
+  test.setTimeout(540_000);
 
   await page.goto("/?skipauth=1");
   await page.waitForSelector("canvas", { timeout: 30_000 });
@@ -148,5 +150,8 @@ test("garage showroom: exterior fit, interior plinth, two-vehicle selection", as
 
   // And the exit control leaves the interior cleanly.
   await page.click('[data-build-action="showroom-exit"]');
-  await expect(page.locator('[data-testid="showroom-overlay"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="showroom-overlay"]')).toHaveCount(
+    0,
+    { timeout: 30_000 },
+  );
 });

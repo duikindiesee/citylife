@@ -53,10 +53,10 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
       let bRuntime: ColonyRuntime;
       beforeAll(() => {
         rtFor(seed);
-      }, 30000);
+      });
       beforeAll(() => {
         bRuntime = new ColonyRuntime(seed);
-      }, 30000);
+      });
 
       it(`surveys one deterministic public-safe garage landmark pad for seed ${seed}`, () => {
         const a = rtFor(seed).commercialDistrict!;
@@ -69,7 +69,7 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
         expect(a.garagePad!.islandCell).toBeDefined();
         expect(a.garagePad!.streetFrontDir).toBeDefined();
         expect(a.garagePad!.crossFrontDir).toBeDefined();
-      }, 30000);
+      });
     });
   }
 
@@ -93,7 +93,7 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
       expect(cells(g)).not.toContain(`${intersection.x},${intersection.y}`);
       expect(cells(g)).toContain(`${g.islandCell.x},${g.islandCell.y}`);
     }
-  }, 30000);
+  });
 
   it("places the garage on dry buildable reserve cells without overlapping shops mall or roads", () => {
     for (const seed of SEEDS) {
@@ -116,7 +116,7 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
         expect(occupied.has(c)).toBe(false);
       }
     }
-  }, 30000);
+  });
 
   it("keeps the drive-in garage square to the cross street rather than diagonal to the junction", () => {
     for (const seed of SEEDS) {
@@ -128,7 +128,7 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
       expect(model.forecourt.frontOffset).toBeGreaterThan(0);
       expect(facingVector(model.facingAngle)).toEqual(g.crossFrontDir);
     }
-  }, 30000);
+  });
 
   it("places the pylon model at the street corner of the surveyed island cell", () => {
     // Spec 177 / PR 555 re-review: the facade moved forward to local z = +4.2, so the exact
@@ -153,7 +153,7 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
       expect(Math.abs(model.pylon.x)).toBeLessThan(g.w / 2);
       expect(Math.abs(model.pylon.z)).toBeLessThan(g.h / 2);
     }
-  }, 30000);
+  });
 
   it("builds a showroom plus service bays plus pylon massing with night emissive floor", () => {
     const d = rtFor(4242).commercialDistrict!;

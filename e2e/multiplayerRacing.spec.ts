@@ -34,7 +34,8 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
   test("two racers driving down a road, seeing each other in game, recording mp4", async ({
     browser,
   }) => {
-    test.setTimeout(420_000);
+    // Two concurrent SwiftShader WebGL contexts + video recording + ffmpeg transcode need >7m headroom.
+    test.setTimeout(600_000);
 
     const rawVideoDir = path.resolve("videos/multiplayer-raw");
     if (!fs.existsSync(rawVideoDir)) {

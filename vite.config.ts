@@ -139,7 +139,7 @@ export default defineConfig(({ mode }) => {
       // other jobs, and a second suite. This does NOT mask anything: a hung test still hangs, and
       // `testTimeout` is untouched. Raising the timeout again would have masked it; this addresses the
       // cause. `retry: 2` below stays as the last line of defence, not the first.
-      maxWorkers: Math.max(2, Math.floor((cpus().length || 4) / 2)),
+      maxWorkers: Math.min(8, Math.max(2, Math.floor((cpus().length || 4) / 2))),
       // Spec 086 — a ColonyRuntime boot now builds a whole distributed city (a primary + several
       // satellite hamlets + trunk-road routing), so a construction is far heavier than one cheap
       // neighbourhood. Under parallel-suite CPU contention that brushed the 5s default; 20s gives the
@@ -157,7 +157,9 @@ export default defineConfig(({ mode }) => {
       // 60s keeps roughly a 10x margin over the measured solo cost while still reporting a genuine
       // hang inside a minute. It does not weaken a single assertion: a test that passes cannot be
       // made to fail by a longer budget, and one that truly hangs still fails, just later.
+      // (`tests/ciBootCost.test.ts` pins `testTimeout === 60000`.)
       testTimeout: 60000,
+      hookTimeout: 90000,
       // Spec 150 — ship-CI resilience for the v3->main cutover. A couple of runtime suites
       // (rally-spur seed coverage, road-connectivity) are order/seed-sensitive: they pass in
       // isolation but occasionally flip under full-parallel-suite contention. `npm test` on

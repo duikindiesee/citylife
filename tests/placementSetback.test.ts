@@ -124,7 +124,7 @@ describe("spec 114 no floor touches final road setback invariant", () => {
         `seed ${seed} garage forecourt touches final road`,
       ).toBe(false);
     }
-  }, 30000);
+  });
 
   it("keeps the garage visual brown forecourt sign and floor clear of rendered grey road ribbons", () => {
     for (const seed of SEEDS) {
@@ -135,7 +135,7 @@ describe("spec 114 no floor touches final road setback invariant", () => {
         `seed ${seed} garage visual footprint touches rendered road ribbon`,
       ).toBe(false);
     }
-  }, 30000);
+  });
 
   it("keeps every lot fence ring off and one cell back from final roads", () => {
     for (const seed of SEEDS) {
@@ -148,5 +148,5 @@ describe("spec 114 no floor touches final road setback invariant", () => {
         ).toBe(false);
       }
     }
-  }, 30000);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-const WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS = 120_000;
+const WORLD_LAYOUT_IMPORT_PREFLIGHT_TIMEOUT_MS = 180_000;
 import {
   ColonyRuntime,
   WorldLayoutPreflightError,

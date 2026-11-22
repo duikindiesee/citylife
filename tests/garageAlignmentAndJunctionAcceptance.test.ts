@@ -270,7 +270,7 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
       // not above the garage doors: horizontally outside the workshop door run
       expect(p.z).toBeGreaterThan(m.serviceBay.z + m.serviceBay.d / 2);
     }
-  }, 30000);
+  });
 
   it("5. Junction furniture must never be planted inside road carriageways across seeds", () => {
     const SEEDS = [4242, 7, 99];

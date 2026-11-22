@@ -153,11 +153,25 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
     it("rejects non-road occupied parcel cells as 'parcel'", () => {
       const runtime = new ColonyRuntime(4242);
       const t = runtime.sim.state.terrain;
-      // Pick a dry parcel cell not in roadSet
+      // Pick a dry occupied parcel cell not in roadSet, buildings, structures, or garage vicinity
+      const garagePad = runtime.sim.state.commercialDistrict?.garagePad;
       let occupiedNonRoadKey: string | null = null;
       for (const key of runtime.sim.state.occupied) {
         const [ox, oy] = key.split(",").map(Number);
-        if (!runtime.sim.state.roadSet.has(key) && !t.isWater(ox, oy)) {
+        const isBuilding = runtime.sim.state.buildings.some(
+          (b) => Math.round(b.x) === ox && Math.round(b.y) === oy,
+        );
+        const isStructure = runtime.sim.state.structures?.some(
+          (s) => Math.round(s.x) === ox && Math.round(s.y) === oy,
+        );
+        const inGarage = garagePad ? isPointInGarageVicinity(ox, oy, garagePad) : false;
+        if (
+          !runtime.sim.state.roadSet.has(key) &&
+          !t.isWater(ox, oy) &&
+          !isBuilding &&
+          !isStructure &&
+          !inGarage
+        ) {
           occupiedNonRoadKey = key;
           break;
         }

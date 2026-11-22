@@ -66,7 +66,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       expect(d).not.toBeNull();
       expect(d!.parcels.length).toBeGreaterThan(0);
     }
-  }, 30000);
+  });
 
   it("every shop footprint is good ground (cellOk) and inside the reserve", () => {
     for (const seed of SEEDS) {
@@ -86,7 +86,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
         }
       }
     }
-  }, 30000);
+  });
 
   it("NO shop footprint lands on a homestead plot (the live-screenshot bug)", () => {
     for (const seed of SEEDS) {
@@ -97,7 +97,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
           expect(residential.has(c)).toBe(false);
       }
     }
-  }, 30000);
+  });
 
   it("shop footprints never overlap each other", () => {
     for (const seed of SEEDS) {
@@ -109,7 +109,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
         }
       }
     }
-  }, 30000);
+  });
 
   it("every door sits on the front row, facing the high street", () => {
     for (const seed of SEEDS) {
@@ -122,7 +122,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
         else expect(p.doorY).toBeGreaterThan(streetY);
       }
     }
-  }, 30000);
+  });
 
   it("grows the reserve into a crossed block with a deterministic core intersection", () => {
     expect(COLONY.commerce.reserveW).toBe(88);
@@ -184,7 +184,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       }
       expect(rt.sim.state.roadKind.has(`${crossX},${streetY}`)).toBe(true);
     }
-  }, 30000);
+  });
 
   it("is deterministic — a fresh boot of the same seed replays an identical district", () => {
     for (const seed of SEEDS) {
@@ -197,5 +197,5 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       expect(b.mallPad).toEqual(a.mallPad);
       expect(b.garagePad).toEqual(a.garagePad);
     }
-  }, 30000);
+  });
 });

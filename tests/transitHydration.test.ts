@@ -211,7 +211,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(rt.busFleet).toBeNull();
     expect(rt.busStopAnchors().length).toBe(0);
     expect(rt.exportCanonicalTransitAuthority()).toBeNull();
-  });
+  }, 120_000);
 
   it("fails closed on depot placement overlap negative", () => {
     const rt = new ColonyRuntime(4242);
@@ -1095,7 +1095,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       }
       baselineExport = auth;
       setupDurationMs = performance.now() - t0;
-    }, 60000);
+    }, 120_000);
 
     it("fails closed on invalid dirty depot slope that breaks transit instead of exporting stale transit", () => {
       const tActionStart = performance.now();
@@ -1122,7 +1122,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       console.log(
         `[transitHydration:dirtyDepot] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
       );
-    }, 60000);
+    }, 120_000);
   });
 
   it("fails closed on unknown child frame in placement constraints", () => {

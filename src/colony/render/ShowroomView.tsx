@@ -7,7 +7,7 @@
 //
 // The environment map in showroomEnvironment.tsx is load-bearing, not decoration: without it the car's
 // metalness deletes albedo instead of adding sheen, which is why the paint used to read as primer.
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { memo, Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
@@ -315,7 +315,22 @@ function StudioRoom() {
   );
 }
 
-export function ShowroomView({
+const SHOWROOM_CAMERA = {
+  fov: 40,
+  near: 0.1,
+  far: 100,
+  position: [0, 2.5, 5] as [number, number, number],
+};
+const SHOWROOM_CANVAS_STYLE = { width: "100%", height: "100%" } as const;
+const SHOWROOM_DPR: [number, number] = [1, 2];
+const SHOWROOM_GL = {
+  antialias: true,
+  toneMapping: THREE.ACESFilmicToneMapping,
+  toneMappingExposure: 1.05,
+  outputColorSpace: THREE.SRGBColorSpace,
+};
+
+export const ShowroomView = memo(function ShowroomView({
   vehicle,
   zoom,
   paint,
@@ -326,20 +341,15 @@ export function ShowroomView({
 }) {
   return (
     <Canvas
-      shadows
-      camera={{ fov: 40, near: 0.1, far: 100, position: [0, 2.5, 5] }}
-      style={{ width: "100%", height: "100%" }}
-      dpr={[1, 2]}
+      shadows="percentage"
+      camera={SHOWROOM_CAMERA}
+      style={SHOWROOM_CANVAS_STYLE}
+      dpr={SHOWROOM_DPR}
       // toneMapping and outputColorSpace are very likely already the R3F v9 defaults — set explicitly
       // so the intent is legible and a future R3F upgrade cannot silently change the look.
       // toneMappingExposure genuinely is not set by R3F (it leaves it at 1); 1.05 gives a touch of
       // lift now that the scene has real dark values to lift against.
-      gl={{
-        antialias: true,
-        toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 1.05,
-        outputColorSpace: THREE.SRGBColorSpace,
-      }}
+      gl={SHOWROOM_GL}
     >
       {/* Replaces the old flat 0xced4d8 clear colour. See showroomEnvironment for why a clear colour
           could never work here: it is not geometry, is not lit, and reflects nothing. The visible sky
@@ -352,4 +362,4 @@ export function ShowroomView({
       <ShowroomCameraRig zoom={zoom} />
     </Canvas>
   );
-}
+});

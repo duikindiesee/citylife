@@ -4974,7 +4974,14 @@ export class ColonyRuntime {
       const hz = lot.houseZone;
       const w = hz.width ?? hz.w ?? 1;
       const d = hz.depth ?? hz.d ?? 1;
-      if (ix >= hz.x && ix < hz.x + w && iy >= hz.y && iy < hz.y + d) {
+      const isLotDoorThreshold = lot.doorX === ix && lot.doorY === iy;
+      if (
+        !isLotDoorThreshold &&
+        ix >= hz.x &&
+        ix < hz.x + w &&
+        iy >= hz.y &&
+        iy < hz.y + d
+      ) {
         return false;
       }
     }
