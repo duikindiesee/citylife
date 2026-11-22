@@ -87,3 +87,33 @@ Sources (Forge research notes, 22 Nov 2026, plot sizes and Langebaan erf sizes):
 - Should the blank sign remain purely decorative or later receive a separately governed lot-state display?
 - What state/event owns the door animation when a player uses the garage portal?
 - Should the starter garage have a shallow gable roof in the final art direction, or retain the simple low-cost flat roof?
+
+## Round 13 — sloped plots (22 Nov 2026)
+
+Research: `sloped-plots-2026-11-22.md` (78 real plots on seeds 180/42/4242: median front-to-back fall 1.87 m, steepest compact 3.4-3.6 m; flattening whole yards would need >2 m walls on 34 plots). Builders level a **house platform** and let the garden, fence and drive follow the ground.
+
+Modules: `src/colony/render/kitGround.ts` (GroundAt), `src/colony/slope/plotGrading.ts` (gradePlot), `src/colony/parcelGeometry.ts`, `src/colony/render/forSaleBoardPlacement.ts`, `src/colony/render/housePlacement.ts`, `src/colony/testbed/slopeFixtures.ts`.
+
+Technique per band (whole-plot plane fit, sampled every 1 m):
+
+| Band | Technique |
+|---|---|
+| < 3% (`level`) | Level pad, near-flat drive. |
+| 3-8% (`gentle`) | House-only platform, ramped drive, fence follows grade, 1:2 bank. |
+| 8-12.5% (`moderate`) | Platform + retaining wall; one face <= 2.0 m, terrace above 2.5 m cumulative; walls > ~1.3 m flagged "engineer required". |
+| steep uphill | Garage at street level, cut into the slope (`street-level-garage-cut`). |
+| steep downhill | Lower-level garage under the street side of the house (`undercroft-garage`). |
+| > 25% or no legal combination | Rejected at layout (`tryParcel`), never placed. |
+| Smallholding (GRAND) | Never flattened; only the house footprint is graded. |
+
+Limits (`SLOPE_LIMITS`): drive <= 1:25 within 5 m of the street (SANS 10400-D), <= 1:8 beyond; pad fill <= 1.0 m (SANS 10400-H); ground floor <= 0.5 m above natural ground (Saldanha IZS s27); floor >= 150 mm above finished ground; banks <= 1:2; single wall face <= 2.0 m (Saldanha s27(b)). If the on-pad drive violates, the grader falls back to a street garage (not for reject-band plots).
+
+Kit seating: fence posts at ground, panels stepped (horizontal at the higher end's ground), gates, starter garage (`garageFloorY`), For Sale board and drive profile all sample the real heightfield. For Sale board: always outside the front fence line on the street side, 1 m from it, off the driveway cells and the gate swing, y = ground (tested, `tests/kitOnGround.test.ts`).
+
+Placement filters: grading runs on raw terrain in `tryParcel` and claims cells only after acceptance; the smallholding is looked-up across up to 40 columns of the corridor and then the opposite side (previously it was tried once at the last slot and never retried).
+
+Final lots per seed (graded on raw terrain, 0 rejected / 0 not ok): seed 180: 20 lots (11 gentle, 2 level, 5 moderate, 2 steep-downhill, 1 smallholding); seed 42: 36 (21 gentle, 1 level, 11 moderate, 3 steep-downhill, 1 smallholding); seed 4242: 26 (17 gentle, 1 level, 5 moderate, 2 steep-uphill, 1 steep-downhill); seed 7: 24 (17 gentle, 4 level, 3 moderate).
+
+Test bed (`?fixture=downhill|uphill|gentle|flat`): real seeded terrain, 1 m heightfield with 0.5 m contour banding (no vertical exaggeration), draped carriage/verge from the parcel's own (satellite) hamlet, real 11.5 m garage house GLB (`estate-motor-home-seed9`, see PROVENANCE.md) posed by `housePoseForParcel` inside fence and Saldanha building lines (street 3 m, side 2.5 m for stands > 16 m, rear 3 m), one fence kit colour for all plots. Fixtures: downhill = seed 42 `hill5_lot_3` (steep-downhill 14.0%, undercroft); uphill = seed 4242 `wood1_lot_1` (steep-uphill 12.7%, street-level cut); gentle = seed 180 `lot_2` (4.3%, on-pad). Tests: `tests/slopeTestbed.test.ts` (house inside fence and building lines, every post y == groundAt, garage y == garageFloorY, drive profile and grades, wall faces <= 2 m, board street-side and seated, cameras above ground, carriage meets the gate), `tests/plotGrading.test.ts`, `tests/placementFilters.test.ts`. Captures: `docs/assets/previews/slopes-v1/`.
+
+Known limits: the live renderer seats the kit on `groundAtFromLeveling`; the ramp/retaining-wall/bank meshes driven by `gradePlot` exist in the test bed only (live renderer wiring is the next step). Whole-plot gradients were sampled on raw terrain; roads are graded separately (spec 130).
