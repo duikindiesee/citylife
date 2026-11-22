@@ -18,6 +18,7 @@ import {
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
 import { AuthClient, getAuthClient, canEnterCityBuilder } from "../authClient";
+import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
 // PLAYER.FLAG.S3 — the fail-closed, default-OFF new-player-journey entitlement (gates the garage
 // showroom entry and every future journey-only action on the server allowlist).
 import {
@@ -98,6 +99,9 @@ import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
+import { fetchHomeTruth, isHomeOwned } from "../home/starterProperty";
+import { COLONY } from "../config";
+import { projectReturningResidentState } from "../home/starterCatalogueClient";
 import { OwnedCarControls } from "./OwnedCarControls";
 import { DrivableRoadTestModal } from "./DrivableRoadTestModal";
 import { RoadmapPanel } from "./RoadmapPanel";
@@ -110,6 +114,7 @@ import {
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
+import { canShowPlayerLocationForAccount } from "./busNetworkMiniMapModel";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
@@ -575,10 +580,12 @@ export function publicWorldLayoutHistoryEntries(
   }));
 }
 
-function useRuntime(): ColonyRuntime {
+function useRuntime(initialInventory?: PublishedPlayerInventory): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
-    ref.current = new ColonyRuntime();
+    ref.current = new ColonyRuntime(COLONY.render.seed, {
+      initialWorldLayout: initialInventory?.layout,
+    });
     // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
     // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
     if (
@@ -764,6 +771,7 @@ export function createColonyLogoutHandler({
   return async (beforeLogout?: () => void) => {
     // 1. Immediately disable multiplayer and clear all peer/input/driving state synchronously
     runtime.disableMultiplayer();
+    runtime.setOperatorUserId(null);
     // 2. Immediately switch to local signed-out UI
     setLoggedOut(true);
     // 3. Mark pre-logout state (e.g. pending password change notice)
@@ -777,13 +785,63 @@ export function createColonyLogoutHandler({
   };
 }
 
-export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
+export function ColonyApp({
+  auth: propAuth,
+  initialInventory,
+}: {
+  auth?: AuthClient;
+  initialInventory?: PublishedPlayerInventory;
+} = {}) {
   const { builderActive, worldViewActive } = useRoadNetwork();
-  const runtime = useRuntime();
+  const runtime = useRuntime(initialInventory);
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
   const auth = useMemo(() => propAuth ?? getAuthClient(), [propAuth]);
   const operatorUserId = auth.operator?.userId ?? null;
   const [loggedOut, setLoggedOut] = useState(false);
+  const ownedVehicleKeysRef = useRef<readonly string[] | null>(null);
+
+  useEffect(() => {
+    ownedVehicleKeysRef.current = null;
+  }, [operatorUserId]);
+
+  // P3 — Load authenticated home truth and exact owned vehicle on mount or operatorUserId change
+  useEffect(() => {
+    let active = true;
+    const currentUserId = operatorUserId;
+    if (!currentUserId) {
+      runtime.setAuthoritativeHomeTruth(null);
+      runtime.setAuthoritativeOwnedVehicle(null);
+      return;
+    }
+    void fetchHomeTruth().then((truth) => {
+      if (!active || (runtime.getOperatorUserId?.() ?? currentUserId) !== currentUserId) return;
+      if (truth && isHomeOwned(truth)) {
+        runtime.setAuthoritativeHomeTruth(truth);
+        const keys =
+          ownedVehicleKeysRef.current ??
+          (runtime.getAuthoritativeCar?.()?.id
+            ? [runtime.getAuthoritativeCar()!.id]
+            : null);
+        const projection = projectReturningResidentState(
+          truth,
+          initialInventory,
+          keys,
+        );
+        if (projection.isResident && projection.vehicle) {
+          runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
+        }
+      } else {
+        runtime.setAuthoritativeHomeTruth(truth);
+      }
+    }).catch(() => {
+      if (active && (runtime.getOperatorUserId?.() ?? currentUserId) === currentUserId) {
+        runtime.setAuthoritativeHomeTruth(null);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [operatorUserId, runtime, initialInventory]);
 
   const executeLogout = useCallback(
     createColonyLogoutHandler({
@@ -1178,6 +1236,17 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
     auth.isAuthenticated && operatorUserId !== null
       ? String(operatorUserId)
       : null;
+  const playerLocationAuthorized =
+    canShowPlayerLocationForAccount({
+      isCityLifePlayer: auth.isCityLifePlayer,
+      authenticatedAccountKey: walletAccountKey,
+      runtimeAccountKey:
+        (runtime as any).getBoundOperatorUserId?.() ??
+        (runtime as any).operatorUserId ??
+        null,
+    }) &&
+    !builderActive &&
+    !worldViewActive;
   const [playerWallet, setPlayerWallet] = useState<PlayerWalletSnapshot>(() =>
     emptyPlayerWallet(null, "unavailable"),
   );
@@ -1286,11 +1355,25 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
       return;
     }
     let cancelled = false;
+    const currentUserId = operatorUserId;
     void (async () => {
       const truth = await fetchOwnedVehicleKeysBackend();
-      if (cancelled) return;
-      if (operatorUserId)
-        runtime.applyVehicleOwnership(String(operatorUserId), truth);
+      if (cancelled || (runtime.getOperatorUserId?.() ?? currentUserId) !== currentUserId) return;
+      ownedVehicleKeysRef.current = truth;
+      if (currentUserId) {
+        runtime.applyVehicleOwnership(String(currentUserId), truth);
+        const currentTruth = runtime.getAuthoritativeHomeTruth?.();
+        if (currentTruth && isHomeOwned(currentTruth)) {
+          const projection = projectReturningResidentState(
+            currentTruth,
+            initialInventory,
+            truth,
+          );
+          if (projection.isResident && projection.vehicle) {
+            runtime.setAuthoritativeOwnedVehicle(projection.vehicle);
+          }
+        }
+      }
       // Hydrate existing owners even when onboarding is off. If entitlement is still
       // loading, its later change must get a chance to route a no-car player.
       autoShowroomCheckedRef.current = newPlayerJourneyEnabled;
@@ -1310,7 +1393,7 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
+  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime, initialInventory]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
@@ -2212,6 +2295,7 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
           onClose={() => setHomeOpen(false)}
+          runtime={runtime}
           walletKco={playerWalletKco}
           walletStatus={visiblePlayerWallet.status}
           walletLabel={playerWalletText}
@@ -2231,7 +2315,7 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
       {/* Defense in depth: the overlay renders ONLY while the gate is open, so a forced/stale
           driveHomeOpen can never mount it and a mid-session revocation (account switch) closes it. */}
       {driveHomeOpen && newPlayerJourneyEnabled && (
-        <DriveHomeOverlay onClose={() => setDriveHomeOpen(false)} />
+        <DriveHomeOverlay runtime={runtime} onClose={() => setDriveHomeOpen(false)} />
       )}
       {drivableModalOpen && (
         <DrivableRoadTestModal
@@ -2459,6 +2543,7 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
         />
         {topbar.showMenu && (
           <TopbarMenu
+            runtime={runtime}
             hasRealAccount={hasRealAccount}
             playerId={operatorUserId}
             firstPersonActive={ui.firstPerson.active}
@@ -2479,6 +2564,8 @@ export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
         presenceReadout={presenceReadout}
         open={mapOpen}
         onClose={() => setMapOpen(false)}
+        playerLocationAuthorized={playerLocationAuthorized}
+        authenticatedUserId={walletAccountKey}
       />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
           rendered above, as a member of `.hud-corner-rail-left`. UI.GEO.OVERLAP.1 moved it there

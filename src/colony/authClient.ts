@@ -1,3 +1,4 @@
+import { setBugValidatorAuthority } from "./bug/bugBounty";
 // CityLife operator auth — real kooker account login.
 // POSTs Basic Auth credentials to the kooker auth service via the nginx proxy,
 // receives a signed JWT, stores it for the session. Never logs or persists raw credentials.
@@ -232,6 +233,14 @@ export function resetSharedAuthClient(): void {
   }
 }
 
+function bugValidatorPrincipalFor(
+  operator: OperatorSession["operator"] | null,
+): string | null {
+  const id = operator?.userId?.trim();
+  if (!id) return null;
+  return id.startsWith("operator:") ? id : `operator:${id}`;
+}
+
 export class AuthClient {
   private session: OperatorSession | null = null;
   private readonly now: () => number;
@@ -245,6 +254,7 @@ export class AuthClient {
     this.now = opts?.now ?? (() => Date.now());
     activeAuthClients.add(this);
     this.restore();
+    this.installBugValidatorAuthority();
   }
 
   dispose(): void {
@@ -254,6 +264,7 @@ export class AuthClient {
   /** Synchronously clear this instance's session, increment generation, abort active issue, and cancel in-flight refresh. */
   invalidateInstance(): void {
     this.session = null;
+    this.installBugValidatorAuthority();
     this.sessionGeneration++;
     this.refreshInFlight = null;
     if (this.activeIssueController) {
@@ -363,6 +374,7 @@ export class AuthClient {
         },
       };
       this.persist();
+      this.installBugValidatorAuthority();
 
       // Synchronize/invalidate other active instances so they reflect the new session and abort stale refreshes
       for (const client of activeAuthClients) {
@@ -677,6 +689,7 @@ export class AuthClient {
           expiresAt: expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS,
         };
         this.persist();
+        this.installBugValidatorAuthority();
 
         // Synchronize refreshed session across active instances so they stay consistent
         for (const client of activeAuthClients) {
@@ -727,6 +740,12 @@ export class AuthClient {
     } catch {
       /* no storage */
     }
+  }
+  private installBugValidatorAuthority(): void {
+    setBugValidatorAuthority((principalId) => {
+      if (!this.isCityLifeAdmin) return false;
+      return principalId === bugValidatorPrincipalFor(this.operator);
+    });
   }
   private restore(): void {
     try {

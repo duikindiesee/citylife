@@ -6,9 +6,13 @@ import {
   EffectComposer,
   Bloom,
   ToneMapping,
+  HueSaturation,
+  BrightnessContrast,
+  Vignette,
+  SMAA,
 } from "@react-three/postprocessing";
 import { Physics, RigidBody } from "@react-three/rapier";
-import { ToneMappingMode } from "postprocessing";
+import { ToneMappingMode, BlendFunction } from "postprocessing";
 import * as THREE from "three";
 
 import type { ColonySim } from "../sim";
@@ -89,6 +93,7 @@ import { R3FOperatorCar } from "./R3FOperatorCar";
 import { R3FRemoteRacers } from "./R3FRemoteRacers";
 import { R3FRallyNameplates } from "./R3FRallyNameplates";
 import { R3FCameraDirector } from "./R3FCameraDirector";
+import { HomeDrivewaySurface } from "./HomeDrivewaySurface";
 import { R3FCommercialDistrict } from "./R3FCommercialDistrict";
 import { R3FDrivableOverlay } from "./R3FDrivableOverlay";
 import { R3FDarkCity } from "./R3FDarkCity";
@@ -96,12 +101,14 @@ import { R3FIronworkPillar } from "./R3FIronworkPillar";
 import { isPublicSafe } from "../newcomers";
 import { aerialMouseButtons } from "./panControls";
 
-function ZoneManager({
+export function ZoneManager({
   sim,
   runtime,
+  terrainLevel,
 }: {
   sim: ColonySim;
   runtime?: SimBridge;
+  terrainLevel?: ReadonlyMap<number, number> | null;
 }) {
   const state = sim.state;
   const { assets, fetchManifest } = useWorldAssets();
@@ -233,9 +240,26 @@ function ZoneManager({
     return { elements, overlays };
   }, [sim, zoneSig, assets]);
 
+  const homeDriveway = (runtime as any)?.getPlayerHomeDriveway?.();
+  const drivewaySig = useSimSignal(runtime, () => {
+    const home = (runtime as any)?.getPlayerHomeDriveway?.();
+    return home ? `${home.plotId}:${home.cells.map((c: any) => `${c.x},${c.y}`).join(";")}` : "";
+  });
+
   return (
     <group>
       {buildings.elements}
+      {homeDriveway && (
+        <HomeDrivewaySurface
+          sim={sim}
+          terrainLevel={terrainLevel}
+          plotId={homeDriveway.plotId}
+          cells={homeDriveway.cells}
+          gate={homeDriveway.gate}
+          side={homeDriveway.side}
+          key={drivewaySig}
+        />
+      )}
       <group name="zone-overlays" visible={state.zonesVisible !== false}>
         {buildings.overlays}
       </group>
@@ -608,7 +632,7 @@ function useBootStage(): number {
   return stage;
 }
 
-function R3FWorld({
+export function R3FWorld({
   sim,
   runtime,
   avatarRefs,
@@ -800,7 +824,7 @@ function R3FWorld({
               <R3FFoliage sim={sim} runtime={runtime} />
             )}
             <R3FQuiverTrees runtime={runtime} />
-            <ZoneManager sim={sim} runtime={runtime} />
+            <ZoneManager sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
             <R3FPlayerCar sim={sim} />
             <R3FAvatars
               sim={sim}
@@ -885,8 +909,19 @@ function R3FWorld({
           />
           {perfExperiment().postProcessing && (
             <EffectComposer>
+              {/* Warm the colony a touch and add filmic depth (subtle). */}
+              <HueSaturation saturation={0.06} hue={0} />
+              <BrightnessContrast brightness={0.0} contrast={0.06} />
               <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
               <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+              {/* Crisper edges than the default MSAA-off canvas, cheap. */}
+              <SMAA />
+              {/* Draw the eye to the centre; barely-there darkened corners. */}
+              <Vignette
+                blendFunction={BlendFunction.NORMAL}
+                offset={0.32}
+                darkness={0.42}
+              />
             </EffectComposer>
           )}
         </>

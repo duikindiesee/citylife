@@ -442,3 +442,6 @@ This SUPERSEDES the §2 sketch on three points (bus-i-owns-bay-i, first-stop gat
   `state.busDepotSpurCells` and `traffic.ts` excludes them from the car graph (as nodes and
   neighbours), so cars stay on the loop and the buses own the spur. Pinned by
   `tests/busDepotBoot.test.ts` (no car ever occupies a spur cell over a long traffic run).
+
+Transit export must revalidate pending terrain edits even when the caller omits a layout argument.
+An invalid edited depot must not reuse the last valid transit manifest.
