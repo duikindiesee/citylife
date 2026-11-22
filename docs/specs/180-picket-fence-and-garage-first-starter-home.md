@@ -24,6 +24,10 @@ The first generated gate's leaf descendants did move with their pivots, but the 
 
 `ParcelFence` owns exactly one driveway gate and accepts `gateOpen` from 0 (closed) to 1 (open), defaulting to closed for existing consumers. The testbed supplies its timeline and `?gate=closed` override to that same gate; it must not mount another GLB instance. `debugScene()` includes per-name instance counts for visible top-level scene pieces. Each ordinary 4 m fence edge places panel centres at its quarter and three-quarter points, producing two 2 m bays that abut without gaps or overlap. Round 10 changes the street gate edge to outer panels terminating at the gate posts.
 
+## Round 11 ground seating and street-side board
+
+Fence, gate, garage, and For Sale board placements now take an optional `GroundAt` sampler in fractional grid coordinates and metres. The live renderer builds that sampler from the same terrain-level map used by the terrain mesh, so props follow both natural grade and visible grading. Flat test fixtures retain a zero-height default. Each fence panel stays horizontal at the higher endpoint ground; its underside clearance is sampled at five points, and lower posts extend by the adjacent panel rise (using a 1.2 m post-height basis). The garage slab is level at the last driveway cell (the door centre). The sale board sits one metre street-side of the fence, offset along the frontage and moved to the opposite side if its chosen cell overlaps the driveway. This corrects the prior inside-the-plot board placement.
+
 ## Round 10 unsold parcel board and post support
 
 Ordinary 4 m ring edges now carry posts at 0, 2, and 4 m, with 2 m panels centred at 1 and 3 m. The gate cell is a gap in the fence ring; the driveway-gate GLB owns the two posts at ±1.85 m, and only the outer 2 m panels run from the neighbouring cell-centre posts to those gate posts. Unsold fenced parcels display a canvas-2D board with full parcel dimensions, area, the spec 085 house-zone price, and the 0.0375 KCO/m² area rate. The testbed defaults to a claimed garage (`?claimed=1`) and uses `?claimed=0` for the board view.

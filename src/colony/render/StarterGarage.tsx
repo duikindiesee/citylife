@@ -4,8 +4,9 @@ import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Parcel } from "../neighborhood";
 import { starterGaragePlacement } from "./starterGaragePlacement";
-export function StarterGarage({parcel,mapSize,doorTime=0}: {parcel:Parcel;mapSize:number;doorTime?:number}) {
- const pose=useMemo(()=>starterGaragePlacement(parcel,mapSize),[parcel,mapSize]);
+import { FLAT_GROUND, type GroundAt } from "./kitGround";
+export function StarterGarage({parcel,mapSize,doorTime=0,groundAt=FLAT_GROUND}: {parcel:Parcel;mapSize:number;doorTime?:number;groundAt?:GroundAt}) {
+ const pose=useMemo(()=>starterGaragePlacement(parcel,mapSize,groundAt),[parcel,mapSize,groundAt]);
  const {scene}=useGLTF("/assets/citylife/props/starter-garage.glb");
  const clone=useMemo(()=>scene.clone(true),[scene]);
  const {invalidate}=useThree();

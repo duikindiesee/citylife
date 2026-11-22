@@ -1,7 +1,8 @@
 import type { Parcel } from "../neighborhood";
 import { CELL_SIZE } from "../scale";
+import { FLAT_GROUND, type GroundAt } from "./kitGround";
 
-export interface GaragePlacement { position:[number,number,number]; rotationY:number }
+export interface GaragePlacement { position:[number,number,number]; rotationY:number; garageFloorY:number }
 export function parcelStreetDirection(parcel:Parcel):[number,number] {
  const a=parcel.driveway[0],b=parcel.gate;
  if(a&&b){const dx=a.x-b.x,dy=a.y-b.y,n=Math.hypot(dx,dy);if(n>0)return [dx/n,dy/n];}
@@ -9,12 +10,14 @@ export function parcelStreetDirection(parcel:Parcel):[number,number] {
 }
 
 /** Center the 4 m frontage on the driveway, with the door at its inland end. */
-export function starterGaragePlacement(parcel: Parcel, mapSize: number): GaragePlacement {
+export function starterGaragePlacement(parcel: Parcel, mapSize: number, groundAt: GroundAt = FLAT_GROUND): GaragePlacement {
  const inland=parcel.driveway[parcel.driveway.length-1] ?? parcel.gate, street=parcelStreetDirection(parcel);
  const x=(inland.x-mapSize/2)*CELL_SIZE, z=(inland.y-mapSize/2)*CELL_SIZE;
  const rotationY=Math.atan2(street[0],street[1]);
  // Front face is at the inland edge of the final driveway cell; body extends 8 m inland.
- return {position:[x-street[0]*6,0,z-street[1]*6],rotationY};
+ const doorX=inland.x,doorY=inland.y;
+ const garageFloorY=groundAt(doorX,doorY);
+ return {position:[x-street[0]*6,garageFloorY,z-street[1]*6],rotationY,garageFloorY};
 }
 
 /** Grid-cell bounds check for the 4 x 8 m axis-aligned garage footprint. */

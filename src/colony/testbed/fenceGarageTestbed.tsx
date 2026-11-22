@@ -13,6 +13,7 @@ import {starterGaragePlacement} from "../render/starterGaragePlacement";
 import {ParcelFence} from "../render/ParcelFence";
 import {StarterGarage} from "../render/StarterGarage";
 import {ForSaleBoard} from "../render/ForSaleBoard";
+import {FLAT_GROUND} from "../render/kitGround";
 import {testbedCameraPose,testbedParcelInfo,applyTestbedTimeline,applyDrivewayGatePose,resolveTestbedCameraMode,testbedFrameState} from "../render/starterGarageCamera";
 import {testbedGroundRects,ROAD_LENGTH} from "../render/testbedSurfaces";
 import "./fenceGarageTestbed.css";
@@ -75,8 +76,8 @@ function Scene(){const store=useThree();const {camera,scene}=store;const params=
  <mesh rotation={[-Math.PI/2,0,0]} position={[drive.cx,.05,drive.cz]} receiveShadow><planeGeometry args={roadAlongX?[drive.width,drive.length]:[drive.length,drive.width]}/><meshStandardMaterial color="#d5d1c3"/></mesh>
  {neighborhood.carriage.map(c=><mesh key={`c${c.x},${c.y}`} rotation={[-Math.PI/2,0,0]} position={[W(c.x),-.02,W(c.y)]}><planeGeometry args={[CELL_SIZE,CELL_SIZE]}/><meshStandardMaterial color="#45494b"/></mesh>)}
  {neighborhood.verge.map(c=><mesh key={`v${c.x},${c.y}`} rotation={[-Math.PI/2,0,0]} position={[W(c.x),-.04,W(c.y)]}><planeGeometry args={[CELL_SIZE,CELL_SIZE]}/><meshStandardMaterial color="#a7b58a"/></mesh>)}
- {near.map((p,i)=><group key={`ctx${p.id}`}>{p.fenceType!=="fence"?<Boundary p={p}/>:null}{sold(p,i)?<EnvelopeHouse p={p}/>:null}{p.driveway.map(c=><mesh key={`d${c.x},${c.y}`} rotation={[-Math.PI/2,0,0]} position={[W(c.x),.03,W(c.y)]}><planeGeometry args={[CELL_SIZE,CELL_SIZE]}/><meshStandardMaterial color="#d5d1c3"/></mesh>)}{!claimed&&!sold(p,i)&&p.fenceType!=="fence"?<ForSaleBoard parcel={p} mapSize={info.mapSize} distToWater={sim.state.terrain.distToWater[sim.state.terrain.idx(Math.round(p.x),Math.round(p.y))]??999}/>:null}</group>)}
- {testbedParcels.filter(p=>p.fenceType==="fence").map(p=><group key={p.id}><ParcelFence parcel={p} mapSize={info.mapSize} gateOpen={p.id===parcel.id?gateAmount:0}/>{!claimed&&!sold(p,near.indexOf(p))?<ForSaleBoard parcel={p} mapSize={info.mapSize} distToWater={sim.state.terrain.distToWater[sim.state.terrain.idx(Math.round(p.x),Math.round(p.y))]??999}/>:null}{p.id===parcel.id&&claimed?<group ref={garageRef}><StarterGarage parcel={p} mapSize={info.mapSize} doorTime={0}/></group>:null}</group>)}
+ {near.map((p,i)=><group key={`ctx${p.id}`}>{p.fenceType!=="fence"?<Boundary p={p}/>:null}{sold(p,i)?<EnvelopeHouse p={p}/>:null}{p.driveway.map(c=><mesh key={`d${c.x},${c.y}`} rotation={[-Math.PI/2,0,0]} position={[W(c.x),.03,W(c.y)]}><planeGeometry args={[CELL_SIZE,CELL_SIZE]}/><meshStandardMaterial color="#d5d1c3"/></mesh>)}{!claimed&&!sold(p,i)&&p.fenceType!=="fence"?<ForSaleBoard parcel={p} mapSize={info.mapSize} distToWater={sim.state.terrain.distToWater[sim.state.terrain.idx(Math.round(p.x),Math.round(p.y))]??999} groundAt={FLAT_GROUND}/>:null}</group>)}
+ {testbedParcels.filter(p=>p.fenceType==="fence").map(p=><group key={p.id}><ParcelFence parcel={p} mapSize={info.mapSize} groundAt={FLAT_GROUND} gateOpen={p.id===parcel.id?gateAmount:0}/>{!claimed&&!sold(p,near.indexOf(p))?<ForSaleBoard parcel={p} mapSize={info.mapSize} distToWater={sim.state.terrain.distToWater[sim.state.terrain.idx(Math.round(p.x),Math.round(p.y))]??999} groundAt={FLAT_GROUND}/>:null}{p.id===parcel.id&&claimed?<group ref={garageRef}><StarterGarage parcel={p} mapSize={info.mapSize} groundAt={FLAT_GROUND} doorTime={0}/></group>:null}</group>)}
 
  <ContactShadows position={[x,.01,z]} opacity={.3} scale={100} blur={2}/></>;
 }

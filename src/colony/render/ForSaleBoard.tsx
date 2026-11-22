@@ -5,7 +5,8 @@ import { plotPricePerM2Kco, plotSizeM } from "../landPrice";
 import { plotPriceBreakdown } from "../land";
 import { COLONY } from "../config";
 import { PARCEL_TIER_LABEL } from "../neighborhood";
-import { CELL_SIZE } from "../scale";
+import { forSaleBoardPlacement } from "./forSaleBoardPlacement";
+import { FLAT_GROUND, type GroundAt } from "./kitGround";
 
 function boardTexture(parcel: Parcel, distToWater: number): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -30,14 +31,10 @@ function boardTexture(parcel: Parcel, distToWater: number): THREE.CanvasTexture 
   return texture;
 }
 
-export function ForSaleBoard({parcel,mapSize,distToWater}:{parcel:Parcel;mapSize:number;distToWater:number}) {
+export function ForSaleBoard({parcel,mapSize,distToWater,groundAt=FLAT_GROUND}:{parcel:Parcel;mapSize:number;distToWater:number;groundAt?:GroundAt}) {
   const texture = useMemo(() => boardTexture(parcel,distToWater),[parcel,distToWater]);
-  const dx = parcel.driveway[0]!.x - parcel.gate.x;
-  const dy = parcel.driveway[0]!.y - parcel.gate.y;
-  // One cell to the parcel's left of the gate, outside the driveway corridor.
-  const x = (parcel.gate.x - dy - mapSize/2) * CELL_SIZE;
-  const z = (parcel.gate.y + dx - mapSize/2) * CELL_SIZE;
-  return <group position={[x,0,z]} rotation={[0,Math.atan2(dx,dy),0]}>
+  const placement = useMemo(() => forSaleBoardPlacement(parcel,mapSize,groundAt),[parcel,mapSize,groundAt]);
+  return <group position={placement.position} rotation={[0,placement.rotationY,0]}>
     <mesh position={[0,1.35,0]}><boxGeometry args={[1.2,1.5,.12]}/><meshStandardMaterial color="#60452d"/></mesh>
     <mesh position={[0,1.5,.071]}><planeGeometry args={[1.5,.94]}/><meshBasicMaterial map={texture} toneMapped={false}/></mesh>
   </group>;
