@@ -10,6 +10,7 @@ import { parcelStreetDirection } from "../src/colony/parcelGeometry";
 import { gradePlot, SLOPE_LIMITS } from "../src/colony/slope/plotGrading";
 import { CELL_SIZE } from "../src/colony/scale";
 import { fixtureCameraPose, testbedParcelInfo, type TestbedCameraMode } from "../src/colony/render/starterGarageCamera";
+import { buildTestbedRoadDrape, streetAxisFromCarriage, TESTBED_ASPHALT, TESTBED_VERGE } from "../src/colony/render/testbedRoadDrape";
 
 const cases = [
   ["downhill", "steep-downhill"],
@@ -20,6 +21,58 @@ const cameraModes: TestbedCameraMode[] = ["slope-aerial","slope-side","board-lin
 const eyeLevelModes = new Set<TestbedCameraMode>(["street-view","street-gate","driveway-approach"]);
 
 describe("sloped fence and garage testbed fixtures", () => {
+  it.each(cases.map(([kind]) => kind))("builds terrain-following, faded %s street drapes with two outer kerbs", (kind) => {
+    const fixture=pickSlopeFixture(kind), info=testbedParcelInfo(fixture.parcel,fixture.mapSize,fixture.carriage);
+    const axis=streetAxisFromCarriage(fixture.carriage), across:[number,number]=[-axis[1],axis[0]];
+    const meshes=buildTestbedRoadDrape({carriage:fixture.carriage,verge:fixture.verge,mapSize:fixture.mapSize,groundAt:fixture.groundAt,streetAxis:info.streetDir});
+    const carriage=meshes.find(m=>m.kind==="fade")!,verges=meshes.filter(m=>m.kind==="verge"),kerbs=meshes.filter(m=>m.kind==="kerb");
+    const pos=(m:typeof carriage)=>m.geometry.getAttribute("position"), col=carriage.geometry.getAttribute("color");
+    expect(TESTBED_ASPHALT).toBe("#595f6a");
+    const asphalt=new THREE.Color(TESTBED_ASPHALT),verge=new THREE.Color(TESTBED_VERGE);
+    const stations=fixture.carriage.map(c=>c.x*axis[0]+c.y*axis[1]);
+    const minStation=Math.min(...stations),maxStation=Math.max(...stations),midStation=(minStation+maxStation)/2;
+    const midCandidates:number[]=[];
+    for(let i=0;i<pos(carriage).count;i++){
+      const x=pos(carriage).getX(i)/CELL_SIZE+fixture.mapSize/2,y=pos(carriage).getZ(i)/CELL_SIZE+fixture.mapSize/2;
+      const station=x*axis[0]+y*axis[1];
+      if(Math.abs(station-midStation)<1.25)midCandidates.push(i);
+    }
+    expect(midCandidates.length).toBeGreaterThan(0);
+    const interior:number[]=[];
+    for(let i=0;i<pos(carriage).count;i++){
+      const p=pos(carriage),x=p.getX(i)/CELL_SIZE+fixture.mapSize/2,y=p.getZ(i)/CELL_SIZE+fixture.mapSize/2;
+      const station=x*axis[0]+y*axis[1];
+      if((station-minStation)*CELL_SIZE>10&&(maxStation-station)*CELL_SIZE>10)interior.push(i);
+    }
+    expect(interior.length).toBeGreaterThan(0);
+    for(const i of interior){expect(Math.abs(col.getX(i)-asphalt.r)).toBeLessThanOrEqual(.02);expect(Math.abs(col.getY(i)-asphalt.g)).toBeLessThanOrEqual(.02);expect(Math.abs(col.getZ(i)-asphalt.b)).toBeLessThanOrEqual(.02);expect(pos(carriage).getY(i)-fixture.groundAt(pos(carriage).getX(i)/CELL_SIZE+fixture.mapSize/2,pos(carriage).getZ(i)/CELL_SIZE+fixture.mapSize/2)).toBeCloseTo(.07,2);}
+    expect(kerbs).toHaveLength(2);
+    for(const kerb of kerbs){
+      const p=pos(kerb);let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
+      for(let i=0;i<p.count;i++){
+        const x=p.getX(i),z=p.getZ(i),gx=x/CELL_SIZE+fixture.mapSize/2,gy=z/CELL_SIZE+fixture.mapSize/2;
+        minX=Math.min(minX,x);maxX=Math.max(maxX,x);minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);
+        expect(Number.isFinite(p.getY(i))).toBe(true);expect(Math.abs(p.getY(i)-fixture.groundAt(gx,gy)-.12)).toBeLessThanOrEqual(.2);
+        const acrossOffset=gx*across[0]+gy*across[1];
+        const carriageAcross=fixture.carriage.map(c=>c.x*across[0]+c.y*across[1]);
+        const minAcross=Math.min(...carriageAcross)-.5,maxAcross=Math.max(...carriageAcross)+.5;
+        expect(Math.min(Math.abs(acrossOffset-minAcross),Math.abs(acrossOffset-maxAcross))*CELL_SIZE).toBeLessThanOrEqual(.4);
+      }
+      const width=Math.min(maxX-minX,maxZ-minZ);
+      expect(width).toBeGreaterThanOrEqual(.15);expect(width).toBeLessThanOrEqual(.30);
+    }
+    const fadeVertices:number[]=[];
+    for(let i=0;i<pos(carriage).count;i++){
+      const p=pos(carriage),gx=p.getX(i)/CELL_SIZE+fixture.mapSize/2,gy=p.getZ(i)/CELL_SIZE+fixture.mapSize/2;
+      const station=gx*axis[0]+gy*axis[1];
+      if(Math.min(station-minStation,maxStation-station)*CELL_SIZE<=6)fadeVertices.push(i);
+    }
+    expect(fadeVertices.length).toBeGreaterThan(0);
+    expect(fadeVertices.some(i=>Math.hypot(col.getX(i)-verge.r,col.getY(i)-verge.g,col.getZ(i)-verge.b)<Math.hypot(asphalt.r-verge.r,asphalt.g-verge.g,asphalt.b-verge.b)||pos(carriage).getY(i)-fixture.groundAt(pos(carriage).getX(i)/CELL_SIZE+fixture.mapSize/2,pos(carriage).getZ(i)/CELL_SIZE+fixture.mapSize/2)<.06)).toBe(true);
+    // Both terminal fade zones occupy ten metres of the sampled cell surface.
+    for(const edge of ["min","max"]){const surfaceStations:number[]=[];for(let i=0;i<pos(carriage).count;i++){const p=pos(carriage),s=p.getX(i)/CELL_SIZE*axis[0]+p.getZ(i)/CELL_SIZE*axis[1];surfaceStations.push(s);}const extreme=edge==="min"?Math.min(...surfaceStations):Math.max(...surfaceStations),near=surfaceStations.filter(s=>Math.abs(s-extreme)*CELL_SIZE<=10.01);expect(near.length).toBeGreaterThan(0);expect(near.length).toBeLessThan(pos(carriage).count);}
+    for(const m of [carriage,...verges,...kerbs]){const p=pos(m);for(let i=0;i<p.count;i++){const gx=p.getX(i)/CELL_SIZE+fixture.mapSize/2,gy=p.getZ(i)/CELL_SIZE+fixture.mapSize/2,y=p.getY(i);expect(Number.isFinite(y)).toBe(true);expect(Math.abs(y-fixture.groundAt(gx,gy))).toBeLessThanOrEqual(.25);}}
+  });
   it.each(cases.map(([kind]) => kind))("covers all rendered %s geometry with finite terrain", (kind) => {
     const fixture = pickSlopeFixture(kind), window = heightfieldWindow(fixture);
     expect((window.maxGx-window.minGx)*CELL_SIZE).toBeLessThanOrEqual(320);
