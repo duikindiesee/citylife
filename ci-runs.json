@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-22T14:40:16.893Z",
+  "updatedAt": "2026-11-22T15:11:29.180Z",
   "runs": [
     {
       "runId": 45033930331,
@@ -77,6 +77,85 @@
           "startedAt": "2026-11-22T14:38:41Z",
           "completedAt": "2026-11-22T14:38:54Z",
           "durationSeconds": 13
+        }
+      ]
+    },
+    {
+      "runId": 45033930292,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/45033930292",
+      "event": "pull_request",
+      "branch": "forge/picket-fence-starter-garage",
+      "sha": "79f7a20ee75d64e339ddd34c0b1eb1302037c335",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/79f7a20ee75d64e339ddd34c0b1eb1302037c335",
+      "pullRequestNumbers": "#583",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/583",
+      "pullRequests": [
+        {
+          "number": 583,
+          "url": "https://github.com/duikindiesee/citylife/pull/583"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "cancelled",
+      "startedAt": "2026-11-22T14:38:38Z",
+      "completedAt": "2026-11-22T15:11:17Z",
+      "durationSeconds": 1959,
+      "runnerSummary": "kooker2-citylife-cpu-2",
+      "jobs": [
+        {
+          "id": 137243755919,
+          "name": "unit-and-build",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker2-citylife-cpu-2",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-cpu",
+            "kooker2-cpu"
+          ],
+          "startedAt": "2026-11-22T14:40:09Z",
+          "completedAt": "2026-11-22T15:11:03Z",
+          "durationSeconds": 1854
+        },
+        {
+          "id": 137243756191,
+          "name": "e2e-browser",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-11-22T14:40:06Z",
+          "completedAt": "2026-11-22T15:11:04Z",
+          "durationSeconds": 1858
+        },
+        {
+          "id": 137252490028,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker2-citylife-cpu-2",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-cpu",
+            "kooker2-cpu"
+          ],
+          "startedAt": "2026-11-22T15:11:07Z",
+          "completedAt": "2026-11-22T15:11:16Z",
+          "durationSeconds": 9
         }
       ]
     },
@@ -13126,45 +13205,6 @@
           "startedAt": "2026-10-13T07:44:20Z",
           "completedAt": "2026-10-13T07:45:28Z",
           "durationSeconds": 68
-        }
-      ]
-    },
-    {
-      "runId": 38364579407,
-      "workflowName": "Secret scan",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38364579407",
-      "event": "pull_request",
-      "branch": "candidate/road-integration-candidate",
-      "sha": "c03f0d2deafbc9ec7e55c54018306c0cb8073088",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/c03f0d2deafbc9ec7e55c54018306c0cb8073088",
-      "pullRequestNumbers": "#564",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
-      "pullRequests": [
-        {
-          "number": 564,
-          "url": "https://github.com/duikindiesee/citylife/pull/564"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-13T07:44:17Z",
-      "completedAt": "2026-10-13T07:44:30Z",
-      "durationSeconds": 13,
-      "runnerSummary": "GitHub Actions 1000011064",
-      "jobs": [
-        {
-          "id": 115186529190,
-          "name": "Gitleaks full-history scan",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000011064",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-24.04"
-          ],
-          "startedAt": "2026-10-13T07:44:21Z",
-          "completedAt": "2026-10-13T07:44:30Z",
-          "durationSeconds": 9
         }
       ]
     }
