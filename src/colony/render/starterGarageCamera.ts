@@ -90,10 +90,17 @@ export function testbedCameraPose(mode:TestbedCameraMode,t:number,info:TestbedPa
  if(mode==="slope-side") {const centre=info.plotCentre,signs=[1,-1];let best:[number,number,number]|null=null,bestGround=Infinity;for(const sign of signs){const x=centre[0]+left[0]*34*sign,z=centre[2]+left[1]*34*sign,gx=x/CELL_SIZE+info.mapSize/2,gy=z/CELL_SIZE+info.mapSize/2,ground=groundAt?groundAt(gx,gy):0;if(ground<bestGround){bestGround=ground;best=[x,ground+3,z];}}const look=houseTarget??[centre[0],bestGround+2,centre[2]];return slopeCameraPose(mode,info,groundAt??(()=>0),{position:best!,lookAt:look});}
  const door=v(garage[0]+d[0]*4,garage[1]+1.5,garage[2]+d[1]*4);
  if(mode==="aerial") {const pose={position:at(g,45,28),lookAt:door};return groundAt?slopeCameraPose(mode,info,groundAt,pose):pose;}
- if(mode==="street-mixed") return slopeCameraPose(mode,info,groundAt??(()=>0),{position:at(g,8,45,-20),lookAt:at(g,60,0,0)});
+ if(mode==="street-mixed") {
+  const centre=rowCentre??info.plotCentre;
+  const target=houseTarget??[centre[0],centre[1]+2,centre[2]];
+  const position:[number,number,number]=[centre[0]+d[0]*50,0,centre[2]+d[1]*50];
+  const lookAt:[number,number,number]=[(centre[0]+target[0])/2,(centre[1]+target[1])/2,(centre[2]+target[2])/2];
+  if(groundAt){const gx=position[0]/CELL_SIZE+info.mapSize/2,gy=position[2]/CELL_SIZE+info.mapSize/2;position[1]=groundAt(gx,gy)+32;}
+  return slopeCameraPose(mode,info,groundAt??(()=>0),{position,lookAt});
+ }
  if(mode==="street-view") return slopeCameraPose(mode,info,groundAt??(()=>0),{position:at(g,8,1.7,-8),lookAt:at(g,55,1.7,-8)});
- if(mode==="for-sale-board"||mode==="board") { const board=boardWorld??at(g,4.2,1.7,3.5),base={position:[board[0]-d[0]*7,board[1]+2.2,board[2]-d[1]*7] as [number,number,number],lookAt:board}; return mode==="for-sale-board"?slopeCameraPose(mode,info,groundAt??(()=>0),base):base; }
- if(mode==="board-line") {const centre=boardWorld??rowCentre??g;const lookAt:[number,number,number]=[centre[0],centre[1]+.8,centre[2]],position:[number,number,number]=[centre[0]-d[0]*14,centre[1]+2.2,centre[2]-d[1]*14];return slopeCameraPose(mode,info,groundAt??(()=>0),{position,lookAt});}
+ if(mode==="for-sale-board"||mode==="board") { const board=boardWorld??at(g,4.2,1.7,3.5);let dx=r[0]-board[0],dz=r[2]-board[2],length=Math.hypot(dx,dz);if(length<1e-6){dx=d[0];dz=d[1];length=1;}dx/=length;dz/=length;let distance=10;if(boardWorld&&Math.hypot(r[0]-boardWorld[0],r[2]-boardWorld[2])<1e-6&&(board[0]+dx*distance-info.plotCentre[0])**2+(board[2]+dz*distance-info.plotCentre[2])**2<(board[0]-info.plotCentre[0])**2+(board[2]-info.plotCentre[2])**2){dx=-dx;dz=-dz;}const position:[number,number,number]=[board[0]+dx*distance,board[1]+2.2,board[2]+dz*distance],lookAt:[number,number,number]=[board[0],board[1]+.8,board[2]];if(groundAt){position[1]=groundAt(position[0]/CELL_SIZE+info.mapSize/2,position[2]/CELL_SIZE+info.mapSize/2)+2.2;}const base={position,lookAt}; return mode==="for-sale-board"?slopeCameraPose(mode,info,groundAt??(()=>0),base):base; }
+ if(mode==="board-line") {const centre=boardWorld??rowCentre??g;let dx=r[0]-centre[0],dz=r[2]-centre[2],length=Math.hypot(dx,dz);if(length<1e-6){dx=d[0];dz=d[1];length=1;}dx/=length;dz/=length;const distance=12,offset=3,position:[number,number,number]=[centre[0]+dx*distance+left[0]*offset,0,centre[2]+dz*distance+left[1]*offset],lookAt:[number,number,number]=[centre[0],centre[1]+.8,centre[2]];if(groundAt)position[1]=groundAt(position[0]/CELL_SIZE+info.mapSize/2,position[2]/CELL_SIZE+info.mapSize/2)+2.2;return slopeCameraPose(mode,info,groundAt??(()=>0),{position,lookAt});}
  if(mode==="street-gate") return slopeCameraPose(mode,info,groundAt??(()=>0),{position:at(g,14,1.5,-6),lookAt:door});
  if(mode==="driveway-approach") {const pose={position:at(g,groundAt?-35:-12,groundAt?1.7:1.4),lookAt:door};return groundAt?slopeCameraPose(mode,info,groundAt,pose):pose;}
  if(mode==="garage-closed"||mode==="garage-open") {const pose={position:at(garage,11,1.5),lookAt:door};return groundAt?slopeCameraPose(mode,info,groundAt,pose):pose;}

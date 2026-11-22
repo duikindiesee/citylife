@@ -59,12 +59,25 @@ describe("sloped fence and garage testbed fixtures", () => {
       const camera=new THREE.PerspectiveCamera(48,16/9,0.1,2000);camera.position.set(...pose.position);camera.lookAt(...pose.lookAt);camera.updateMatrixWorld(true);
       expect(camera.up.clone().applyQuaternion(camera.quaternion).dot(new THREE.Vector3(0,1,0)),`${kind}/${mode} camera up`).toBeGreaterThan(0.5);
       const project=(p:[number,number,number])=>new THREE.Vector3(...p).project(camera);
+      if(mode==="street-mixed") {
+        const house=housePoseForParcel(fixture.parcel,fixture.mapSize,fixture.grading),centre=project([house.position[0],fixture.grading.houseFloorY+3,house.position[2]]);
+        expect(Math.abs(centre.x),`${kind}/${mode} selected house centre x`).toBeLessThanOrEqual(.7);
+        expect(Math.abs(centre.y),`${kind}/${mode} selected house centre y`).toBeLessThanOrEqual(.7);
+        const visibleBoard=project(boardWorld??info.gateWorld);
+        expect(Math.abs(visibleBoard.x),`${kind}/${mode} board x`).toBeLessThanOrEqual(.95);
+        expect(Math.abs(visibleBoard.y),`${kind}/${mode} board y`).toBeLessThanOrEqual(.95);
+      }
       if(mode==="slope-aerial"||mode==="slope-side"){
         const house=housePoseForParcel(fixture.parcel,fixture.mapSize,fixture.grading),centre=project([house.position[0],fixture.grading.houseFloorY+3,house.position[2]]);
         expect(Math.abs(centre.x),`${kind}/${mode} house centre x`).toBeLessThanOrEqual(.6);expect(Math.abs(centre.y),`${kind}/${mode} house centre y`).toBeLessThanOrEqual(.6);expect(centre.z,`${kind}/${mode} house centre depth`).toBeGreaterThan(-1);expect(centre.z).toBeLessThan(1);
         for(const [gx,gy] of house.corners){const corner=project([(gx-fixture.mapSize/2)*CELL_SIZE,fixture.grading.houseFloorY+3,(gy-fixture.mapSize/2)*CELL_SIZE]);expect(Math.abs(corner.x),`${kind}/${mode} house corner x`).toBeLessThanOrEqual(1);expect(Math.abs(corner.y),`${kind}/${mode} house corner y`).toBeLessThanOrEqual(1);}
       }
-      if(mode==="for-sale-board"||mode==="board-line") {const target=boardWorld??info.gateWorld,ndc=project(target);expect(Math.abs(ndc.x),`${kind}/${mode} board x`).toBeLessThanOrEqual(.9);expect(Math.abs(ndc.y),`${kind}/${mode} board y`).toBeLessThanOrEqual(.9);}
+      if(mode==="for-sale-board"||mode==="board-line") {
+        const target=boardWorld??info.gateWorld,ndc=project([target[0],target[1]+.8,target[2]]),street=board?parcelStreetDirection(board):fixture.parcel?parcelStreetDirection(fixture.parcel):info.streetDir;
+        expect((pose.position[0]-target[0])*street[0]+(pose.position[2]-target[2])*street[1],`${kind}/${mode} camera on street side`).toBeGreaterThan(0);
+        expect(Math.abs(ndc.x),`${kind}/${mode} board x`).toBeLessThanOrEqual(.6);
+        expect(Math.abs(ndc.y),`${kind}/${mode} board y`).toBeLessThanOrEqual(.6);
+      }
     }
   });
   it.each(cases.map(([kind]) => kind))("connects every %s fixture driveway to its real street", (kind) => {
