@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-22T14:39:11.009Z",
+  "updatedAt": "2026-11-22T14:39:44.085Z",
   "runs": [
+    {
+      "runId": 45033930331,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/45033930331",
+      "event": "pull_request",
+      "branch": "forge/picket-fence-starter-garage",
+      "sha": "79f7a20ee75d64e339ddd34c0b1eb1302037c335",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/79f7a20ee75d64e339ddd34c0b1eb1302037c335",
+      "pullRequestNumbers": "#583",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/583",
+      "pullRequests": [
+        {
+          "number": 583,
+          "url": "https://github.com/duikindiesee/citylife/pull/583"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-22T14:38:38Z",
+      "completedAt": "2026-11-22T14:39:33Z",
+      "durationSeconds": 55,
+      "runnerSummary": "GitHub Actions 1000013137",
+      "jobs": [
+        {
+          "id": 137243363619,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000013137",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-11-22T14:38:41Z",
+          "completedAt": "2026-11-22T14:39:32Z",
+          "durationSeconds": 51
+        }
+      ]
+    },
     {
       "runId": 45033930296,
       "workflowName": "Secret scan",
@@ -13086,49 +13125,6 @@
           "startedAt": "2026-10-13T04:43:41Z",
           "completedAt": "2026-10-13T04:44:48Z",
           "durationSeconds": 67
-        }
-      ]
-    },
-    {
-      "runId": 38347838328,
-      "workflowName": "CI",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38347838328",
-      "event": "pull_request",
-      "branch": "candidate/road-integration-candidate",
-      "sha": "d782814a1b690e02e565d5f289902c72495b2e2e",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/d782814a1b690e02e565d5f289902c72495b2e2e",
-      "pullRequestNumbers": "#564",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
-      "pullRequests": [
-        {
-          "number": 564,
-          "url": "https://github.com/duikindiesee/citylife/pull/564"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-13T04:43:38Z",
-      "completedAt": "2026-10-13T05:42:10Z",
-      "durationSeconds": 3512,
-      "runnerSummary": "kooker1-citylife-gpu",
-      "jobs": [
-        {
-          "id": 115133252057,
-          "name": "verify",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-13T04:43:41Z",
-          "completedAt": "2026-10-13T05:42:10Z",
-          "durationSeconds": 3509
         }
       ]
     }
