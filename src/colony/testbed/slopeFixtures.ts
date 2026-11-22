@@ -13,6 +13,7 @@ export interface SlopeFixture {
   grading: PlotGrading;
   groundAt: GroundAt;
   carriage: Cell[];
+  verge: Cell[];
   mapSize: number;
   runtime: ColonyRuntime;
 }
@@ -52,6 +53,7 @@ export function pickSlopeFixture(kind: SlopeFixtureKind): SlopeFixture {
   const grading = gradePlot(parcel, groundAt);
   const toMetres = (cell: Cell) => Math.hypot(cell.x - parcel.gate.x, cell.y - parcel.gate.y) * 4;
   const neighbours = lots.filter((lot) => toMetres(lot.gate) <= 110);
-  const neighborhood = runtime.sim.state.neighborhood!;
-  return { kind, seed, parcel, neighbours, grading, groundAt, carriage: neighborhood.carriage, mapSize: terrain.size, runtime };
+  const carriage = runtime.carriageCellsNear(parcel.gate.x, parcel.gate.y, 40);
+  const verge = runtime.vergeCellsNear(parcel.gate.x, parcel.gate.y, 40);
+  return { kind, seed, parcel, neighbours, grading, groundAt, carriage, verge, mapSize: terrain.size, runtime };
 }

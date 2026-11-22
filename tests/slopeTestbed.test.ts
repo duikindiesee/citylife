@@ -7,14 +7,44 @@ import { starterGaragePlacement } from "../src/colony/render/starterGaragePlacem
 import { parcelStreetDirection } from "../src/colony/parcelGeometry";
 import { SLOPE_LIMITS } from "../src/colony/slope/plotGrading";
 import { CELL_SIZE } from "../src/colony/scale";
+import { testbedCameraPose, testbedParcelInfo, type TestbedCameraMode } from "../src/colony/render/starterGarageCamera";
 
 const cases = [
   ["downhill", "steep-downhill"],
   ["uphill", "steep-uphill"],
   ["gentle", "gentle"],
 ] as const;
+const cameraModes: TestbedCameraMode[] = ["aerial","street-gate","driveway-approach","garage-closed","garage-open","drive","walk","board","board-line","street-mixed","for-sale-board","street-view","slope-aerial","slope-side"];
+const eyeLevelModes = new Set<TestbedCameraMode>(["board", "walk", "drive", "garage-closed", "garage-open", "street-gate", "driveway-approach", "street-view"]);
 
 describe("sloped fence and garage testbed fixtures", () => {
+  it.each(cases.map(([kind]) => kind))("keeps every %s fixture camera above its ground sightline", (kind) => {
+    const fixture = pickSlopeFixture(kind);
+    const info = testbedParcelInfo(fixture.parcel, fixture.mapSize, fixture.carriage);
+    const board = fixture.neighbours.find((p) => p.id !== fixture.parcel.id);
+    const boardWorld = board ? forSaleBoardPlacement(board, fixture.mapSize, fixture.groundAt).position : undefined;
+    for (const mode of cameraModes) {
+      const pose = testbedCameraPose(mode, 7, info, fixture.groundAt, boardWorld, info.plotCentre);
+      const minClearance = eyeLevelModes.has(mode) ? 1.2 : 2;
+      const gx = pose.position[0] / CELL_SIZE + fixture.mapSize / 2;
+      const gy = pose.position[2] / CELL_SIZE + fixture.mapSize / 2;
+      expect(pose.position[1] - fixture.groundAt(gx, gy), `${kind}/${mode} camera clearance`).toBeGreaterThanOrEqual(minClearance);
+      const distance = Math.hypot(pose.lookAt[0] - pose.position[0], pose.lookAt[2] - pose.position[2]);
+      const samples = Math.max(1, Math.ceil(distance / 2));
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const x = pose.position[0] + (pose.lookAt[0] - pose.position[0]) * t;
+        const z = pose.position[2] + (pose.lookAt[2] - pose.position[2]) * t;
+        expect(pose.position[1], `${kind}/${mode} sightline below terrain at ${t}`).toBeGreaterThanOrEqual(fixture.groundAt(x / CELL_SIZE + fixture.mapSize / 2, z / CELL_SIZE + fixture.mapSize / 2));
+      }
+    }
+  });
+  it.each(cases.map(([kind]) => kind))("connects every %s fixture driveway to its real street", (kind) => {
+    const fixture = pickSlopeFixture(kind);
+    expect(fixture.carriage.length).toBeGreaterThanOrEqual(20);
+    const nearest = Math.min(...fixture.carriage.map((cell) => Math.hypot(cell.x - fixture.parcel.gate.x, cell.y - fixture.parcel.gate.y)));
+    expect(nearest).toBeLessThanOrEqual(5);
+  });
   it.each(cases)("places the %s fixture on valid graded ground", (kind, expectedBand) => {
     const fixture = pickSlopeFixture(kind);
     const { parcel, grading, groundAt, mapSize } = fixture;

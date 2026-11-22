@@ -1030,6 +1030,8 @@ export class ColonyRuntime {
   private cityPlan!: CityPlan;
   // Spec 075 — the buildable neighbourhood: a street of lots where citizens raise voxel homes.
   private neighborhood!: Neighborhood;
+  // Satellite hamlets retain their local street dressing for read-only scene/testbed queries.
+  private satelliteNeighborhoods: Neighborhood[] = [];
   // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
   private radio: RadioState = createRadio();
   // TV mode hides the operator UI so you can put the city on any screen and just watch.
@@ -1353,7 +1355,7 @@ export class ColonyRuntime {
     })();
     // Spec 086 — SATELLITE HAMLETS in the woods + hills, each routed + placed AROUND everything already
     // taken (the coast, the commercial reserve, prior hamlets), so scattered clusters never overlap.
-    const satellites: Neighborhood[] = [];
+    const satellites = this.satelliteNeighborhoods;
     for (const a of findSatelliteAnchors(
       t0,
       { x: t0.landing.x, y: t0.landing.y },
@@ -7914,6 +7916,26 @@ export class ColonyRuntime {
   /** The neighbourhood lots (for the renderer + the HUD). */
   lots(): Lot[] {
     return this.neighborhood.lots;
+  }
+
+  /** Nearby carriage cells across the landing and satellite hamlets. */
+  carriageCellsNear(gx: number, gy: number, radiusCells: number): Cell[] {
+    return this.streetCellsNear(gx, gy, radiusCells, "carriage");
+  }
+
+  /** Nearby verge cells across the landing and satellite hamlets. */
+  vergeCellsNear(gx: number, gy: number, radiusCells: number): Cell[] {
+    return this.streetCellsNear(gx, gy, radiusCells, "verge");
+  }
+
+  private streetCellsNear(gx: number, gy: number, radiusCells: number, kind: "carriage" | "verge"): Cell[] {
+    const radius = Math.max(0, radiusCells);
+    const cells = [this.neighborhood, ...this.satelliteNeighborhoods].flatMap((hood) => hood[kind]);
+    const unique = new Map<string, Cell>();
+    for (const cell of cells) {
+      if (Math.hypot(cell.x - gx, cell.y - gy) <= radius) unique.set(`${cell.x},${cell.y}`, cell);
+    }
+    return [...unique.values()];
   }
 
   /** Spec 078 — Joe the Crab, the founder. Reserve the shore-most homestead as permanently his, raise his

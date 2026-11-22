@@ -62,3 +62,11 @@ board placement, and ground samples for every fence post.
 Pure acceptance lives in `tests/slopeTestbed.test.ts`; the selectors and house pose are
 framework-free in `src/colony/testbed/slopeFixtures.ts` and
 `src/colony/render/housePlacement.ts`.
+
+The fixture's street dressing is queried from the selected parcel's own hamlet and nearby
+satellite hamlets through read-only runtime accessors; the merged road graph alone does not
+retain this local carriage/verge metadata. Acceptance requires at least 20 carriage cells
+within 40 cells of the gate and a carriage cell within 5 cells, so the rendered driveway
+visibly meets a real road. Sloped context parcels remain unsold and use for-sale boards;
+only the selected graded parcel renders the house model, avoiding the envelope placeholder
+on neighbouring plots.
