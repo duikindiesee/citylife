@@ -15,6 +15,7 @@ import { LAND_PRICE_PER_M2_KCO, plotBoardPriceKco, plotSizeM } from "../src/colo
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { garageFootprintInside, starterGaragePlacement } from "../src/colony/render/starterGaragePlacement";
 import { housePoseForParcel } from "../src/colony/render/housePlacement";
+import { carPoseForParcel, carScaleFromNativeSize } from "../src/colony/render/carPlacement";
 import { parcelStreetDirection } from "../src/colony/parcelGeometry";
 import { gradePlot } from "../src/colony/slope/plotGrading";
 
@@ -62,6 +63,30 @@ function generated() {
 }
 
 describe("plot tier table (spec 180 Round 11)", () => {
+  it("scales the Fiat by its longest horizontal axis and seats it on the driveway", () => {
+    const fiat = { x: 1.825, y: 1.01, z: 4.08 };
+    const scale = carScaleFromNativeSize(fiat);
+    const length = Math.max(fiat.x, fiat.z) * scale;
+    const width = Math.min(fiat.x, fiat.z) * scale;
+    expect(length).toBeCloseTo(4.2, 1);
+    expect(width).toBeGreaterThanOrEqual(1.6);
+    expect(width).toBeLessThanOrEqual(2.0);
+    expect(fiat.y * scale).toBeGreaterThanOrEqual(0.9);
+    expect(fiat.y * scale).toBeLessThanOrEqual(2.0);
+    const oldScale = Math.min(4.2 / fiat.x, 2.0 / fiat.y, 1.9 / fiat.z);
+    expect(Math.abs(fiat.z * scale - fiat.z * oldScale)).toBeGreaterThan(0.1);
+    expect(Math.abs(fiat.z * scale - 1.9)).toBeGreaterThan(0.1);
+    expect(Math.max(1.825, 4.08) * carScaleFromNativeSize({ x: 4.08, y: 1.01, z: 1.825 })).toBeCloseTo(4.2, 1);
+
+    const sim = new ColonySim(180);
+    const parcel = makeNeighborhoodAt(sim.state.terrain, sim.state.terrain.landing, { small: false }).parcels[0]!;
+    const pose = carPoseForParcel(parcel, sim.state.terrain.size, () => 3, { ...fiat, min: { x: 0, y: 0, z: 0 } });
+    expect(parcel.driveway.some((cell) => cell.x === pose.cell.x && cell.y === pose.cell.y)).toBe(true);
+    const street = parcelStreetDirection(parcel), inland: [number, number] = [-street[0], -street[1]];
+    expect((pose.cell.x - parcel.gate.x) * inland[0] + (pose.cell.y - parcel.gate.y) * inland[1]).toBeGreaterThan(0);
+    expect(pose.position[1]).toBe(3);
+  });
+
   it("fits the placed ESTATE house, pool and lawn inside the real 28 x 36 m lot",()=>{
     const sim=new ColonySim(180),p=makeNeighborhoodAt(sim.state.terrain,sim.state.terrain.landing,{small:false}).parcels.find(x=>x.id==="lot_1")!;
     expect(p.tier).toBe("ESTATE");
