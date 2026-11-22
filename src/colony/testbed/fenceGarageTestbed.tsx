@@ -7,6 +7,7 @@ import {ColonySim} from "../sim";
 import {pickSlopeFixture, heightfieldWindow, type SlopeFixtureKind} from "./slopeFixtures";
 import {gradePlot} from "../slope/plotGrading";
 import {housePoseForParcel} from "../render/housePlacement";
+import {buildEarthworksGeometry} from "../render/earthworksGeometry";
 import {parcelFencePlacements} from "../render/parcelFencePlacement";
 import {forSaleBoardPlacement} from "../render/forSaleBoardPlacement";
 import {makeNeighborhoodAt,PARCEL_TIER_LABEL} from "../neighborhood";
@@ -49,36 +50,15 @@ function StreetEndKerb({cell}:{cell:{x:number;y:number}}){const alongX=Math.abs(
 function StreetEndApron({cell}:{cell:{x:number;y:number}}){const axis=info.streetDir;const across:[number,number]=[-axis[1],axis[0]];const positions:number[]=[],indices:number[]=[];for(let along=0;along<=.5;along+=.25)for(const side of [-2.5,2.5]){const gx=cell.x+axis[0]*along+across[0]*side,gy=cell.y+axis[1]*along+across[1]*side;positions.push((gx-fixture.mapSize/2)*CELL_SIZE,terrainGround(gx,gy)+.085,(gy-fixture.mapSize/2)*CELL_SIZE);}indices.push(0,1,2,1,3,2);const geometry=new THREE.BufferGeometry();geometry.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);geometry.computeVertexNormals();return <mesh geometry={geometry}><meshStandardMaterial color="#b9c29a" side={THREE.DoubleSide}/></mesh>;}
 function DriveRamp(){const geometry=React.useMemo(()=>{const [streetX,streetY]=info.streetDir,innerX=-streetX,innerY=-streetY;const length=fixture.grading.drive.stationsM.at(-1)??0,steps=Math.max(1,Math.ceil(length));const vertices:number[]=[],indices:number[]=[];for(let i=0;i<=steps;i++){const along=Math.min(length,i),t=length>0?along/length:0;let k=0;while(k<fixture.grading.drive.stationsM.length-2&&fixture.grading.drive.stationsM[k+1]!<along)k++;const a=fixture.grading.drive.stationsM[k]??0,b=fixture.grading.drive.stationsM[k+1]??length,ya=fixture.grading.drive.y[k]??fixture.grading.streetY,yb=fixture.grading.drive.y[k+1]??fixture.grading.garageFloorY;const y=ya+(yb-ya)*(b>a?(along-a)/(b-a):t);const gx=parcel.gate.x+innerX*along/CELL_SIZE,gy=parcel.gate.y+innerY*along/CELL_SIZE;for(const side of [-1,1]){const px=-innerY*side*1.5/CELL_SIZE,py=innerX*side*1.5/CELL_SIZE;vertices.push((gx+px-fixture.mapSize/2)*CELL_SIZE,Math.max(y,terrainGround(gx+px,gy+py)-.25)+.03,(gy+py-fixture.mapSize/2)*CELL_SIZE);}}for(let i=0;i<steps;i++){const a=i*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));g.setIndex(indices);g.computeVertexNormals();return g;},[]);return <mesh geometry={geometry} receiveShadow><meshStandardMaterial color="#d5d1c3" side={THREE.DoubleSide}/></mesh>;}
 function GradingEarthworksForParcel({p,grading}:{p:Parcel;grading:ReturnType<typeof gradePlot>}){
- const pose=housePoseForParcel(p,fixture.mapSize,grading);
- const topY=grading.houseFloorY-.15;
- const street=info.streetDir,side:[number,number]=[-street[1],street[0]];
- const banks=grading.banks.map((bank,index)=>{
-  const sign=index===0?1:-1,half=11.5/2;
-  const inner=[pose.position[0]+street[0]*sign*half,pose.position[2]+street[1]*sign*half];
-  const outer=[inner[0]+street[0]*sign*bank.lengthM,inner[1]+street[1]*sign*bank.lengthM];
-  const left=[side[0]*half,side[1]*half],right=[-side[0]*half,-side[1]*half];
-  const vertices=[
-   inner[0]+left[0],topY,inner[1]+left[1], inner[0]+right[0],topY,inner[1]+right[1],
-   outer[0]+right[0],terrainGround((outer[0]+right[0])/CELL_SIZE+fixture.mapSize/2,(outer[1]+right[1])/CELL_SIZE+fixture.mapSize/2),outer[1]+right[1],
-   outer[0]+left[0],terrainGround((outer[0]+left[0])/CELL_SIZE+fixture.mapSize/2,(outer[1]+left[1])/CELL_SIZE+fixture.mapSize/2),outer[1]+left[1],
-  ];
+ const pieces=React.useMemo(()=>buildEarthworksGeometry(grading,p,terrainGround,fixture.mapSize),[p,grading]);
+ return <group>{pieces.map((piece,index)=>{
   const geometry=new THREE.BufferGeometry();
-  geometry.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));
-  geometry.setIndex([0,1,2,0,2,3]);geometry.computeVertexNormals();
-  return <mesh key={`bank${index}`} geometry={geometry}><meshStandardMaterial color="#b5a58d" side={THREE.DoubleSide}/></mesh>;
- });
- return <group>
-  <mesh position={[pose.position[0],topY-.12,pose.position[2]]}><boxGeometry args={[11.5,.24,11.5]}/><meshStandardMaterial color="#b5a58d"/></mesh>
-  {banks}
-  {grading.retainingWalls.flatMap((wall,i)=>Array.from({length:wall.terraces},(_,step)=>{
-   const x0=(wall.from[0]-fixture.mapSize/2)*CELL_SIZE,z0=(wall.from[1]-fixture.mapSize/2)*CELL_SIZE;
-   const x1=(wall.to[0]-fixture.mapSize/2)*CELL_SIZE,z1=(wall.to[1]-fixture.mapSize/2)*CELL_SIZE;
-   const length=Math.hypot(x1-x0,z1-z0),height=wall.faceHeightM;
-   return <mesh key={`wall${i}-${step}`} position={[(x0+x1)/2,topY-height*(step+.5),(z0+z1)/2]} rotation={[0,Math.atan2(-(z1-z0),x1-x0),0]}>
-    <boxGeometry args={[length,height,.23]}/><meshStandardMaterial color="#9a948a"/>
-   </mesh>;
-  }))}
- </group>;
+  geometry.setAttribute("position",new THREE.Float32BufferAttribute(piece.vertices??[],3));
+  geometry.computeVertexNormals();
+  return <mesh key={`${piece.kind}-${piece.material}-${index}`} geometry={geometry}>
+   <meshStandardMaterial color={piece.material} side={THREE.DoubleSide}/>
+  </mesh>;
+ })}</group>;
 }
 function Scene(){const store=useThree();const {camera,scene}=store;const params=new URLSearchParams(location.search);const mode=resolveTestbedCameraMode(params.get("cam"));const claimed=params.get("claimed")!=="0";const initial=Number(params.get("t")||0);const doorOverride=params.get("door")==="open"?"open":params.get("door")==="closed"?"closed":null;const gateClosed=params.get("gate")==="closed";const timeRef=useRef(initial);const garageRef=React.useRef<THREE.Group>(null);
  const applyDoor=(progress:number)=>{const door=garageRef.current?.getObjectByName("door");if(!door)return;const clip=useGLTF("/assets/citylife/props/starter-garage.glb").animations.find(a=>a.name==="door_open");const pt=clip?.tracks.find(track=>track.name.endsWith("door.position")),qt=clip?.tracks.find(track=>track.name.endsWith("door.quaternion"));if(pt&&pt.values.length>=6){const closed=Array.from(pt.values.slice(0,3)),open=Array.from(pt.values.slice(pt.values.length-3));door.userData.closedPosition=closed;door.userData.openPosition=open;door.position.set(...closed.map((v,i)=>v+(open[i]!-v)*progress) as [number,number,number]);}if(qt&&qt.values.length>=8){const closed=Array.from(qt.values.slice(0,4)),open=Array.from(qt.values.slice(qt.values.length-4));door.quaternion.copy(new THREE.Quaternion(...closed as [number,number,number,number]).slerp(new THREE.Quaternion(...open as [number,number,number,number]),progress));}door.userData.testbedDoorProgress=progress;door.updateMatrix();};

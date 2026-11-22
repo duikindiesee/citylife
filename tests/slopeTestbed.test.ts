@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { pickSlopeFixture, heightfieldWindow } from "../src/colony/testbed/slopeFixtures";
 import { housePoseForParcel } from "../src/colony/render/housePlacement";
+import { buildEarthworksGeometry, buildFixtureObjects } from "../src/colony/render/earthworksGeometry";
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { forSaleBoardPlacement } from "../src/colony/render/forSaleBoardPlacement";
 import { starterGaragePlacement } from "../src/colony/render/starterGaragePlacement";
@@ -131,4 +132,59 @@ describe("sloped fence and garage testbed fixtures", () => {
       expect(board.position[1]).toBeGreaterThan(0.5);
     }
   });
+  it("builds seated retaining earthworks and upright fixture objects", () => {
+    const counts: Record<string, Record<string, number>> = {};
+    for (const kind of ["downhill", "uphill"] as const) {
+      const fixture=pickSlopeFixture(kind), pieces=buildEarthworksGeometry(fixture.grading,fixture.parcel,fixture.groundAt,fixture.mapSize);
+      counts[kind] = {};
+      for (const item of pieces) counts[kind]![item.kind] = (counts[kind]![item.kind] ?? 0) + (item.vertices?.length ?? 0) / 12;
+      expect(pieces.some(piece => (piece.kind === "wall" || piece.kind === "bank" || piece.kind === "bench") && (piece.vertices?.length ?? 0) > 0), `${kind} must render earthworks`).toBe(true);
+      const wallQuads=pieces.filter(piece=>piece.kind==="wall"&&piece.material==="#9a948a"&&piece.vertices).flatMap(piece=>Array.from({length:piece.vertices!.length/12},(_,i)=>piece.vertices!.slice(i*12,i*12+12)));
+      const benchQuads=pieces.filter(piece=>(piece.kind==="bench"||piece.kind==="bank")&&piece.vertices).flatMap(piece=>Array.from({length:piece.vertices!.length/12},(_,i)=>piece.vertices!.slice(i*12,i*12+12)));
+      const wallTopVertices=wallQuads.flatMap(quad=>[[quad[0]!,quad[1]!,quad[2]!],[quad[3]!,quad[4]!,quad[5]!],[quad[6]!,quad[7]!,quad[8]!],[quad[9]!,quad[10]!,quad[11]!]]);
+      for(const piece of pieces.filter(piece=>piece.kind==="wall"&&piece.material==="#7d776e"&&piece.vertices)) for(let q=0;q<piece.vertices!.length;q+=12) {
+        for(const offset of [1,4,7,10]) {
+          const y=piece.vertices![q+offset]!, x=piece.vertices![q+offset-1]!, z=piece.vertices![q+offset+1]!;
+          expect(wallTopVertices.some(([wx,wy,wz])=>Math.abs(y-wy)<=.02&&Math.hypot(x-wx,z-wz)<=.3),`${kind} coping top must align with a wall top`).toBe(true);
+        }
+      }
+      for(const piece of pieces){
+        if(piece.vertices) for(let q=0;q<piece.vertices.length;q+=12){
+          const heights=[1,4,7,10].map(offset=>piece.vertices![q+offset]!);
+          if(piece.kind==="wall"&&piece.material==="#9a948a") {
+            for(const offset of [0,3]) {
+              const x=piece.vertices[q+offset]!,y=piece.vertices[q+offset+1]!,z=piece.vertices[q+offset+2]!,gx=x/CELL_SIZE+fixture.mapSize/2,gy=z/CELL_SIZE+fixture.mapSize/2;
+              const buriedOrAtGround=y<=fixture.groundAt(gx,gy)+.05;
+              const supported=benchQuads.some(bench=>[0,3,6,9].some(benchOffset=>{
+                const bx=bench[benchOffset]!,by=bench[benchOffset+1]!,bz=bench[benchOffset+2]!;
+                return Math.hypot(x-bx,z-bz)<=.6&&Math.abs(y-by)<=.05;
+              }));
+              const wallSupported=wallTopVertices.some(([wx,wy,wz])=>Math.hypot(x-wx,z-wz)<=1.5&&Math.abs(y-wy)<=.05);
+              expect(buriedOrAtGround||supported||wallSupported,`${kind} wall bottom must meet terrain, bench, or lower wall`).toBe(true);
+            }
+            for(const offset of [7,10]) { const x=piece.vertices[q+offset-1]!, y=piece.vertices[q+offset]!, z=piece.vertices[q+offset+1]!, gx=x/CELL_SIZE+fixture.mapSize/2, gy=z/CELL_SIZE+fixture.mapSize/2; expect(y).toBeLessThanOrEqual(Math.max(fixture.grading.houseFloorY,fixture.groundAt(gx,gy))+.2); }
+            for(const [topOffset,bottomOffset] of [[7,1],[10,4]]) {
+              const x=piece.vertices[q+bottomOffset-1]!, z=piece.vertices[q+bottomOffset+1]!, gx=x/CELL_SIZE+fixture.mapSize/2, gy=z/CELL_SIZE+fixture.mapSize/2;
+              expect(piece.vertices[q+topOffset]!-Math.max(piece.vertices[q+bottomOffset]!,fixture.groundAt(gx,gy))).toBeLessThanOrEqual(2.05);
+            }
+          }
+          if(piece.kind==="bank") for(const offset of [6,9]) { const x=piece.vertices[q+offset]!,y=piece.vertices[q+offset+1]!,z=piece.vertices[q+offset+2]!,gx=x/CELL_SIZE+fixture.mapSize/2,gy=z/CELL_SIZE+fixture.mapSize/2;expect(Math.abs(y-fixture.groundAt(gx,gy))).toBeLessThanOrEqual(.05); }
+        }
+      }
+      const objects=buildFixtureObjects(fixture);
+      for(const object of objects){const rotation=new THREE.Euler(...object.rotation),up=new THREE.Vector3(0,1,0).applyEuler(rotation);expect(up.dot(new THREE.Vector3(0,1,0))).toBeGreaterThanOrEqual(.999);expect(object.rotation[0]).toBe(0);expect(object.rotation[2]).toBe(0);}
+      expect(objects.every(o=>o.position.every(Number.isFinite))).toBe(true);
+    }
+    const down=pickSlopeFixture("downhill"), pieces=buildEarthworksGeometry(down.grading,down.parcel,down.groundAt,down.mapSize), lower=pieces.find(p=>p.kind==="lowerStorey"&&p.material==="#b8b0a0");
+    const openingPiece=pieces.find(p=>p.kind==="lowerStorey"&&p.material==="#3a3732");
+    const masonryWallTopTiers=new Set(buildEarthworksGeometry(down.grading,down.parcel,down.groundAt,down.mapSize).filter(p=>p.kind==="wall"&&p.material==="#9a948a"&&p.vertices).flatMap(p=>Array.from({length:p.vertices!.length/12},(_,i)=>Math.round(Math.max(p.vertices![i*12+7]!,p.vertices![i*12+10]!)/.3))));
+    expect(masonryWallTopTiers.size).toBeGreaterThanOrEqual(2);
+    expect(lower).toBeDefined();expect(lower!.topY.every(y=>Math.abs(y-down.grading.houseFloorY)<=.02)).toBe(true);
+    const street=parcelStreetDirection(down.parcel), opening=openingPiece!.vertices!.slice(0,12), oa=new THREE.Vector3(opening[0]!,opening[1]!,opening[2]!), ob=new THREE.Vector3(opening[3]!,opening[4]!,opening[5]!), oc=new THREE.Vector3(opening[6]!,opening[7]!,opening[8]!);
+    const openingNormal=oc.clone().sub(oa).cross(ob.clone().sub(oa)).normalize();
+    expect(openingNormal.x*street[0]+openingNormal.z*street[1]).toBeGreaterThan(.99);
+    expect(lower!.topY.every(y=>y<=down.grading.houseFloorY+.02)).toBe(true);
+    for (const kind of ["downhill", "uphill"] as const) expect(Object.values(counts[kind]!).reduce((sum, n) => sum + n, 0), `${kind} quad counts: ${JSON.stringify(counts[kind])}`).toBeGreaterThan(0);
+  });
+
 });
