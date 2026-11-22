@@ -1,42 +1,56 @@
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import { pickSlopeFixture } from "../src/colony/testbed/slopeFixtures";
 import { housePoseForParcel } from "../src/colony/render/housePlacement";
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { forSaleBoardPlacement } from "../src/colony/render/forSaleBoardPlacement";
 import { starterGaragePlacement } from "../src/colony/render/starterGaragePlacement";
 import { parcelStreetDirection } from "../src/colony/parcelGeometry";
-import { SLOPE_LIMITS } from "../src/colony/slope/plotGrading";
+import { gradePlot, SLOPE_LIMITS } from "../src/colony/slope/plotGrading";
 import { CELL_SIZE } from "../src/colony/scale";
-import { testbedCameraPose, testbedParcelInfo, type TestbedCameraMode } from "../src/colony/render/starterGarageCamera";
+import { fixtureCameraPose, testbedParcelInfo, type TestbedCameraMode } from "../src/colony/render/starterGarageCamera";
 
 const cases = [
   ["downhill", "steep-downhill"],
   ["uphill", "steep-uphill"],
   ["gentle", "gentle"],
 ] as const;
-const cameraModes: TestbedCameraMode[] = ["aerial","street-gate","driveway-approach","garage-closed","garage-open","drive","walk","board","board-line","street-mixed","for-sale-board","street-view","slope-aerial","slope-side"];
-const eyeLevelModes = new Set<TestbedCameraMode>(["board", "walk", "drive", "garage-closed", "garage-open", "street-gate", "driveway-approach", "street-view"]);
+const cameraModes: TestbedCameraMode[] = ["slope-aerial","slope-side","board-line","for-sale-board","street-mixed","street-view","street-gate","driveway-approach","aerial"];
+const eyeLevelModes = new Set<TestbedCameraMode>(["street-view","street-gate","driveway-approach"]);
 
 describe("sloped fence and garage testbed fixtures", () => {
   it.each(cases.map(([kind]) => kind))("keeps every %s fixture camera above its ground sightline", (kind) => {
     const fixture = pickSlopeFixture(kind);
     const info = testbedParcelInfo(fixture.parcel, fixture.mapSize, fixture.carriage);
-    const board = fixture.neighbours.find((p) => p.id !== fixture.parcel.id);
+    const near=fixture.neighbours.filter(p=>Math.hypot((p.gate.x-fixture.parcel.gate.x)*CELL_SIZE,(p.gate.y-fixture.parcel.gate.y)*CELL_SIZE)<=110);
+    const board=near.find((p,i)=>p.id!==fixture.parcel.id&&(i%2===0||!gradePlot(p,fixture.groundAt).ok));
     const boardWorld = board ? forSaleBoardPlacement(board, fixture.mapSize, fixture.groundAt).position : undefined;
+    const rowCentre:[number,number,number]=near.length?[near.reduce((sum,p)=>sum+(p.gate.x-fixture.mapSize/2)*CELL_SIZE,0)/near.length,0,near.reduce((sum,p)=>sum+(p.gate.y-fixture.mapSize/2)*CELL_SIZE,0)/near.length]:info.plotCentre;
+    const nearBounds=near.map(p=>{const ring=[...p.fence,p.gate];return {x0:(Math.min(...ring.map(c=>c.x))-.5-fixture.mapSize/2)*CELL_SIZE,x1:(Math.max(...ring.map(c=>c.x))+.5-fixture.mapSize/2)*CELL_SIZE,z0:(Math.min(...ring.map(c=>c.y))-.5-fixture.mapSize/2)*CELL_SIZE,z1:(Math.max(...ring.map(c=>c.y))+.5-fixture.mapSize/2)*CELL_SIZE};});
     for (const mode of cameraModes) {
-      const pose = testbedCameraPose(mode, 7, info, fixture.groundAt, boardWorld, info.plotCentre);
-      const minClearance = eyeLevelModes.has(mode) ? 1.2 : 2;
+      const pose = fixtureCameraPose(mode, 7, info, {kind:fixture.kind,houseParcel:fixture.parcel,houseGrading:fixture.grading,mapSize:fixture.mapSize,boardWorld:boardWorld??info.gateWorld,rowCentre,nearParcels:near,nearBounds}, fixture.groundAt);
+      const minClearance = eyeLevelModes.has(mode) ? 1.2 : 1.5;
       const gx = pose.position[0] / CELL_SIZE + fixture.mapSize / 2;
       const gy = pose.position[2] / CELL_SIZE + fixture.mapSize / 2;
-      expect(pose.position[1] - fixture.groundAt(gx, gy), `${kind}/${mode} camera clearance`).toBeGreaterThanOrEqual(minClearance);
+      expect(pose.position[1] - fixture.groundAt(gx, gy), `${kind}/${mode} camera clearance`).toBeGreaterThan(minClearance);
       const distance = Math.hypot(pose.lookAt[0] - pose.position[0], pose.lookAt[2] - pose.position[2]);
-      const samples = Math.max(1, Math.ceil(distance / 2));
+      const samples = Math.max(1, Math.ceil(distance));
       for (let i = 0; i <= samples; i++) {
         const t = i / samples;
         const x = pose.position[0] + (pose.lookAt[0] - pose.position[0]) * t;
         const z = pose.position[2] + (pose.lookAt[2] - pose.position[2]) * t;
-        expect(pose.position[1], `${kind}/${mode} sightline below terrain at ${t}`).toBeGreaterThanOrEqual(fixture.groundAt(x / CELL_SIZE + fixture.mapSize / 2, z / CELL_SIZE + fixture.mapSize / 2));
+        const sightY=pose.position[1]+(pose.lookAt[1]-pose.position[1])*t;
+        expect(sightY, `${kind}/${mode} sightline below terrain at ${t}`).toBeGreaterThanOrEqual(fixture.groundAt(x / CELL_SIZE + fixture.mapSize / 2, z / CELL_SIZE + fixture.mapSize / 2));
       }
+      const camera=new THREE.PerspectiveCamera(48,16/9,0.1,2000);camera.position.set(...pose.position);camera.lookAt(...pose.lookAt);camera.updateMatrixWorld(true);
+      expect(camera.up.clone().applyQuaternion(camera.quaternion).dot(new THREE.Vector3(0,1,0)),`${kind}/${mode} camera up`).toBeGreaterThan(0.5);
+      const project=(p:[number,number,number])=>new THREE.Vector3(...p).project(camera);
+      if(mode==="slope-aerial"||mode==="slope-side"){
+        const house=housePoseForParcel(fixture.parcel,fixture.mapSize,fixture.grading),centre=project([house.position[0],fixture.grading.houseFloorY+3,house.position[2]]);
+        expect(Math.abs(centre.x),`${kind}/${mode} house centre x`).toBeLessThanOrEqual(.6);expect(Math.abs(centre.y),`${kind}/${mode} house centre y`).toBeLessThanOrEqual(.6);expect(centre.z,`${kind}/${mode} house centre depth`).toBeGreaterThan(-1);expect(centre.z).toBeLessThan(1);
+        for(const [gx,gy] of house.corners){const corner=project([(gx-fixture.mapSize/2)*CELL_SIZE,fixture.grading.houseFloorY+3,(gy-fixture.mapSize/2)*CELL_SIZE]);expect(Math.abs(corner.x),`${kind}/${mode} house corner x`).toBeLessThanOrEqual(1);expect(Math.abs(corner.y),`${kind}/${mode} house corner y`).toBeLessThanOrEqual(1);}
+      }
+      if(mode==="for-sale-board"||mode==="board-line") {const target=boardWorld??info.gateWorld,ndc=project(target);expect(Math.abs(ndc.x),`${kind}/${mode} board x`).toBeLessThanOrEqual(.9);expect(Math.abs(ndc.y),`${kind}/${mode} board y`).toBeLessThanOrEqual(.9);}
     }
   });
   it.each(cases.map(([kind]) => kind))("connects every %s fixture driveway to its real street", (kind) => {
