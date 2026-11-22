@@ -10,6 +10,7 @@ import type { Terrain } from "./terrain";
 import { Biome } from "./terrain";
 import type { DoorDir } from "./voxelHouse";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
+import { gradePlot, type PlotGrading } from "./slope/plotGrading";
 
 export type FenceType = "fence" | "hedge" | "wall";
 
@@ -38,6 +39,7 @@ export interface Parcel {
   /** Which side of the spine the parcel sits on (-1 = toward -y, +1 = toward +y). */
   side: -1 | 1;
   tier?: "COMPACT" | "BIG" | "ESTATE" | "GRAND";
+  grading?: Pick<PlotGrading, "band" | "technique" | "garageMode" | "padY" | "houseFloorY" | "garageFloorY" | "gradient">;
   slot?: number;
   /** The house door cell, facing the street. */
   doorX: number;
@@ -385,19 +387,12 @@ function tryParcel(
     }
   }
 
-  // 5. Claim the footprint plus a GAP halo so neighbours never crowd it.
-  for (let d = -GAP; d < sz.D + GAP; d++) {
-    for (let u = -uHalf - GAP; u <= uHalf + GAP; u++) {
-      claimed.add(key(ax(u), ay(d)));
-    }
-  }
-
   // The centre cell honours the floor-based bounds convention used by every consumer
   // (bounds.y = y - floor((h - 1) / 2)). Odd depths are unchanged; the even Round-11 depths
   // (Compact 6, Standard 8) previously rounded half a cell the wrong way on one side.
   const cx = sx,
     cy = side === 1 ? ay(Math.floor((sz.D - 1) / 2)) : ay(Math.ceil((sz.D - 1) / 2));
-  return {
+  const parcel: Parcel = {
     id: `lot_${id}`,
     x: cx,
     y: Math.round(cy),
@@ -418,6 +413,16 @@ function tryParcel(
     driveway,
     fence,
   };
+  const grading = gradePlot(parcel, (gx, gy) => t.worldYAt(gx, gy));
+  const grandIgnoreWholePlotReject = parcel.tier === "GRAND" && grading.violations.every((v) => v.limit === "rejectGradient");
+  if (!grading.ok && !grandIgnoreWholePlotReject) return null;
+  if (grading.band === "reject" && parcel.tier !== "GRAND") return null;
+  parcel.grading = { band: grading.band, technique: grading.technique, garageMode: grading.garageMode, padY: grading.padY, houseFloorY: grading.houseFloorY, garageFloorY: grading.garageFloorY, gradient: grading.gradient };
+  // Claim the footprint plus a GAP halo only after all acceptance filters pass.
+  for (let d = -GAP; d < sz.D + GAP; d++) {
+    for (let u = -uHalf - GAP; u <= uHalf + GAP; u++) claimed.add(key(ax(u), ay(d)));
+  }
+  return parcel;
 }
 
 // ── Door access contract (spec 077/083) ─────────────────────────────────────
@@ -531,6 +536,13 @@ export function retargetParcelAccess(p: Parcel, dir: DoorDir): void {
  *  carries its own size SEQUENCE (sizeFor(index)) and its own placement cursor, so a masterplan can
  *  mix tiers (the GRAND waterfront pair first, then the ESTATE row). Columns iterate shore-ward
  *  first when the corridor's shore end is known, so index 0 (the GRAND tier) lands by the water. */
+export interface LayParcelsStats { grandAttempts: number; grandSucceeded: number }
+let layParcelsStats: LayParcelsStats = { grandAttempts: 0, grandSucceeded: 0 };
+/** Read-only diagnostics for the most recent parcel-layout attempt. */
+export function lastLayParcelsStats(): Readonly<LayParcelsStats> {
+  return { ...layParcelsStats };
+}
+
 function layParcels(
   t: Terrain,
   corridor: Corridor,
@@ -538,6 +550,7 @@ function layParcels(
   maxPerSide: number = MAX_PER_SIDE,
   taken?: ReadonlySet<string>,
 ): Parcel[] {
+  layParcelsStats = { grandAttempts: 0, grandSucceeded: 0 };
   let xs = [...corridor.colY.keys()].sort((a, b) => a - b);
   if (xs.length === 0) return [];
   // Iterate from the shore-ward corridor end (terrain.distToWater is the precomputed BFS field).
@@ -551,24 +564,52 @@ function layParcels(
   let id = 1;
   const perSide = { [-1]: 0, [1]: 0 } as Record<number, number>;
   const nextAt = { [-1]: -Infinity, [1]: -Infinity } as Record<number, number>; // per-side |x| cursor
+  let grandPlaced = false;
+  let primaryGrandResolved = false;
   const step0 = xs[0]! <= xs[xs.length - 1]! ? 1 : -1; // travel direction along the column order
-  for (const x of xs) {
+  for (let xi = 0; xi < xs.length; xi++) {
+    const x = xs[xi]!;
     const syStreet = corridor.colY.get(x)!;
     for (const side of [-1, 1] as const) {
       if (perSide[side]! >= maxPerSide) continue;
       if (step0 > 0 ? x < nextAt[side]! : x > nextAt[side]!) continue;
       const slot = perSide[side]!;
       let sz = sizeFor(slot, side);
-      let p = tryParcel(t, x, syStreet, side, sz, corridor, claimed, id, slot);
-      if (!p && slot === 5 && side === 1 && sz === GRAND) {
-        sz = STANDARD;
+      const isGrandSlot = slot === 5 && side === 1 && sz === GRAND;
+      if (slot === 5 && side === -1 && !primaryGrandResolved) continue;
+      if (isGrandSlot) primaryGrandResolved = true;
+      let p: Parcel | null = null;
+      const tryGrandAhead = (from: number): Parcel | null => {
+        let tried = 0;
+        for (let j = from; j < xs.length && tried < 40; j++) {
+          const gx = xs[j]!;
+          if (step0 > 0 ? gx < nextAt[side]! : gx > nextAt[side]!) continue;
+          const gy = corridor.colY.get(gx)!;
+          layParcelsStats.grandAttempts++;
+          tried++;
+          const candidate = tryParcel(t, gx, gy, side, GRAND, corridor, claimed, id, slot);
+          if (candidate) {
+            layParcelsStats.grandSucceeded++;
+            return candidate;
+          }
+        }
+        return null;
+      };
+      // Slot five on side 1 owns the smallholding. If it does not fit at its nominal
+      // column, scan the remaining existing corridor before consuming the slot with a fallback.
+      if (isGrandSlot && !grandPlaced) p = tryGrandAhead(xi);
+      // If side 1 could not fit the GRAND, give side -1's last slot the same opportunity.
+      if (slot === 5 && side === -1 && primaryGrandResolved && !grandPlaced && !p) p = tryGrandAhead(xi);
+      if (!p) {
+        sz = isGrandSlot ? STANDARD : sizeFor(slot, side);
         p = tryParcel(t, x, syStreet, side, sz, corridor, claimed, id, slot);
       }
       if (p) {
         parcels.push(p);
+        if (p.tier === "GRAND") grandPlaced = true;
         perSide[side]!++;
         id++;
-        nextAt[side] = x + step0 * (sz.W + GAP);
+        nextAt[side] = p.tier === "GRAND" ? p.x + step0 * (GRAND.W + GAP) : x + step0 * (sz.W + GAP);
       }
     }
     if (perSide[-1]! >= maxPerSide && perSide[1]! >= maxPerSide) break;

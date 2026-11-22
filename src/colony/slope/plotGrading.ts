@@ -1,6 +1,6 @@
 import type { Parcel } from "../neighborhood";
 import { CELL_SIZE } from "../scale";
-import { parcelStreetDirection } from "../render/starterGaragePlacement";
+import { parcelStreetDirection } from "../parcelGeometry";
 import type { GroundAt } from "../render/kitGround";
 
 /** Limits gathered in sloped-plots-2026-11-22.md §§1.1–1.5. */
@@ -52,6 +52,7 @@ export interface PlotGrading {
   drive: { stationsM: number[]; y: number[]; maxGradeNear: number; maxGrade: number };
   smallholding: boolean;
   padAreaM2: number;
+  garageFallback: boolean;
   ok: boolean;
   violations: GradingViolation[];
 }
@@ -186,7 +187,8 @@ export function gradePlot(parcel: Parcel, groundAt: GroundAt, opts: { houseFootp
   const nearLength = Math.min(SLOPE_LIMITS.driveNearStreetM, driveLength);
   const nearRise = nearLength * SLOPE_LIMITS.driveMaxNearStreet;
   let garageFloorY = padY;
-  const garageMode: PlotGrading["garageMode"] = band === "steep-uphill" ? "street-level-cut" : band === "steep-downhill" ? "undercroft" : "on-pad";
+  let garageMode: PlotGrading["garageMode"] = band === "steep-uphill" ? "street-level-cut" : band === "steep-downhill" ? "undercroft" : "on-pad";
+  let garageFallback = false;
   const inX = -streetX, inY = -streetYdir;
   const doorOffsetCells = garageMode === "undercroft" ? 1 / CELL_SIZE : 1;
   const doorX = parcel.gate.x + inX * doorOffsetCells;
@@ -216,11 +218,39 @@ export function gradePlot(parcel: Parcel, groundAt: GroundAt, opts: { houseFootp
   const maxGradeNear = stationsM[1]! > 0 ? Math.abs(driveY[1]! - driveY[0]!) / stationsM[1]! : 0;
   const restLength = routeLength - routeNear;
   const maxGrade = restLength > 0 && driveY.length > 2 ? Math.abs(driveY[2]! - driveY[1]!) / restLength : maxGradeNear;
-  if (maxGradeNear > SLOPE_LIMITS.driveMaxNearStreet + 1e-6) violations.push({ limit: "driveMaxNearStreet", value: maxGradeNear });
-  if (maxGrade > SLOPE_LIMITS.driveMax + 1e-6) violations.push({ limit: "driveMax", value: maxGrade });
+  let fallbackRouteLength = routeLength;
+  let fallbackDoorX = doorX;
+  let fallbackDoorY = doorY;
+  // A rejected plot is not built; keep its garage mode on-pad for reporting.
+  if ((maxGradeNear > SLOPE_LIMITS.driveMaxNearStreet + 1e-6 || maxGrade > SLOPE_LIMITS.driveMax + 1e-6) && garageMode === "on-pad" && band !== "reject") {
+    garageFallback = true;
+    garageMode = inlandRise >= 0 ? "street-level-cut" : "undercroft";
+    const fallbackDoorOffset = garageMode === "undercroft" ? 1 / CELL_SIZE : 1;
+    fallbackDoorX = parcel.gate.x + inX * fallbackDoorOffset;
+    fallbackDoorY = parcel.gate.y + inY * fallbackDoorOffset;
+    garageFloorY = garageMode === "street-level-cut"
+      ? streetY + Math.max(-CELL_SIZE * SLOPE_LIMITS.driveMaxNearStreet, Math.min(CELL_SIZE * SLOPE_LIMITS.driveMaxNearStreet, padY - streetY))
+      : streetY - SLOPE_LIMITS.driveMaxNearStreet;
+    fallbackRouteLength = garageMode === "undercroft" ? 1 : CELL_SIZE;
+    const fallbackNear = Math.min(SLOPE_LIMITS.driveNearStreetM, fallbackRouteLength);
+    const fallbackTarget = streetY + Math.max(-fallbackNear * SLOPE_LIMITS.driveMaxNearStreet, Math.min(fallbackNear * SLOPE_LIMITS.driveMaxNearStreet, garageFloorY - streetY));
+    stationsM.splice(0, stationsM.length, ...(fallbackRouteLength > fallbackNear ? [0, fallbackNear, fallbackRouteLength] : [0, fallbackRouteLength]));
+    driveY = fallbackRouteLength > fallbackNear ? [streetY, fallbackTarget, garageFloorY] : [streetY, garageFloorY];
+  }
+  const finalGarageRearY = garageFallback
+    ? groundAt(fallbackDoorX + inX * (8 / CELL_SIZE), fallbackDoorY + inY * (8 / CELL_SIZE))
+    : garageRearY;
+  const finalGarageCutDepthM = garageMode === "street-level-cut" || garageMode === "undercroft" ? Math.max(0, finalGarageRearY - garageFloorY) : 0;
+  if (garageMode === "undercroft") garageFillM = Math.max(0, garageFloorY - finalGarageRearY);
+  const finalNear = Math.min(SLOPE_LIMITS.driveNearStreetM, fallbackRouteLength);
+  const finalMaxGradeNear = finalNear > 0 ? Math.abs(driveY[1]! - driveY[0]!) / finalNear : 0;
+  const finalRest = fallbackRouteLength - finalNear;
+  const finalMaxGrade = finalRest > 0 && driveY.length > 2 ? Math.abs(driveY[2]! - driveY[1]!) / finalRest : finalMaxGradeNear;
+  if (finalMaxGradeNear > SLOPE_LIMITS.driveMaxNearStreet + 1e-6) violations.push({ limit: "driveMaxNearStreet", value: finalMaxGradeNear });
+  if (finalMaxGrade > SLOPE_LIMITS.driveMax + 1e-6) violations.push({ limit: "driveMax", value: finalMaxGrade });
   if (band === "reject") violations.push({ limit: "rejectGradient", value: gradient });
   const ok = violations.length === 0;
-  return { band, technique: retainingWalls.length && band !== "steep-uphill" && band !== "steep-downhill" ? "platform-retaining-wall" : technique, gradient, gradientDir, streetY, padY, houseFloorY: finalHouseFloorY, rearFloorY, maxCutM, maxFillM, banks, retainingWalls, garageFloorY, garageMode, garageCutDepthM, garageFillM, drive: { stationsM, y: driveY, maxGradeNear, maxGrade }, smallholding, padAreaM2, ok, violations };
+  return { band, technique: retainingWalls.length && band !== "steep-uphill" && band !== "steep-downhill" ? "platform-retaining-wall" : technique, gradient, gradientDir, streetY, padY, houseFloorY: finalHouseFloorY, rearFloorY, maxCutM, maxFillM, banks, retainingWalls, garageFloorY, garageMode, garageCutDepthM: finalGarageCutDepthM, garageFillM, drive: { stationsM, y: driveY, maxGradeNear: finalMaxGradeNear, maxGrade: finalMaxGrade }, smallholding, padAreaM2, garageFallback, ok, violations };
 }
 
 export function summarizeBands(parcels: readonly Parcel[], groundAt: GroundAt): Record<string, number> {

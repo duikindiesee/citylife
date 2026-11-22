@@ -1,14 +1,10 @@
 import type { Parcel } from "../neighborhood";
 import { CELL_SIZE } from "../scale";
 import { FLAT_GROUND, type GroundAt } from "./kitGround";
+import { parcelStreetDirection } from "../parcelGeometry";
+export { parcelStreetDirection } from "../parcelGeometry";
 
 export interface GaragePlacement { position:[number,number,number]; rotationY:number; garageFloorY:number }
-export function parcelStreetDirection(parcel:Parcel):[number,number] {
- const a=parcel.driveway[0],b=parcel.gate;
- if(a&&b){const dx=a.x-b.x,dy=a.y-b.y,n=Math.hypot(dx,dy);if(n>0)return [dx/n,dy/n];}
- return [0,-parcel.side];
-}
-
 /** Center the 4 m frontage on the driveway, with the door at its inland end. */
 export function starterGaragePlacement(parcel: Parcel, mapSize: number, groundAt: GroundAt = FLAT_GROUND): GaragePlacement {
  const inland=parcel.driveway[parcel.driveway.length-1] ?? parcel.gate, street=parcelStreetDirection(parcel);
