@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { pickSlopeFixture } from "../src/colony/testbed/slopeFixtures";
+import { pickSlopeFixture, heightfieldWindow } from "../src/colony/testbed/slopeFixtures";
 import { housePoseForParcel } from "../src/colony/render/housePlacement";
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { forSaleBoardPlacement } from "../src/colony/render/forSaleBoardPlacement";
@@ -19,6 +19,19 @@ const cameraModes: TestbedCameraMode[] = ["slope-aerial","slope-side","board-lin
 const eyeLevelModes = new Set<TestbedCameraMode>(["street-view","street-gate","driveway-approach"]);
 
 describe("sloped fence and garage testbed fixtures", () => {
+  it.each(cases.map(([kind]) => kind))("covers all rendered %s geometry with finite terrain", (kind) => {
+    const fixture = pickSlopeFixture(kind), window = heightfieldWindow(fixture);
+    expect((window.maxGx-window.minGx)*CELL_SIZE).toBeLessThanOrEqual(320);
+    expect((window.maxGy-window.minGy)*CELL_SIZE).toBeLessThanOrEqual(320);
+    const inside=(gx:number,gy:number)=>{expect(gx).toBeGreaterThanOrEqual(window.minGx);expect(gx).toBeLessThanOrEqual(window.maxGx);expect(gy).toBeGreaterThanOrEqual(window.minGy);expect(gy).toBeLessThanOrEqual(window.maxGy);expect(Number.isFinite(fixture.groundAt(gx,gy))).toBe(true);};
+    for(const p of fixture.neighbours){for(const c of p.fence)inside(c.x,c.y);const hw=p.houseZone.w/2,hh=p.houseZone.d/2;for(const [x,y] of [[p.houseZone.x-hw,p.houseZone.y-hh],[p.houseZone.x+hw,p.houseZone.y-hh],[p.houseZone.x+hw,p.houseZone.y+hh],[p.houseZone.x-hw,p.houseZone.y+hh]])inside(x,y);for(const c of p.driveway)inside(c.x,c.y);}
+    for(const c of fixture.carriage)inside(c.x,c.y);
+  });
+  it.each(cases.map(([kind]) => kind))("keeps %s carriage in one connected street network", (kind) => {
+    const fixture=pickSlopeFixture(kind), cells=fixture.carriage, keys=new Set(cells.map(c=>`${c.x},${c.y}`)), seen=new Set<string>();let largest=0;
+    for(const cell of cells){const key=`${cell.x},${cell.y}`;if(seen.has(key))continue;let size=0,queue=[cell];seen.add(key);while(queue.length){const c=queue.pop()!;size++;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const n=`${c.x+dx},${c.y+dy}`;if(keys.has(n)&&!seen.has(n)){seen.add(n);queue.push({x:c.x+dx,y:c.y+dy});}}}largest=Math.max(largest,size);}
+    expect(largest).toBe(cells.length);
+  });
   it.each(cases.map(([kind]) => kind))("keeps every %s fixture camera above its ground sightline", (kind) => {
     const fixture = pickSlopeFixture(kind);
     const info = testbedParcelInfo(fixture.parcel, fixture.mapSize, fixture.carriage);
