@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-22T13:35:59.743Z",
+  "updatedAt": "2026-11-22T13:40:13.236Z",
   "runs": [
+    {
+      "runId": 45028650931,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/45028650931",
+      "event": "pull_request",
+      "branch": "forge/picket-fence-starter-garage",
+      "sha": "14d2c594d34a088b89dee95c3fbec96cdca3d600",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/14d2c594d34a088b89dee95c3fbec96cdca3d600",
+      "pullRequestNumbers": "#583",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/583",
+      "pullRequests": [
+        {
+          "number": 583,
+          "url": "https://github.com/duikindiesee/citylife/pull/583"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-22T13:39:49Z",
+      "completedAt": "2026-11-22T13:40:04Z",
+      "durationSeconds": 15,
+      "runnerSummary": "GitHub Actions 1000013122",
+      "jobs": [
+        {
+          "id": 137227141018,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000013122",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-11-22T13:39:52Z",
+          "completedAt": "2026-11-22T13:40:03Z",
+          "durationSeconds": 11
+        }
+      ]
+    },
     {
       "runId": 45028244013,
       "workflowName": "Secret scan",
@@ -12982,45 +13021,6 @@
           "startedAt": "2026-10-13T00:13:04Z",
           "completedAt": "2026-10-13T00:14:22Z",
           "durationSeconds": 78
-        }
-      ]
-    },
-    {
-      "runId": 38326133956,
-      "workflowName": "Secret scan",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38326133956",
-      "event": "pull_request",
-      "branch": "candidate/road-integration-candidate",
-      "sha": "ab5227a38bad806f900b7b80fd3d45cbcf052bd8",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/ab5227a38bad806f900b7b80fd3d45cbcf052bd8",
-      "pullRequestNumbers": "#564",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
-      "pullRequests": [
-        {
-          "number": 564,
-          "url": "https://github.com/duikindiesee/citylife/pull/564"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-13T00:13:00Z",
-      "completedAt": "2026-10-13T00:13:28Z",
-      "durationSeconds": 28,
-      "runnerSummary": "GitHub Actions 1000011042",
-      "jobs": [
-        {
-          "id": 115065122993,
-          "name": "Gitleaks full-history scan",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000011042",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-24.04"
-          ],
-          "startedAt": "2026-10-13T00:13:06Z",
-          "completedAt": "2026-10-13T00:13:14Z",
-          "durationSeconds": 8
         }
       ]
     }
