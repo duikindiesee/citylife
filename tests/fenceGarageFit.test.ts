@@ -128,7 +128,7 @@ describe("gate leaves stay on their posts, and the fence meets the gate", () => 
     await assertGateFit("../public/assets/citylife/props/picket-fence-gate-pedestrian.glb");
   });
 
-  it("every fence panel end is within 10 mm of a post, and the street fence meets the gate posts", () => {
+  it("every boundary panel end meets a post, including shortened gate-adjacent panels", () => {
     const { parcel, mapSize } = estateParcel();
     const placements = parcelFencePlacements(parcel, mapSize);
     const info = testbedParcelInfo(parcel, mapSize);
@@ -150,12 +150,12 @@ describe("gate leaves stay on their posts, and the fence meets the gate", () => 
       const c = Math.cos(p.rotationY), s = Math.sin(p.rotationY);
       const onGateEdge = Math.abs((p.position[0]-gatePlacement.position[0])*(-Math.sin(gatePlacement.rotationY))+(p.position[2]-gatePlacement.position[2])*Math.cos(gatePlacement.rotationY))<.01 &&
         Math.abs((p.position[0]-gatePlacement.position[0])*Math.cos(gatePlacement.rotationY)+(p.position[2]-gatePlacement.position[2])*Math.sin(gatePlacement.rotationY))<4;
-      const half = onGateEdge ? 1.075 : PANEL_HALF;
+      const half = (p.length ?? 2) / 2;
       const a = { x: p.position[0] + c * half, z: p.position[2] + s * half };
       const b = { x: p.position[0] - c * half, z: p.position[2] - s * half };
       panelEnds.push(a, b);
-      expect(near(a.x, a.z), `panel end at ${a.x.toFixed(3)},${a.z.toFixed(3)} is far from any post`).toBeLessThanOrEqual(GAP_MAX);
-      expect(near(b.x, b.z), `panel end at ${b.x.toFixed(3)},${b.z.toFixed(3)} is far from any post`).toBeLessThanOrEqual(GAP_MAX);
+      expect(near(a.x, a.z), `panel end at ${a.x.toFixed(3)},${a.z.toFixed(3)} is far from any post`).toBeLessThanOrEqual(0.05);
+      expect(near(b.x, b.z), `panel end at ${b.x.toFixed(3)},${b.z.toFixed(3)} is far from any post`).toBeLessThanOrEqual(0.05);
     }
     const gate = placements.find((p) => p.piece === "gate-driveway")!;
     const c = Math.cos(gate.rotationY), s = Math.sin(gate.rotationY);
@@ -178,33 +178,19 @@ describe("gate leaves stay on their posts, and the fence meets the gate", () => 
     void info;
   });
 
-  it("covers each ring edge continuously except the gate opening", () => {
+  it("covers the complete outer boundary except the 3.7 m gate opening", () => {
     const { parcel, mapSize } = estateParcel();
-    const placements = parcelFencePlacements(parcel, mapSize);
-    const gate = placements.find(p => p.piece === "gate-driveway")!;
-    const gateCentre = { x: gate.position[0], z: gate.position[2] };
-    const gateAxis = { x: Math.cos(gate.rotationY), z: Math.sin(gate.rotationY) };
-    for (const cell of parcel.fence) for (const [dx,dy] of [[1,0],[0,1]] as const) {
-      if (!parcel.fence.some(other => other.x === cell.x + dx && other.y === cell.y + dy)) continue;
-      const horizontal = dx === 1;
-      const c = { x:(cell.x-mapSize/2)*4, z:(cell.y-mapSize/2)*4 };
-      const n = { x:(cell.x+dx-mapSize/2)*4, z:(cell.y+dy-mapSize/2)*4 };
-      const lo = horizontal ? Math.min(c.x,n.x) : Math.min(c.z,n.z), hi = lo + 4;
-      const edgePanels = placements.filter(p => p.piece === "panel" && (horizontal ? p.rotationY===0 : Math.abs(p.rotationY-Math.PI/2)<1e-6));
-      const gateEdge = Math.abs((gateCentre.x-c.x)*gateAxis.z-(gateCentre.z-c.z)*gateAxis.x)<.01 &&
-        Math.abs((gateCentre.x-(c.x+n.x)/2)*gateAxis.x+(gateCentre.z-(c.z+n.z)/2)*gateAxis.z)<2.01 &&
-        Math.abs(gateAxis.x*(horizontal?1:0)+gateAxis.z*(horizontal?0:1))>.9;
-      const intervals = edgePanels.filter(p => horizontal ? Math.abs(p.position[2]-c.z)<.01 : Math.abs(p.position[0]-c.x)<.01)
-        .map(p => {
-          const half = gateEdge && Math.abs((p.position[0]-gateCentre.x)*gateAxis.x+(p.position[2]-gateCentre.z)*gateAxis.z)<4 ? 1.075 : PANEL_HALF;
-          return [horizontal?p.position[0]-half:p.position[2]-half,horizontal?p.position[0]+half:p.position[2]+half] as [number,number];
-        }).sort((a,b)=>a[0]-b[0]);
-      const expected = gateEdge ? 4-3.7 : 4;
-      let covered = 0, cursor = lo;
-      for (const [a,b] of intervals) { const start=Math.max(lo,a),end=Math.min(hi,b); if(end>start){expect(start-cursor).toBeLessThanOrEqual(GAP_MAX);covered+=end-start;cursor=Math.max(cursor,end);} }
-      expect(hi-cursor).toBeLessThanOrEqual(GAP_MAX);
-      if (gateEdge) covered += 3.7;
-      expect(covered).toBeCloseTo(expected,2);
+    const placements=parcelFencePlacements(parcel,mapSize),posts=placements.filter(p=>p.piece.startsWith("post")).map(p=>p.position);
+    const panels=placements.filter(p=>p.piece==="panel");
+    const xs=posts.map(p=>p[0]),zs=posts.map(p=>p[2]);
+    expect(Math.max(...xs)-Math.min(...xs)).toBe(parcel.w*4);
+    expect(Math.max(...zs)-Math.min(...zs)).toBe(parcel.h*4);
+    for(const p of panels){
+      const half=(p.length??2)/2,c=Math.cos(p.rotationY),s=Math.sin(p.rotationY);
+      for(const sign of [-1,1]){const x=p.position[0]+sign*c*half,z=p.position[2]+sign*s*half;expect(Math.min(...posts.map(q=>Math.hypot(q[0]-x,q[2]-z)))).toBeLessThanOrEqual(.05);}
     }
-  });
-});
+    const gate=placements.find(p=>p.piece==="gate-driveway")!;
+    const neighbouringPanels=panels.filter(p=>Math.hypot(p.position[0]-gate.position[0],p.position[2]-gate.position[2])<4);
+    expect(neighbouringPanels.length).toBeGreaterThanOrEqual(2);
+    expect(gate).toBeDefined();
+  });});

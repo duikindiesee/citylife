@@ -146,9 +146,10 @@ describe("WB.1c authoritative placement parity", () => {
 
     expect(east.ok).toBe(true);
     expect(east.orientation).toBe("e");
-    expect(east.bounds).toEqual({ x: 40, y: 46, w: 11, h: 9 });
-    expect(east.cells).toHaveLength(99);
-    expect(north.bounds).toEqual({ x: 46, y: 50, w: 9, h: 11 });
+    // Spec 180 R11 — COMPACT is now 5 x 6 cells (20 x 24 m), was 9 x 11.
+    expect(east.bounds).toEqual({ x: 45, y: 48, w: 6, h: 5 });
+    expect(east.cells).toHaveLength(30);
+    expect(north.bounds).toEqual({ x: 48, y: 50, w: 5, h: 6 });
     expect(north.cells).toHaveLength(east.cells.length);
   });
 

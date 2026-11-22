@@ -1,5 +1,6 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
+import { CELL_SIZE } from "./scale";
 import {
   MAX_LOCOMOTION_DT,
   advanceSprintCharge,
@@ -1827,7 +1828,9 @@ export class ColonyRuntime {
         const order: Cell[] = [];
         if (commercialStop) order.push(commercialStop);
         const wood3 = stopsMap.get("wood3");
-        if (wood3) order.push({ x: 441, y: 128 });
+        // Spec 180 R11: the hamlet shrank with the real-measure tiers, so the old hard-coded (441,128)
+        // snapped to the street's dead end beside illegal terrain. Use the hamlet's own centroid.
+        if (wood3) order.push(wood3);
         const wood1 = stopsMap.get("wood1");
         if (wood1) order.push(wood1);
         const wood2 = stopsMap.get("wood2");
@@ -2413,8 +2416,9 @@ export class ColonyRuntime {
             // Spec 085 — the economic arrival: the newcomer lands with a ₭ deposit, BUYS the deed to
             // a free plot, then hires Viw to build what they can afford. The whole trade in one move.
             this.seedDeposit(citizen.id);
+            const wallet = this.walletK(citizen.id);
             const freeLot = this.neighborhood.lots.find(
-              (l) => !l.ownerCitizenId && !l.reservedFor,
+              (l) => !l.ownerCitizenId && !l.reservedFor && this.plotPriceK(l) <= wallet,
             );
             if (freeLot && this.purchaseLot(citizen.id, freeLot.id)) {
               this.commissionLot(freeLot.id); // Viw raises a home for the remaining purse
@@ -8307,7 +8311,7 @@ export class ColonyRuntime {
     const dw =
       t.distToWater[t.idx(Math.round(lot.x), Math.round(lot.y))] ?? 999;
     return plotPriceKook(
-      lot.houseZone.w * lot.houseZone.d,
+      lot.w * lot.h * CELL_SIZE * CELL_SIZE,
       dw,
       COLONY.economy.land,
     );
@@ -8532,6 +8536,7 @@ export class ColonyRuntime {
       orientation,
       id,
       type,
+      sizeName,
     );
     if (!lot) return { ok: false, survey, reason: "runtime-rejected" };
 
@@ -8643,7 +8648,7 @@ export class ColonyRuntime {
       });
 
       this.seedDeposit(citizen.id);
-      if (this.purchaseLot(citizen.id, freeLot.id)) {
+      if (this.plotPriceK(freeLot) <= this.walletK(citizen.id) && this.purchaseLot(citizen.id, freeLot.id)) {
         this.commissionLot(freeLot.id);
       }
     }

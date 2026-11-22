@@ -46,6 +46,35 @@ The fence and garage dimensions are authored asset targets; local bylaws, access
 - The road centre is a metre-space presentation derived 7 m along the street vector from `driveway[0]`; the neighborhood's real `carriage` cells are also exposed for diagnosis. The visual road remains a straight 120 m strip because one parcel's local view does not render the neighborhood's entire routed spine.
 - Five camera poses are independently defined: aerial, street gate, driveway approach, garage closed, and garage open. Animation state is a pure function of time and the explicit door override.
 
+## Round 11 — real-measure plot tiers (approved by Irwin, 22 Nov 2026)
+
+The old tiers were authored in spec 084 at smallholding scale (ESTATE 23×29 cells = 92 × 116 m = 10,672 m²). They are re-pointed to real South African stand sizes. The exported names `COMPACT`/`BIG`/`ESTATE`/`GRAND` are kept so persisted dynamic-plot ids still resolve; `STANDARD`, `LARGE` and `SMALLHOLDING` are aliases and `PARCEL_TIER_LABEL` gives the display names.
+
+| Tier (legacy key) | Cells W×D | Metres | Area | House envelope | Front / side / rear from boundary | Coverage (limit) | Inland price | Real-world analogue |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Compact (`COMPACT`) | 5×6 | 20×24 m | 480 m² | 12×12 m | 8 / 4 / 4 m | 30% (60%) | 130 KCO | Irwin's ~350 m² stand; Langebaan beach estates 350–450 m² |
+| Standard (`BIG`) | 5×8 | 20×32 m | 640 m² | 12×12 m | 8 / 4 / 12 m | 22.5% (50%) | 173 KCO | Irwin's ~600 m² stand; Langebaan median erf 656 m²; FNB 2017 average 552 m² |
+| Large (`ESTATE`) | 7×9 | 28×36 m | 1,008 m² | 12×16 m | 8 / 8 / 12 m | 19% (40%) | 272 KCO | Upper Myburgh Park 900–1,200 m²; FNB 1970–74 average 1,063 m² |
+| Smallholding (`GRAND`, rare) | 25×25 | 100×100 m | 10,000 m² | 20×16 m | 24 / 40 / 60 m | 3.2% (5%) | 2,700 KCO | 1 ha, Saldanha Bay Smallholding zone minimum; Long Acres is mostly 1–2 ha |
+
+House-fit limits are the Saldanha Bay (Langebaan) Integrated Zoning Scheme By-Law 2021: coverage 60% (250–500 m²), 50% (500–750 m²), 40% (750–1,500 m²); street line 3 m; side line 2.5 m when the stand is wider than 16 m; rear line 3 m; Smallholding zone (≥ 1 ha) 20 m street, 10 m side and rear, 5% coverage. The Smallholding setback was raised from 2 to 5 cells (farm depth 13 → 10) so the house sits 24 m from the street.
+
+Sources (Forge research notes, 22 Nov 2026, plot sizes and Langebaan erf sizes): Saldanha Bay IZS 2021; FNB Property Barometer, *Long Term Building Characteristics* (Aug 2017); CSIR *Guidelines for Human Settlement Planning and Design* ch. 5.6; Agricultural Holdings (Transvaal) Registration Act 22 of 1919; 83 Langebaan listings observed 22 Nov 2026.
+
+**House envelope, not a stretched plot.** `compileBlueprint` draws each house-zone cell at 4 m, so the house zone is the building envelope. It is now a fixed real-metre footprint per tier (`houseEnvelopeM`, capped by `MAX_HOUSE_ENVELOPE_M` = 20 × 16 m) instead of growing with the plot; the 11.5 × 11.5 m proof house fits every tier. `tests/plotTiersFit.test.ts` checks every generated parcel's envelope against the Saldanha Bay street, side and rear lines and coverage band above. The 4 × 8 m starter garage fits inside every envelope.
+
+**Land price.** `price = round(full parcel m² × 0.27 KCO/m² × (1 + waterfront))`. The board prints dimensions, m², total, the rate and, where it applies, the waterfront part, so `round(m² × rate)` equals the base price exactly. Board total equals `plotPriceK` for every unreserved lot (tested).
+
+- ASSUMPTION (waterfront): the old flat +120 KCO (−2 KCO per cell) would be most of a 130 KCO Compact plot. It is now +25% at the waterline, fading linearly to 0 at 60 cells (240 m), the same reach as before. On the seed-180 coast nearly every plot is within that reach, so most boards show a premium (e.g. a Large plot at 272 + 60 = 332 KCO).
+- ASSUMPTION (deposit): the 600–1,000 KCO arrival deposit covers every suburban plot (dearest: waterfront Large, 340 KCO) but not a Smallholding. Auto-arrival now buys the first free plot the newcomer can afford.
+- ASSUMPTION (spacing): `GAP` = 2 cells, an 8 m green strip between neighbouring boundaries. Real erven share a boundary; here each parcel owns its fence/hedge/wall ring and mixed types would overlap, and the bus-corridor router needs a lane clear of parcel boxes (GAP 1 left seed 4242 with no bus loop; GAP 2 and 3 route). The seed-4242 wood3 bus stop now uses the hamlet's own centroid instead of the hard-coded (441,128). `FRONT_OFFSET` stays 4 cells: 6 m half carriageway + 4 m verge + 4 m front strip puts the boundary 14 m from the street centreline (spec 114 keeps the ring off the verge).
+
+**Masterplan.** Per side: slot 0 = Large (shore-ward; founders Joe and Viw keep `lot_1`/`lot_2`, still reserved, and Large keeps the 4 m side strip Viw's east door needs), then Standard, Standard, Compact, Large; slot 5 on one side tries a Smallholding and falls back to Standard if the ground cannot take 100 × 100 m. Hamlets: Compact then Standard. On seeds 180 and 42 the Smallholding slot fell back to Standard, so no Smallholding is generated there yet.
+
+**Picket fence on the true boundary.** Posts and panels now run along the outer edge of the boundary cells (previously cell centres, which would have enclosed only 16 × 20 m on a 20 × 24 m plot). Posts every 2 m from corner to corner, the driveway gate (3.7 m opening, posts at ±1.85 m) sits on the front boundary, and the short panels either side meet the gate posts. `plotTiersFit` checks every fenced parcel's perimeter for gaps over 50 mm; that check found missing panels between the corner and the gate on the street edge, which are fixed.
+
+**Test bed.** Shows the generated street: carriage and verge cells, every neighbour's boundary, and 3 m-wall hipped-roof envelope houses on alternate "sold" neighbours. New cameras: `street-mixed`, `for-sale-board`, `street-view`. `window.__testbed.info.parcels` lists tier, metres, m², price and envelope per plot.
+
 ## Open decisions
 
 - Which parcel metadata field is authoritative when `parcel.gate` and `parcel.driveway` disagree?

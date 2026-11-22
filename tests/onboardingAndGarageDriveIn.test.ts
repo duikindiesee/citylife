@@ -84,8 +84,8 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(rt.isHomesteadDriveway(drivewayX, drivewayY)).toBe(true);
 
     // Solid house zone blocks
-    const houseCenterX = Math.round(lot!.houseZone.x + lot!.houseZone.w / 2);
-    const houseCenterY = Math.round(lot!.houseZone.y + lot!.houseZone.d / 2);
+    const houseCenterX = lot!.houseZone.x + Math.floor((lot!.houseZone.w - 1) / 2); // true centre cell (Round 11: 3-cell zones)
+    const houseCenterY = lot!.houseZone.y + Math.floor((lot!.houseZone.d - 1) / 2);
     expect(rt.isHomesteadDriveway(houseCenterX, houseCenterY)).toBe(false);
   });
 

@@ -1,3 +1,4 @@
+import { BIG, COMPACT, ESTATE, GRAND } from "../neighborhood";
 import type { RoadWay } from "../render/roadRibbon";
 import type {
   GridBounds,
@@ -488,15 +489,13 @@ function footprintCells(bounds: GridBounds): GridCell[] {
 }
 
 function parcelTier(w: number, h: number): string {
+  // Spec 180 Round 11 — derive from the live tier constants so a re-scaled tier can never fall out
+  // of the catalogue (the hard-coded 9x11/11x14/23x29/27x33 table did exactly that).
   const key = [w, h].sort((a, b) => a - b).join("x");
-  return (
-    {
-      "9x11": "compact",
-      "11x14": "big",
-      "23x29": "estate",
-      "27x33": "grand",
-    }[key] ?? "custom"
-  );
+  for (const [name, size] of Object.entries({ COMPACT, BIG, ESTATE, GRAND })) {
+    if ([size.W, size.D].sort((a, b) => a - b).join("x") === key) return name.toLowerCase();
+  }
+  return "custom";
 }
 
 function orientationFromGate(

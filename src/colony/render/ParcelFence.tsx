@@ -18,5 +18,5 @@ export function ParcelFence({parcel,mapSize,gateOpen=0}: {parcel:Parcel;mapSize:
  const end=useGLTF(URL["post-end"]).scene;
  const gate=useGLTF(URL["gate-driveway"]).scene;
  const models:Record<FencePiece,THREE.Object3D>={panel,"post-line":line,"post-corner":corner,"post-end":end,"gate-driveway":gate};
- return <group>{placements.map((p,i)=>{const object=models[p.piece]!.clone(true);if(p.piece==="gate-driveway")applyDrivewayGatePose(object,gateOpen);return <primitive key={`${p.piece}-${i}`} object={object} position={p.position} rotation={[0,p.rotationY,0]}/>})}</group>;
+ return <group>{placements.map((p,i)=>{const object=models[p.piece]!.clone(true);if(p.piece==="gate-driveway")applyDrivewayGatePose(object,gateOpen);if(p.piece==="panel"&&p.length){object.scale.x=p.length/2;}return <primitive key={`${p.piece}-${i}`} object={object} position={p.position} rotation={[0,p.rotationY,0]}/>})}</group>;
 }

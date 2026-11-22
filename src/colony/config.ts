@@ -1071,8 +1071,11 @@ export const COLONY = {
     // a "Mac Mini starter package") — always enough for the dearest plot plus a modest Viw build.
     land: {
       zarPerKook: 25,
-      plotAreaRate: 0.6,
-      waterfrontPremium: 120,
+      pricePerM2: 0.27,
+      // ASSUMPTION: the former flat 120 KCO premium could exceed a compact plot's 130 KCO price;
+      // retain its 60-cell (240 m) reach as a +25% land-price premium fading linearly inland.
+      waterfrontPremiumPct: 0.25,
+      waterfrontReachCells: 60,
       starterDepositMin: 600,
       starterDepositSpread: 400,
     },

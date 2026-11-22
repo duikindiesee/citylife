@@ -1,7 +1,10 @@
 import React, { useMemo } from "react";
 import * as THREE from "three";
 import type { Parcel } from "../neighborhood";
-import { plotBoardPriceKco, plotPricePerM2Kco, plotSizeM } from "../landPrice";
+import { plotPricePerM2Kco, plotSizeM } from "../landPrice";
+import { plotPriceBreakdown } from "../land";
+import { COLONY } from "../config";
+import { PARCEL_TIER_LABEL } from "../neighborhood";
 import { CELL_SIZE } from "../scale";
 
 function boardTexture(parcel: Parcel, distToWater: number): THREE.CanvasTexture {
@@ -14,10 +17,14 @@ function boardTexture(parcel: Parcel, distToWater: number): THREE.CanvasTexture 
   ctx.textAlign = "center"; ctx.fillStyle = "#243526";
   ctx.font = "bold 43px sans-serif"; ctx.fillText("LAND FOR SALE", 256, 66);
   const size = plotSizeM({W:parcel.w,D:parcel.h,setback:0,houseDepth:0,gardenDepth:0,farmDepth:0,inset:0});
-  ctx.font = "bold 40px sans-serif"; ctx.fillText(`${size.w} × ${size.d} m`, 256, 126);
-  ctx.font = "32px sans-serif"; ctx.fillText(`${size.areaM2.toLocaleString("en-US")} m²`, 256, 174);
-  ctx.font = "bold 48px sans-serif"; ctx.fillText(`${plotBoardPriceKco(parcel,distToWater)} KCO`, 256, 238);
-  ctx.font = "24px sans-serif"; ctx.fillText(`${plotPricePerM2Kco().toFixed(4)} KCO/m²`, 256, 282);
+  const bill=plotPriceBreakdown(size.areaM2,distToWater,COLONY.economy.land);
+  const label=parcel.tier?PARCEL_TIER_LABEL[parcel.tier]:"Residential";
+  ctx.font = "bold 30px sans-serif"; ctx.fillText(`${label} plot`, 256, 108);
+  ctx.font = "bold 32px sans-serif"; ctx.fillText(`${size.w} × ${size.d} m`, 256, 150);
+  ctx.font = "27px sans-serif"; ctx.fillText(`${size.areaM2.toLocaleString("en-US")} m²`, 256, 190);
+  ctx.font = "bold 38px sans-serif"; ctx.fillText(`${bill.totalKco} KCO`, 256, 238);
+  ctx.font = "22px sans-serif"; ctx.fillText(`${plotPricePerM2Kco().toFixed(2)} KCO/m²`, 256, 272);
+  if(bill.premiumKco>0){ctx.font="18px sans-serif";ctx.fillText(`incl. +${bill.premiumKco} KCO waterfront`,256,302);}
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;

@@ -5,7 +5,7 @@ import { ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import type { ColonySim } from "../sim";
 import { COLONY } from "../config";
-import { BIG, COMPACT, ParcelSize } from "../neighborhood";
+import { BIG, COMPACT, GRAND, type ParcelSize } from "../neighborhood";
 import type { Cell } from "../pathfind";
 import {
   placementFailureMessage,
@@ -587,7 +587,7 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
           here only the arrow + tooltip remain (they re-render only when the cell changes) */}
       <instancedMesh
         ref={zonePreviewRef}
-        args={[zonePreview.geo, zonePreview.mat, BIG.W * BIG.D]}
+        args={[zonePreview.geo, zonePreview.mat, GRAND.W * GRAND.D]}
         frustumCulled={false}
       />
       {builderMode.startsWith("zoning_") &&

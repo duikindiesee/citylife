@@ -2,11 +2,11 @@ import type { Parcel } from "../neighborhood";
 import type { Cell } from "../pathfind";
 import { CELL_SIZE } from "../scale";
 import { starterGaragePlacement, parcelStreetDirection } from "./starterGaragePlacement";
-export type TestbedCameraMode = "aerial"|"street-gate"|"driveway-approach"|"garage-closed"|"garage-open"|"drive"|"walk"|"board";
+export type TestbedCameraMode = "aerial"|"street-gate"|"driveway-approach"|"garage-closed"|"garage-open"|"drive"|"walk"|"board"|"street-mixed"|"for-sale-board"|"street-view";
 export function resolveTestbedCameraMode(raw:string|null):TestbedCameraMode {
  const aliases:Record<string,TestbedCameraMode>={"01-aerial":"aerial","02-street-gate":"street-gate","03-driveway-approach":"driveway-approach","04-garage-door-closed":"garage-closed","05-garage-door-open":"garage-open",garage:"garage-closed"};
  const mode=raw??"aerial";
- return aliases[mode]??(mode==="aerial"||mode==="street-gate"||mode==="driveway-approach"||mode==="garage-closed"||mode==="garage-open"||mode==="drive"||mode==="walk"||mode==="board"?mode:"aerial");
+ return aliases[mode]??(mode==="aerial"||mode==="street-gate"||mode==="driveway-approach"||mode==="garage-closed"||mode==="garage-open"||mode==="drive"||mode==="walk"||mode==="board"||mode==="street-mixed"||mode==="for-sale-board"||mode==="street-view"?mode:"aerial");
 }
 export interface TestbedParcelInfo {
  parcelCells:{minX:number;maxX:number;minY:number;maxY:number}; gateWorld:[number,number,number];
@@ -35,10 +35,12 @@ export function testbedCameraPose(mode:TestbedCameraMode,t:number,info:TestbedPa
  const at=(p:[number,number,number],a:number,b:number=0,c:number=0):[number,number,number]=>[p[0]+d[0]*a+left[0]*c,p[1]+b,p[2]+d[1]*a+left[1]*c];
  const door=v(garage[0]+d[0]*4,1.5,garage[2]+d[1]*4);
  if(mode==="aerial") return {position:at(g,45,28),lookAt:door};
+ if(mode==="street-mixed") return {position:at(g,8,45,-20),lookAt:at(g,60,0,0)};
+ if(mode==="street-view") return {position:at(g,8,1.7,-8),lookAt:at(g,55,1.7,-8)};
+ if(mode==="for-sale-board"||mode==="board") { const board=at(g,4.2,1.7,3.5); return {position:at(board,3.1,.2),lookAt:board}; }
  if(mode==="street-gate") return {position:at(g,14,1.5,-6),lookAt:door};
  if(mode==="driveway-approach") return {position:at(g,-12,1.4),lookAt:door};
  if(mode==="garage-closed"||mode==="garage-open") return {position:at(garage,11,1.5),lookAt:door};
- if(mode==="board") { const board=at(g,4.2,1.9,3.5); return {position:at(board,3.1,.35),lookAt:board}; }
  const u=Math.max(0,Math.min(1,t/14));
  if(mode==="walk") {const start=at(g,-2,1.7),end=at(garage,5,1.7);const p:[number,number,number]=[start[0]+(end[0]-start[0])*u,1.7+Math.sin(t*1.8)*.025,start[2]+(end[2]-start[2])*u];return {position:p,lookAt:door};}
  // Follow the road for 60 m, turn into the gate, then track the driveway to the door.

@@ -45,7 +45,8 @@ const GOLDEN: Record<
     intersection: { x: 189, y: 323 },
     reserve: { x: 145, y: 291, w: 88, h: 64 },
     mallPad: { x: 175, y: 306, w: 14, h: 10 },
-    crossStreetHash: "5432568b",
+    // Spec 180 R11 — re-pinned: the re-scaled residential tiers move the seed-7 cross street; every other golden is unchanged.
+    crossStreetHash: "43d44ba8",
     parcelFootprintHash: "e21b827c",
     mallPadHash: "120d1aa3",
   },

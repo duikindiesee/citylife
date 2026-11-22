@@ -6,11 +6,12 @@
 export interface LandConfig {
   /** Real-world anchor: rand per Kook (operator's 25:1) — drives the HUD's ZAR readout only. */
   zarPerKook: number;
-  /** ₭ charged per house-zone cell (the plot's buildable footprint). */
-  plotAreaRate: number;
-  /** ₭ added to a shore-side plot, decaying 2 ₭ per cell of distance to water (0 inland). */
-  waterfrontPremium: number;
-  /** ₭ a newcomer arrives holding — always covers the dearest plot so everyone can buy in. */
+  /** ₭ charged per full parcel square metre. */
+  pricePerM2: number;
+  /** ASSUMPTION: old flat premium exceeded a compact plot; use +25% at the waterline, fading linearly over 60 cells (240 m). */
+  waterfrontPremiumPct: number;
+  waterfrontReachCells: number;
+  /** Deposit covers the dearest suburban plot (waterfront Large = 340 ₭); smallholdings are aspirational. */
   starterDepositMin: number;
   /** + a seeded 0..spread on top, so wallets vary. */
   starterDepositSpread: number;
@@ -18,16 +19,19 @@ export interface LandConfig {
 
 /** The deterministic ₭ price of a plot: its buildable area plus a waterfront premium. Rounded so a
  *  deed never costs a fraction. */
+export function plotPriceBreakdown(areaM2: number, distToWater: number, cfg: LandConfig): { baseKco: number; premiumKco: number; totalKco: number } {
+  const baseKco = Math.round(areaM2 * cfg.pricePerM2);
+  const reach = Math.max(0, 1 - Math.max(0, distToWater) / cfg.waterfrontReachCells);
+  const totalKco = Math.round(areaM2 * cfg.pricePerM2 * (1 + cfg.waterfrontPremiumPct * reach));
+  return { baseKco, premiumKco: totalKco - baseKco, totalKco };
+}
+
 export function plotPriceKook(
-  houseZoneArea: number,
+  areaM2: number,
   distToWater: number,
   cfg: LandConfig,
 ): number {
-  const water = Math.max(
-    0,
-    cfg.waterfrontPremium - Math.max(0, distToWater) * 2,
-  );
-  return Math.round(houseZoneArea * cfg.plotAreaRate + water);
+  return plotPriceBreakdown(areaM2, distToWater, cfg).totalKco;
 }
 
 /** A plot's price in rand, for the HUD's human-readable readout. */

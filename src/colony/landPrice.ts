@@ -3,8 +3,8 @@ import { plotPriceKook, type LandConfig } from "./land";
 import { COLONY } from "./config";
 import { CELL_SIZE } from "./scale";
 
-/** Area component per full parcel square metre: 0.6 Kook per 16 m² house-zone cell. */
-export const LAND_PRICE_PER_M2_KCO = COLONY.economy.land.plotAreaRate / (CELL_SIZE * CELL_SIZE);
+/** Area component per full parcel square metre. */
+export const LAND_PRICE_PER_M2_KCO = COLONY.economy.land.pricePerM2;
 
 export function plotSizeM(size: ParcelSize): { w: number; d: number; areaM2: number } {
   const w = size.W * CELL_SIZE;
@@ -12,9 +12,9 @@ export function plotSizeM(size: ParcelSize): { w: number; d: number; areaM2: num
   return { w, d, areaM2: w * d };
 }
 
-/** Board total uses the same buildable house-zone footprint and waterfront premium as the deed. */
+/** Board total uses the full parcel area and same waterfront premium as the deed. */
 export function plotBoardPriceKco(parcel: Parcel, distToWater: number, cfg: LandConfig = COLONY.economy.land): number {
-  return plotPriceKook(parcel.houseZone.w * parcel.houseZone.d, distToWater, cfg);
+  return plotPriceKook(parcel.w * parcel.h * CELL_SIZE * CELL_SIZE, distToWater, cfg);
 }
 
 export function plotPricePerM2Kco(): number {
