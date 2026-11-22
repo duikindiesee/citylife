@@ -6,9 +6,9 @@ import { buildEarthworksGeometry, buildFixtureObjects } from "../src/colony/rend
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { forSaleBoardPlacement } from "../src/colony/render/forSaleBoardPlacement";
 import { starterGaragePlacement } from "../src/colony/render/starterGaragePlacement";
-import { parcelStreetDirection } from "../src/colony/parcelGeometry";
 import { gradePlot, SLOPE_LIMITS } from "../src/colony/slope/plotGrading";
 import { CELL_SIZE } from "../src/colony/scale";
+import { parcelStreetDirection } from "../src/colony/parcelGeometry";
 import { fixtureCameraPose, testbedParcelInfo, type TestbedCameraMode } from "../src/colony/render/starterGarageCamera";
 import { buildTestbedRoadDrape, streetAxisFromCarriage, TESTBED_ASPHALT, TESTBED_VERGE } from "../src/colony/render/testbedRoadDrape";
 
@@ -146,6 +146,8 @@ describe("sloped fence and garage testbed fixtures", () => {
     expect(grading.ok).toBe(true);
 
     const pose = housePoseForParcel(parcel, mapSize, grading);
+    expect(pose.position[1]+.15).toBeCloseTo(grading.houseFloorY,3);
+    if(grading.garageMode!=="undercroft") expect(pose.position[1]).toBeCloseTo(grading.padY,2);
     const ring = [...parcel.fence, parcel.gate];
     const bounds = {
       minX: Math.min(...ring.map((c) => c.x)) - 0.5,
@@ -194,6 +196,13 @@ describe("sloped fence and garage testbed fixtures", () => {
       const frontGy = unsold.gate.y + streetDirection[1] * 0.5;
       expect(board.position[1]).toBeCloseTo(groundAt(board.gx, board.gy), 3);
       expect((board.gx - frontX) * streetDirection[0] + (board.gy - frontGy) * streetDirection[1]).toBeGreaterThan(0);
+      const clearance=((board.gx-frontX)*streetDirection[0]+(board.gy-frontGy)*streetDirection[1])*CELL_SIZE;
+      expect(clearance).toBeGreaterThan(0);
+      expect(clearance).toBeLessThanOrEqual(4.01);
+      expect(new Set(unsold.driveway.map(c=>`${c.x},${c.y}`)).has(`${Math.round(board.gx)},${Math.round(board.gy)}`)).toBe(false);
+      const lateral=Math.abs((board.gx-unsold.gate.x)*-streetDirection[1]+(board.gy-unsold.gate.y)*streetDirection[0]);
+      expect(lateral).toBeGreaterThan(1.85/CELL_SIZE);
+      for(const post of board.posts){const gx=post.position[0]/CELL_SIZE+mapSize/2,gy=post.position[2]/CELL_SIZE+mapSize/2;expect(post.position[1]).toBeCloseTo(groundAt(gx,gy),3);}
       expect(frontY).toBeGreaterThan(0);
       expect(board.position[1]).toBeGreaterThan(0.5);
     }
@@ -269,6 +278,16 @@ describe("sloped fence and garage testbed fixtures", () => {
     const openingNormal=oc.clone().sub(oa).cross(ob.clone().sub(oa)).normalize();
     expect(openingNormal.x*street[0]+openingNormal.z*street[1]).toBeGreaterThan(.99);
     expect(lower!.topY.every(y=>y<=down.grading.houseFloorY+.02)).toBe(true);
+    expect(housePoseForParcel(down.parcel,down.mapSize,down.grading).position[1]+.15).toBeCloseTo(lower!.topY[0]!,3);
+    expect(lower!.vertices!.length).toBeGreaterThan(0);
+    for(const piece of pieces.filter(p=>["pad","bank","wall","lowerStorey"].includes(p.kind)&&p.vertices)){
+      for(let q=0;q<piece.vertices!.length;q+=12){
+        const v=piece.vertices!,a=new THREE.Vector3(v[q]!,v[q+1]!,v[q+2]!),b=new THREE.Vector3(v[q+3]!,v[q+4]!,v[q+5]!),c=new THREE.Vector3(v[q+6]!,v[q+7]!,v[q+8]!),d=new THREE.Vector3(v[q+9]!,v[q+10]!,v[q+11]!);
+        const normal=b.clone().sub(a).cross(c.clone().sub(a));
+        expect(normal.length()).toBeGreaterThan(1e-6);
+        expect(Math.abs(d.clone().sub(a).dot(normal.clone().normalize()))).toBeLessThanOrEqual(.04);
+      }
+    }
     for (const kind of ["downhill", "uphill"] as const) expect(Object.values(counts[kind]!).reduce((sum, n) => sum + n, 0), `${kind} quad counts: ${JSON.stringify(counts[kind])}`).toBeGreaterThan(0);
   });
 

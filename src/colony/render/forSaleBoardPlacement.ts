@@ -8,6 +8,7 @@ export interface ForSaleBoardPlacement {
   rotationY: number;
   gx: number;
   gy: number;
+  posts: [{ position: [number, number, number] }, { position: [number, number, number] }];
 }
 
 /** Place the sale sign outside the front fence, on the street side and clear of the drive. */
@@ -35,5 +36,11 @@ export function forSaleBoardPlacement(
   const x = (gx - mapSize / 2) * CELL_SIZE;
   const z = (gy - mapSize / 2) * CELL_SIZE;
   // The board face points away from the plot toward the street.
-  return { position: [x, groundAt(gx, gy), z], rotationY: Math.atan2(dx, dy), gx, gy };
+  const y = groundAt(gx, gy), rotationY = Math.atan2(dx, dy);
+  const posts = ([-0.52, 0.52] as const).map((offset) => {
+    const px = x + Math.cos(rotationY) * offset, pz = z - Math.sin(rotationY) * offset;
+    const pgx = px / CELL_SIZE + mapSize / 2, pgy = pz / CELL_SIZE + mapSize / 2;
+    return { position: [px, groundAt(pgx, pgy), pz] as [number, number, number] };
+  }) as ForSaleBoardPlacement["posts"];
+  return { position: [x, y, z], rotationY, gx, gy, posts };
 }

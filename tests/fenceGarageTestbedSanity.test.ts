@@ -22,7 +22,7 @@ describe("fence garage testbed assets and parcel",()=>{
   const source=readFileSync(new URL("../src/colony/testbed/fenceGarageTestbed.tsx",import.meta.url),"utf8");
   expect((source.match(/<ParcelFence\b/g)??[]).length).toBeGreaterThan(0);
   expect((source.match(/<primitive object=\{gateRoot\}/g)??[])).toHaveLength(0);
-  expect(source).toMatch(/gateOpen=\{p\.id===parcel\.id\?gateAmount:0\}/);
+  expect(source).toMatch(/gateOpen=\{p\.id===displayParcel\.id\?gateAmount:0\}/);
   expect(source).toContain("instanceCounts");
   expect(source).toContain("instanceCounts[entry.name]");
  });

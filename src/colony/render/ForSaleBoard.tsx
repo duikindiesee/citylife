@@ -25,7 +25,7 @@ function boardTexture(parcel: Parcel, distToWater: number): THREE.CanvasTexture 
   ctx.font = "27px sans-serif"; ctx.fillText(`${size.areaM2.toLocaleString("en-US")} m²`, 256, 190);
   ctx.font = "bold 38px sans-serif"; ctx.fillText(`${bill.totalKco} KCO`, 256, 238);
   ctx.font = "22px sans-serif"; ctx.fillText(`${plotPricePerM2Kco().toFixed(2)} KCO/m²`, 256, 272);
-  if(bill.premiumKco>0){ctx.font="18px sans-serif";ctx.fillText(`incl. +${bill.premiumKco} KCO waterfront`,256,302);}
+  if(bill.premiumKco>0){ctx.font="bold 20px sans-serif";ctx.fillText(`incl. +${bill.premiumKco} KCO waterfront`,256,302);}
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -35,7 +35,8 @@ export function ForSaleBoard({parcel,mapSize,distToWater,groundAt=FLAT_GROUND}:{
   const texture = useMemo(() => boardTexture(parcel,distToWater),[parcel,distToWater]);
   const placement = useMemo(() => forSaleBoardPlacement(parcel,mapSize,groundAt),[parcel,mapSize,groundAt]);
   return <group position={placement.position} rotation={[0,placement.rotationY,0]}>
-    <mesh position={[0,1.35,0]}><boxGeometry args={[1.2,1.5,.12]}/><meshStandardMaterial color="#60452d"/></mesh>
+    {placement.posts.map((post,i) => <mesh key={i} position={[0.52*(i===0?-1:1),post.position[1]-placement.position[1]+.62,0]}><boxGeometry args={[.09,1.24,.09]}/><meshStandardMaterial color="#76502d"/></mesh>)}
+    <mesh position={[0,1.35,0]}><boxGeometry args={[1.5,1.0,.12]}/><meshStandardMaterial color="#60452d"/></mesh>
     <mesh position={[0,1.5,.071]}><planeGeometry args={[1.5,.94]}/><meshBasicMaterial map={texture} toneMapped={false}/></mesh>
   </group>;
 }

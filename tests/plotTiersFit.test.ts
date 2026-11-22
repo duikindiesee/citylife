@@ -14,6 +14,9 @@ import {
 import { LAND_PRICE_PER_M2_KCO, plotBoardPriceKco, plotSizeM } from "../src/colony/landPrice";
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { garageFootprintInside, starterGaragePlacement } from "../src/colony/render/starterGaragePlacement";
+import { housePoseForParcel } from "../src/colony/render/housePlacement";
+import { parcelStreetDirection } from "../src/colony/parcelGeometry";
+import { gradePlot } from "../src/colony/slope/plotGrading";
 
 const SIZE: Record<ParcelTier, ParcelSize> = { COMPACT, BIG, ESTATE, GRAND };
 // [cells W x D, metres, m², inland price KCO]
@@ -59,6 +62,28 @@ function generated() {
 }
 
 describe("plot tier table (spec 180 Round 11)", () => {
+  it("fits the placed ESTATE house, pool and lawn inside the real 28 x 36 m lot",()=>{
+    const sim=new ColonySim(180),p=makeNeighborhoodAt(sim.state.terrain,sim.state.terrain.landing,{small:false}).parcels.find(x=>x.id==="lot_1")!;
+    expect(p.tier).toBe("ESTATE");
+    const grading=gradePlot(p,()=>0),pose=housePoseForParcel(p,sim.state.terrain.size,grading);
+    const ring=[...p.fence,p.gate],bounds={x0:Math.min(...ring.map(c=>c.x))-.5,x1:Math.max(...ring.map(c=>c.x))+.5,y0:Math.min(...ring.map(c=>c.y))-.5,y1:Math.max(...ring.map(c=>c.y))+.5};
+    const rect=(cx:number,cy:number,w:number,d:number)=>({x0:cx-w/2,x1:cx+w/2,y0:cy-d/2,y1:cy+d/2});
+    const house=rect(pose.position[0]/CELL_SIZE+sim.state.terrain.size/2,pose.position[2]/CELL_SIZE+sim.state.terrain.size/2,11.5/CELL_SIZE,11.5/CELL_SIZE);
+    const street=parcelStreetDirection(p),inland:[number,number]=[-street[0],-street[1]];
+    const houseCentre:[number,number]=[pose.position[0]/CELL_SIZE+sim.state.terrain.size/2,pose.position[2]/CELL_SIZE+sim.state.terrain.size/2];
+    const poolCentre:[number,number]=[houseCentre[0]+inland[0]*(8.75/CELL_SIZE),houseCentre[1]+inland[1]*(8.75/CELL_SIZE)];
+    const lawnCentre:[number,number]=[poolCentre[0]+inland[0]*(5/CELL_SIZE),poolCentre[1]+inland[1]*(5/CELL_SIZE)];
+    const pool=rect(poolCentre[0],poolCentre[1],(street[0]===0?8:4)/CELL_SIZE,(street[0]===0?4:8)/CELL_SIZE);
+    const lawn=rect(lawnCentre[0],lawnCentre[1],(street[0]===0?8:5)/CELL_SIZE,(street[0]===0?5:8)/CELL_SIZE);
+    for(const r of [house,pool,lawn]){expect(r.x0).toBeGreaterThanOrEqual(bounds.x0+2.5/CELL_SIZE);expect(r.x1).toBeLessThanOrEqual(bounds.x1-2.5/CELL_SIZE);expect(r.y0).toBeGreaterThanOrEqual(bounds.y0+3/CELL_SIZE);expect(r.y1).toBeLessThanOrEqual(bounds.y1-3/CELL_SIZE);}
+    const rearClearance=((poolCentre[0]-p.gate.x)*inland[0]+(poolCentre[1]-p.gate.y)*inland[1]);
+    expect(rearClearance-2/CELL_SIZE).toBeGreaterThanOrEqual(1/CELL_SIZE);
+    expect(((poolCentre[0]-houseCentre[0])*inland[0]+(poolCentre[1]-houseCentre[1])*inland[1])-5.75/CELL_SIZE).toBeGreaterThanOrEqual(1/CELL_SIZE);
+    expect(((poolCentre[0]-houseCentre[0])*inland[0]+(poolCentre[1]-houseCentre[1])*inland[1])).toBeGreaterThan(0);
+    const coverage=(11.5*11.5+8*4)/(p.w*p.h*CELL_SIZE*CELL_SIZE);
+    expect(coverage).toBeLessThanOrEqual(.4);
+    expect([p.w*CELL_SIZE,p.h*CELL_SIZE]).toEqual([28,36]);
+  });
   it("each tier has the approved cells, metres, m² and inland price; rate × area = price", () => {
     expect(LAND_PRICE_PER_M2_KCO).toBe(0.27);
     for (const tier of Object.keys(TABLE) as ParcelTier[]) {

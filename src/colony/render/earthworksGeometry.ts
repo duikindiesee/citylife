@@ -51,7 +51,7 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
     quad("wall", COPING, [[a, topA], [b, topB], [bb, topB], [aa, topA]]);
   };
   // Flat pad, a metre and a half wider than the 11.5 m house on each side.
-  for (let i = 0; i < 4; i++) quad("pad", PAD, [[corners[i]!, grading.padY], [corners[(i + 1) % 4]!, grading.padY], [corners[(i + 1) % 4]!, grading.padY], [corners[i]!, grading.padY]]);
+  quad("pad", PAD, corners.map((corner) => [corner, grading.padY]));
 
   const platform = grading.technique === "house-platform" || grading.technique === "level-pad";
   for (let e = 0; e < 4; e++) {
@@ -69,8 +69,15 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
       if (type !== "level") {
         if (type === "fill" && platform) {
           const depth = Math.max(0, da, db), bankMax = grading.banks.reduce((m, bank) => Math.max(m, bank.lengthM), 0), length = Math.min(2 * depth, bankMax);
-          const farA: Point = [p[0] + outward[0] * length / CELL_SIZE, p[1] + outward[1] * length / CELL_SIZE], farB: Point = [q[0] + outward[0] * length / CELL_SIZE, q[1] + outward[1] * length / CELL_SIZE];
-          quad("bank", BANK, [[p, grading.padY], [q, grading.padY], [farB, groundAt(...farB)], [farA, groundAt(...farA)]]);
+          const steps = Math.max(1, Math.ceil(len / 0.5));
+          for (let i = 0; i < steps; i++) {
+            const t0 = i / steps, t1 = (i + 1) / steps;
+            const a: Point = [p[0] + (q[0] - p[0]) * t0, p[1] + (q[1] - p[1]) * t0];
+            const b: Point = [p[0] + (q[0] - p[0]) * t1, p[1] + (q[1] - p[1]) * t1];
+            const fa: Point = [a[0] + outward[0] * length / CELL_SIZE, a[1] + outward[1] * length / CELL_SIZE];
+            const fb: Point = [b[0] + outward[0] * length / CELL_SIZE, b[1] + outward[1] * length / CELL_SIZE];
+            quad("bank", BANK, [[a, grading.padY], [b, grading.padY], [fb, groundAt(...fb)], [fa, groundAt(...fa)]]);
+          }
         } else {
           const sign = type;
           const maxDepth = Math.max(Math.abs(da), Math.abs(db)), tiers = Math.max(1, Math.ceil(maxDepth / 1.6));

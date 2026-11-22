@@ -69,6 +69,10 @@ describe("homestead kit follows rendered ground", () => {
 
       const board = forSaleBoardPlacement(parcel, size, groundAt);
       closeTo(board.position[1], groundAt(board.gx, board.gy));
+      for (const post of board.posts) {
+        const gx=post.position[0]/CELL_SIZE+size/2,gy=post.position[2]/CELL_SIZE+size/2;
+        closeTo(post.position[1],groundAt(gx,gy));
+      }
       const streetSign = parcel.side === 1 ? -1 : 1;
       const fenceFront = parcel.gate.y + (parcel.side === 1 ? -0.5 : 0.5);
       const streetDistance = (board.gy - fenceFront) * CELL_SIZE * streetSign;
