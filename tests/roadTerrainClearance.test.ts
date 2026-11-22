@@ -275,13 +275,16 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
     expect(sampleCount).toBeGreaterThan(2000);
   });
 
-  it("keeps target road at grid (514.40, 198.50) strictly above triangulated ground on seed 4242", () => {
+  it("keeps the tightest-clearance road at grid (388.02, 406.67) strictly above triangulated ground on seed 4242", () => {
     const { terrain, level, gridOf, group } = buildLiveRoadScene(4242);
-    // Preserved coordinates from diagnostic probe artifact
-    const targetGx = 514.3972473144531;
-    const targetGy = 198.50392150878906;
-    const expectedRoadSurfaceY = 4.929289817810059;
-    const expectedGroundY = 4.434311177879542;
+    // Spec 180 R11 — re-pinned to the new deterministic layout. The mixed-tier masterplan moved the
+    // roads (the old (514.40, 198.50) and (385.48, 319.87) probe points are no longer on any road).
+    // This is the TIGHTEST positive clearance of any rendered road triangle on seed 4242 (probe over
+    // all 221,848 triangle centroids; the sweep above proves none is below CLEARANCE_EPSILON_M).
+    const targetGx = 388.0244547526042;
+    const targetGy = 406.67405192057294;
+    const expectedRoadSurfaceY = 14.169400850931803;
+    const expectedGroundY = 13.99415522845869;
 
     const sample = findRoadSample(group, gridOf, targetGx, targetGy);
     expect(sample).not.toBeNull();
@@ -290,17 +293,17 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
     const groundY = triangulatedGroundY(terrain, level, sample!.gx, sample!.gy);
     expect(groundY).toBeCloseTo(expectedGroundY, 3);
     const clearance = sample!.surfaceY - groundY;
-    expect(clearance).toBeCloseTo(0.495, 3);
+    expect(clearance).toBeCloseTo(0.175, 3);
     expect(clearance).toBeGreaterThan(CLEARANCE_EPSILON_M);
   });
 
   it("confirms positive clearance on valid clear control", () => {
     const { terrain, level, gridOf, group } = buildLiveRoadScene(4242);
-    // Preserved coordinates from diagnostic probe artifact
-    const ctrlGx = 385.4760030110677;
-    const ctrlGy = 319.8749723434448;
-    const expectedRoadSurfaceY = 16.964541753133137;
-    const expectedGroundY = 16.653484785920693;
+    // Spec 180 R11 — re-pinned: a comfortable (~0.31 m) clearance control on the new layout.
+    const ctrlGx = 339.1183967590332;
+    const ctrlGy = 325.5155506134033;
+    const expectedRoadSurfaceY = 11.739842096964518;
+    const expectedGroundY = 11.425295245605309;
 
     const sample = findRoadSample(group, gridOf, ctrlGx, ctrlGy);
     expect(sample).not.toBeNull();
@@ -309,13 +312,13 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
     const groundY = triangulatedGroundY(terrain, level, sample!.gx, sample!.gy);
     expect(groundY).toBeCloseTo(expectedGroundY, 3);
     const clearance = sample!.surfaceY - groundY;
-    expect(clearance).toBeCloseTo(0.311, 3);
+    expect(clearance).toBeCloseTo(0.3145, 3);
     expect(clearance).toBeGreaterThan(CLEARANCE_EPSILON_M);
   });
 
   it("detects an artificial ground protrusion on an injected raised cell (negative control)", () => {
     const { terrain, level, gridOf, group } = buildLiveRoadScene(4242);
-    // Road sample near cell [384, 322]
+    // Road sample near the control at grid (339.12, 325.52)
     let sample: { gx: number; gy: number; surfaceY: number } | null = null;
     let minD2 = Infinity;
     for (const t of roadTriangles(group)) {
@@ -327,7 +330,7 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
       ];
       const gx = gridOf(centroid[0]!);
       const gy = gridOf(centroid[2]!);
-      const d2 = (gx - 384.81) ** 2 + (gy - 322.24) ** 2;
+      const d2 = (gx - 339.12) ** 2 + (gy - 325.52) ** 2;
       if (d2 < minD2) {
         minD2 = d2;
         sample = { gx, gy, surfaceY: centroid[1]! };

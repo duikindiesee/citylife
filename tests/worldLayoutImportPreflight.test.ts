@@ -76,8 +76,9 @@ function surveyedPlacement(
         roadWays: state.roadWays,
       });
       const orientations: readonly PlacementOrientation[] = ["n", "s", "w", "e"];
-      const maxCandidates = 5000;
-      const maxDurationMs = 5000;
+      // Spec 180 R11: the scan budget was pinned to the old layout; the search is deterministic and cheap, so scan every road.
+      const maxCandidates = state.roads.length * orientations.length;
+      const maxDurationMs = 20_000;
       let tested = 0;
       const t0 = performance.now();
 

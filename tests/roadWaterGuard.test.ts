@@ -111,16 +111,36 @@ describe("road-on-water guard", () => {
   it("keeps the seed 4242 Woods1 connector visibly continuous", () => {
     const rt = new ColonyRuntime(4242);
     const terrain = rt.sim.state.terrain;
+    // Spec 180 R11 — the connector is re-derived from the generator instead of pinned to old
+    // coordinates: it is the way that runs from the Woods2 hamlet to the Woods1 hamlet.
+    const hoodLots = (key: string) => rt.lots().filter((l) => l.neighborhoodKey === key);
+    const near = (p: { x: number; y: number } | undefined, key: string) =>
+      p !== undefined &&
+      hoodLots(key).some((l) => Math.hypot(l.x - p.x, l.y - p.y) <= 15);
     const way = rt.roadWays.find((candidate) => {
       const start = candidate.path[0];
       const end = candidate.path.at(-1);
-      return (
-        start?.x === 179 && start.y === 467 && end?.x === 487 && end.y === 367
-      );
+      return near(start, "wood2") && near(end, "wood1");
     });
     expect(way).toBeDefined();
-    expect(roadRibbonRenderPath(way!, terrain)).toEqual(
-      densify(way!.path, STATION_STEP_CELLS),
-    );
+    // The old layout's connector hugged a lagoon, so the guard had to fall back to the raw path
+    // (pinned as toEqual(densify(path))). The Spec 180 R11 connector keeps clear of the water, so
+    // the smoothed path is legitimately used. The intent — a continuous ribbon that never samples
+    // water — is asserted directly for whichever path the guard picks.
+    const render = roadRibbonRenderPath(way!, terrain);
+    const raw = densify(way!.path, STATION_STEP_CELLS);
+    const onWater = (p: { x: number; y: number }) =>
+      !terrain.inBounds(Math.round(p.x), Math.round(p.y)) ||
+      terrain.water[terrain.idx(Math.round(p.x), Math.round(p.y))] === 1;
+    expect(render.length).toBeGreaterThan(1);
+    expect(render.filter(onWater)).toEqual([]);
+    expect(render[0]).toEqual(raw[0]);
+    expect(render.at(-1)).toEqual(raw.at(-1));
+    // No visible gap: consecutive stations never farther apart than the station step.
+    for (let i = 0; i + 1 < render.length; i++) {
+      expect(Math.hypot(render[i + 1]!.x - render[i]!.x, render[i + 1]!.y - render[i]!.y)).toBeLessThanOrEqual(
+        STATION_STEP_CELLS * 1.01,
+      );
+    }
   });
 });

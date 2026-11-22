@@ -2231,7 +2231,13 @@ export class ColonyRuntime {
         this.sim.state.busDepotSpurCells = new Set(
           spurCells
             .filter(
-              (c) => !(c.x === site.roadCell.x && c.y === site.roadCell.y),
+              (c) =>
+                !(c.x === site.roadCell.x && c.y === site.roadCell.y) &&
+                // Spec 180 R11: a spur apron laid over an EXISTING street must not turn that
+                // street into a car-free zone. With the smaller plots the depot can sit beside a
+                // through street (seed 7), and fencing its apron cut the street in two, so ambient
+                // traffic lost connectivity. Only cells the spur itself added are bus-only.
+                !roadKeys.has(`${c.x},${c.y}`),
             )
             .map((c) => `${c.x},${c.y}`),
         );

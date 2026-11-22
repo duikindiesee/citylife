@@ -29,14 +29,32 @@ describe("Road Alignment, Transit Bus Loop Pavement & Coastal Roads", () => {
       w.path.some((p) => p.x === 420 && p.y === 120),
     );
     expect(wood3Spine).toBeDefined();
-    const wood3Connector = ways.find(
-      (w) => w !== wood3Spine && w.path.some((p) => p.x === 437 && p.y === 123),
+    // Spec 180 R11 — with the real-measure plots the Wood3 hamlet is shorter, so its trunk joins the
+    // spine's carriageway at a cell beside the spine instead of at the spine's final point (the old
+    // layout's spine ended exactly at the junction). The invariant is re-derived from the generator:
+    // exactly one other way ends on a drivable road cell inside the spine's carriageway footprint
+    // (<= 2 cells, half of the 3-cell carriageway plus its verge from the polyline), i.e. the
+    // ribbons overlap with no seam.
+    const spine = wood3Spine!.path;
+    const distToSpine = (p: { x: number; y: number }): number => {
+      let best = Infinity;
+      for (let i = 0; i + 1 < spine.length; i++) {
+        const a = spine[i]!, b = spine[i + 1]!;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+        best = Math.min(best, Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)));
+      }
+      return best;
+    };
+    const roadKind = rt.sim.state.roadKind;
+    const joins = ways.filter(
+      (w) =>
+        w !== wood3Spine &&
+        [w.path[0]!, w.path[w.path.length - 1]!].some(
+          (p) => roadKind.has(`${p.x},${p.y}`) && distToSpine(p) <= 2,
+        ),
     );
-    expect(wood3Connector).toBeDefined();
-    const spineEnd = wood3Spine!.path[wood3Spine!.path.length - 1]!;
-    const connEnd = wood3Connector!.path[wood3Connector!.path.length - 1]!;
-    expect(connEnd.x).toBe(spineEnd.x);
-    expect(connEnd.y).toBe(spineEnd.y);
+    expect(joins.length, "the wood3 trunk connector joins the spine").toBe(1);
   });
 
   it("transit bus loop on seed 4242 has 100% of sample points on the drivable road surface", () => {

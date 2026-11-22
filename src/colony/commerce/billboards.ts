@@ -56,6 +56,18 @@ export function surveyBillboards(
   // placed — this is what stops two boards landing a cell apart (one behind the other).
   const farEnough = (x: number, y: number) =>
     sites.every((s) => Math.abs(s.x - x) + Math.abs(s.y - y) >= MIN_SPACING);
+  // The rendered board's posts sit half a cell either side of the ground cell. Check
+  // the full neighbouring 3x3 footprint so neither post can land on a road/shop cell.
+  const footprintClear = (x: number, y: number) => {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!cellOk(t, x + dx, y + dy) || blocked.has(`${x + dx},${y + dy}`)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
   // Round-robin the two ends, marching outward, so the boards spread to whichever approaches are open.
   for (
     let ring = 2;
@@ -67,20 +79,7 @@ export function surveyBillboards(
       const bx = e.fromX + e.step * ring;
       for (const perp of PERP_TRIES) {
         const by = ys + perp;
-        let clear = true;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (
-              !cellOk(t, bx + dx, by + dy) ||
-              blocked.has(`${bx + dx},${by + dy}`)
-            ) {
-              clear = false;
-              break;
-            }
-          }
-          if (!clear) break;
-        }
-        if (!clear) continue;
+        if (!footprintClear(bx, by)) continue;
         if (!farEnough(bx, by)) continue; // never stack / sit behind another board
         const shopId = shops.length
           ? shops[(rotation + sites.length) % shops.length]!
@@ -107,7 +106,7 @@ export function surveyBillboards(
         const by = midY + signedDy;
         if (by < d.reserve.y || by >= d.reserve.y + d.reserve.h) continue;
         for (const e of edgeXs) {
-          if (!cellOk(t, e.x, by) || blocked.has(`${e.x},${by}`)) continue;
+          if (!footprintClear(e.x, by) || !farEnough(e.x, by)) continue;
           sites.push({
             id: "board_0",
             x: e.x,
