@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-22T19:20:55.896Z",
+  "updatedAt": "2026-11-22T19:21:07.690Z",
   "runs": [
     {
       "runId": 45060169208,
@@ -38,6 +38,45 @@
           "startedAt": "2026-11-22T19:20:20Z",
           "completedAt": "2026-11-22T19:20:36Z",
           "durationSeconds": 16
+        }
+      ]
+    },
+    {
+      "runId": 45060169187,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/45060169187",
+      "event": "pull_request",
+      "branch": "forge/picket-fence-starter-garage",
+      "sha": "577e71939beb32188db4faa746e0975b7964edfe",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/577e71939beb32188db4faa746e0975b7964edfe",
+      "pullRequestNumbers": "#583",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/583",
+      "pullRequests": [
+        {
+          "number": 583,
+          "url": "https://github.com/duikindiesee/citylife/pull/583"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-22T19:20:16Z",
+      "completedAt": "2026-11-22T19:20:54Z",
+      "durationSeconds": 38,
+      "runnerSummary": "GitHub Actions 1000013199",
+      "jobs": [
+        {
+          "id": 137324086606,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000013199",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-11-22T19:20:19Z",
+          "completedAt": "2026-11-22T19:20:54Z",
+          "durationSeconds": 35
         }
       ]
     },
@@ -13270,99 +13309,6 @@
           "startedAt": "2026-10-14T11:52:09Z",
           "completedAt": "2026-10-14T11:52:22Z",
           "durationSeconds": 13
-        }
-      ]
-    },
-    {
-      "runId": 38559512377,
-      "workflowName": "Docker",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38559512377",
-      "event": "push",
-      "branch": "main",
-      "sha": "143897ba14a7bb4a2e1d1220babcfd81d6d1b264",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/143897ba14a7bb4a2e1d1220babcfd81d6d1b264",
-      "pullRequestNumbers": "#566",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/566",
-      "pullRequests": [
-        {
-          "number": 566,
-          "url": "https://github.com/duikindiesee/citylife/pull/566"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "failure",
-      "startedAt": "2026-10-14T11:51:15Z",
-      "completedAt": "2026-10-14T12:45:12Z",
-      "durationSeconds": 3237,
-      "runnerSummary": "kooker1-org-docker-1, GitHub Actions 1000011164, kooker1-org-docker-2",
-      "jobs": [
-        {
-          "id": 115836829843,
-          "name": "version-bump / bump",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-1",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-10-14T11:51:20Z",
-          "completedAt": "2026-10-14T11:52:18Z",
-          "durationSeconds": 58
-        },
-        {
-          "id": 115837237864,
-          "name": "build-and-push",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000011164",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-14T11:52:22Z",
-          "completedAt": "2026-10-14T12:44:35Z",
-          "durationSeconds": 3133
-        },
-        {
-          "id": 115859208828,
-          "name": "deploy / sync",
-          "status": "completed",
-          "conclusion": "failure",
-          "runnerName": "kooker1-org-docker-2",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-10-14T12:44:39Z",
-          "completedAt": "2026-10-14T12:45:11Z",
-          "durationSeconds": 32
-        },
-        {
-          "id": 115859208909,
-          "name": "retention / prune-ghcr",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-1",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-10-14T12:44:39Z",
-          "completedAt": "2026-10-14T12:44:49Z",
-          "durationSeconds": 10
         }
       ]
     }
