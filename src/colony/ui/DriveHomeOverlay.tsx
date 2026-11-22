@@ -35,6 +35,7 @@ import {
   dealershipStartCell,
   isWithinArrivalBounds,
   stepCell,
+  resolveGridSize,
   type Cell,
   type HomeResidency,
   type ArrivalOutcome,
@@ -86,6 +87,7 @@ export function DriveHomeOverlay({
     focusSurveyCell(x: number, y: number): boolean;
     getOwnedDrivePose?(): { x: number; y: number; heading?: number } | null;
     getPhysicalCarPosition?(): { x: number; y: number } | null;
+    stepGuidedDrive?(dir: "up" | "down" | "left" | "right"): boolean;
     getActiveLayoutRevisionId?(): string | null;
     worldLayoutDocument?(): any;
     getOperatorUserId?(): string | null;
@@ -176,6 +178,11 @@ export function DriveHomeOverlay({
       setCursor((cur) => {
         if (cur) return cur;
         if (res.resident) return homeTargetCell(res.truth, runtime);
+        const pose =
+          runtime?.getOwnedDrivePose?.() ??
+          runtime?.getPhysicalCarPosition?.() ??
+          null;
+        if (pose) return { x: Math.round(pose.x), y: Math.round(pose.y) };
         return dealershipStartCell(res.truth, runtime);
       });
       setPhase("ready");
@@ -237,11 +244,25 @@ export function DriveHomeOverlay({
   const resident = residency?.resident === true;
   const garageUnlocked = isHomeGarageUnlocked(residency);
 
-  const move = useCallback((dir: "up" | "down" | "left" | "right") => {
-    setCursor((cur) => (cur ? stepCell(cur, dir) : cur));
-    // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
-    setOutcome(undefined);
-  }, []);
+  const move = useCallback(
+    (dir: "up" | "down" | "left" | "right") => {
+      if (runtime && typeof runtime.stepGuidedDrive === "function") {
+        const moved = runtime.stepGuidedDrive(dir);
+        if (!moved) return;
+        const newPose = runtime.getOwnedDrivePose?.();
+        if (newPose) {
+          setCursor({ x: Math.round(newPose.x), y: Math.round(newPose.y) });
+          setOutcome(undefined);
+          return;
+        }
+      }
+      const effectiveGrid = resolveGridSize(runtime, home);
+      setCursor((cur) => (cur ? stepCell(cur, dir, effectiveGrid) : cur));
+      // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
+      setOutcome(undefined);
+    },
+    [runtime, home],
+  );
 
   // Smoothly center the 3D camera over the driving cursor as the vehicle moves through the city.
   useEffect(() => {
@@ -306,9 +327,7 @@ export function DriveHomeOverlay({
     const carSpec = runtime?.getAuthoritativeCar?.() ?? null;
     const vehicleKey = carSpec
       ? serverVehicleKeyOf(carSpec.id)
-      : (residency?.truth as any)?.vehicleId
-        ? String((residency?.truth as any).vehicleId).trim()
-        : null;
+      : null;
     const plotId = residency?.truth?.plotId ?? null;
     const frameId = residency?.truth?.frameId ?? null;
 

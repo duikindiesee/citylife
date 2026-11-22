@@ -79,7 +79,7 @@ export function clampCell(cell: Cell, grid = STARTER_PLACEMENT_GRID): Cell {
  * Derives from authority.getWorldGridSize() or authority.sim.state.terrain.size when present.
  * Defaults to 608 for canonical wide coordinates, or STARTER_PLACEMENT_GRID (64) for legacy plots.
  */
-function resolveGridSize(authorityOrGrid?: any, home?: Cell | null): number {
+export function resolveGridSize(authorityOrGrid?: any, home?: Cell | null): number {
   if (typeof authorityOrGrid === "number" && authorityOrGrid > 0) {
     return authorityOrGrid;
   }

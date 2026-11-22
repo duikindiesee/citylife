@@ -89,6 +89,18 @@ interface HomeState {
 }
 
 async function routeAll(page: Page, s: HomeState): Promise<void> {
+  await page.route("**/api/ledger/me/wallet", (route: Route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        userId: "demo-user",
+        currency: "KCO",
+        balance: 1000,
+      }),
+    });
+  });
   await page.route(FLAG_GLOB, (route: Route) => {
     // Simulate an unreachable flag endpoint (backend down / proxy ECONNREFUSED) — the gate must fail
     // closed on it, exactly as it did on hosted CI where the entry correctly never rendered.
@@ -110,13 +122,6 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
       body: JSON.stringify(s.eligible ?? { neighbourhoods: [] }),
     }),
   );
-  await page.route(ELIGIBLE_RE, (route: Route) =>
-    route.fulfill({
-      status: s.eligibleStatus ?? 200,
-      contentType: "application/json",
-      body: JSON.stringify(s.eligible ?? { neighbourhoods: [] }),
-    }),
-  );
   await page.route(PURCHASE_RE, (route: Route) => {
     s.purchaseCount.n += 1;
     route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
@@ -128,9 +133,10 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
         ? {
             owned: true,
             status: "OWNED",
-            neighbourhoodKey: "coastal",
-            plotId: "starter-home:demo-user",
-            frameId: "starter-home-frame:demo-user",
+            neighbourhoodKey: "wood1",
+            plotId: "wood1_lot_1",
+            frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_lot_1",
+            layoutRevision: "be8e2659a22d8a41693994428bcdf2de85e201c2472edb2570057ce13305e027",
             onboardingState: "OWNED",
             priceKco: 350,
           }
