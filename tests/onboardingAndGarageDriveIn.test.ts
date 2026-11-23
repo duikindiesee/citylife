@@ -314,7 +314,7 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(rt.isGaragePadWalkable(showroomX, showroomY, garagePad)).toBe(true);
   });
 
-  it("spawns founders outside every lot.houseZone and walks freely off parcels at 60fps", () => {
+  it("spawns founders outside every lot.houseZone", () => {
     const testRt = new ColonyRuntime(4242);
     const lots = (testRt as any).neighborhood.lots as any[];
     const inAnyHouseZone = (pos: { x: number; y: number }) => {
@@ -335,52 +335,85 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
       expect(inAnyHouseZone(c.pos), `${id}.pos must be outside houseZone`).toBe(false);
       expect(inAnyHouseZone(c.homeXY), `${id}.homeXY must be outside houseZone`).toBe(false);
     }
-
-    // Walk Joe south out of lot_1 doorstep and Viw east out of lot_2 doorstep at 60fps (unauth & auth)
-    for (const authenticated of [false, true]) {
-      const walkRt = new ColonyRuntime(4242);
-      const joe = (walkRt as any).citizens.byId("citizen_joe")!;
-      if (authenticated) {
-        walkRt.setOperatorName(joe.displayName);
-        walkRt.setOperatorUserId("founder-walk-auth-1");
-      }
-      const joeStart = { ...joe.pos };
-      walkRt.enterFirstPerson("citizen_joe");
-      walkRt.placeFirstPersonDogfood(joeStart, Math.PI / 2); // south along lot_1 driveway
-      walkRt.setFpKey("KeyW", true);
-      for (let i = 0; i < 120; i++) walkRt.stepFirstPersonDogfood(1 / 60);
-      walkRt.setFpKey("KeyW", false);
-      expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
-      expect(joe.pos.y).toBeGreaterThan(joeStart.y + 1.0);
-      // Continue walking onto the street off the parcel
-      walkRt.setFpKey("KeyW", true);
-      for (let i = 0; i < 480; i++) walkRt.stepFirstPersonDogfood(1 / 60);
-      walkRt.setFpKey("KeyW", false);
-      expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
-      expect(
-        (walkRt as any).sim.state.occupied.has(
-          `${Math.round(joe.pos.x)},${Math.round(joe.pos.y)}`,
-        ),
-      ).toBe(false);
-
-      const viwRt = new ColonyRuntime(4242);
-      const viw = (viwRt as any).citizens.byId("citizen_viw")!;
-      if (authenticated) {
-        viwRt.setOperatorName(viw.displayName);
-        viwRt.setOperatorUserId("founder-walk-auth-2");
-      }
-      const viwStart = { ...viw.pos };
-      viwRt.enterFirstPerson("citizen_viw");
-      viwRt.placeFirstPersonDogfood(viwStart, 0); // east along lot_2 driveway
-      viwRt.setFpKey("KeyW", true);
-      for (let i = 0; i < 120; i++) viwRt.stepFirstPersonDogfood(1 / 60);
-      viwRt.setFpKey("KeyW", false);
-      expect(viwRt.getUiState().firstPerson.blockedReason).toBeNull();
-      expect(viw.pos.x).toBeGreaterThan(viwStart.x + 1.0);
-    }
   });
 
-  it("blocks fractional houseZone entry, parcel outer fence crossings, and protects authoritativeHomeTruth driveway", () => {
+  it("walks citizen_joe south off lot_1 parcel at 60fps when unauthenticated", () => {
+    const walkRt = new ColonyRuntime(4242);
+    const joe = (walkRt as any).citizens.byId("citizen_joe")!;
+    const joeStart = { ...joe.pos };
+    walkRt.enterFirstPerson("citizen_joe");
+    walkRt.placeFirstPersonDogfood(joeStart, Math.PI / 2); // south along lot_1 driveway
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(joe.pos.y).toBeGreaterThan(joeStart.y + 1.0);
+    // Continue walking onto the street off the parcel
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 480; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(
+      (walkRt as any).sim.state.occupied.has(
+        `${Math.round(joe.pos.x)},${Math.round(joe.pos.y)}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("walks citizen_joe south off lot_1 parcel at 60fps when authenticated", () => {
+    const walkRt = new ColonyRuntime(4242);
+    const joe = (walkRt as any).citizens.byId("citizen_joe")!;
+    walkRt.setOperatorName(joe.displayName);
+    walkRt.setOperatorUserId("founder-walk-auth-1");
+    const joeStart = { ...joe.pos };
+    walkRt.enterFirstPerson("citizen_joe");
+    walkRt.placeFirstPersonDogfood(joeStart, Math.PI / 2); // south along lot_1 driveway
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(joe.pos.y).toBeGreaterThan(joeStart.y + 1.0);
+    // Continue walking onto the street off the parcel
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 480; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(
+      (walkRt as any).sim.state.occupied.has(
+        `${Math.round(joe.pos.x)},${Math.round(joe.pos.y)}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("walks citizen_viw east from lot_2 doorstep at 60fps when unauthenticated", () => {
+    const viwRt = new ColonyRuntime(4242);
+    const viw = (viwRt as any).citizens.byId("citizen_viw")!;
+    const viwStart = { ...viw.pos };
+    viwRt.enterFirstPerson("citizen_viw");
+    viwRt.placeFirstPersonDogfood(viwStart, 0); // east along lot_2 driveway
+    viwRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) viwRt.stepFirstPersonDogfood(1 / 60);
+    viwRt.setFpKey("KeyW", false);
+    expect(viwRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(viw.pos.x).toBeGreaterThan(viwStart.x + 1.0);
+  });
+
+  it("walks citizen_viw east from lot_2 doorstep at 60fps when authenticated", () => {
+    const viwRt = new ColonyRuntime(4242);
+    const viw = (viwRt as any).citizens.byId("citizen_viw")!;
+    viwRt.setOperatorName(viw.displayName);
+    viwRt.setOperatorUserId("founder-walk-auth-2");
+    const viwStart = { ...viw.pos };
+    viwRt.enterFirstPerson("citizen_viw");
+    viwRt.placeFirstPersonDogfood(viwStart, 0); // east along lot_2 driveway
+    viwRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) viwRt.stepFirstPersonDogfood(1 / 60);
+    viwRt.setFpKey("KeyW", false);
+    expect(viwRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(viw.pos.x).toBeGreaterThan(viwStart.x + 1.0);
+  });
+
+  it("blocks fractional houseZone entry and parcel outer fence crossings", () => {
     const testRt = new ColonyRuntime(4242);
     const lot1 = (testRt as any).neighborhood.lots[0]!;
     const lot2 = (testRt as any).neighborhood.lots[1]!;
@@ -429,7 +462,9 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     testRt.setFpKey("KeyW", false);
     expect(joe.pos.x).toBeLessThan(minX - 0.5);
     expect(testRt.getUiState().firstPerson.blockedReason).toBe("parcel");
+  });
 
+  it("protects authoritativeHomeTruth driveway while blocking owned door threshold", () => {
     // With authoritativeHomeTruth.geometry.houseZone set, owned citizen at doorstep steps around driveway/yard (null)
     const authRt = new ColonyRuntime(4242);
     const owner = (authRt as any).citizens.byId("citizen_joe")!;
