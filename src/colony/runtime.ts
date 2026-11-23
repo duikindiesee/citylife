@@ -5519,7 +5519,39 @@ export class ColonyRuntime {
     if (!id) return false;
     const c = this.citizens.byId(id);
     if (!c) return false;
-    const home = c.homeXY ?? c.pos;
+    let home = c.homeXY ?? c.pos;
+    const truthHz = this.authoritativeHomeTruth?.geometry?.houseZone;
+    const isInsideAnyHouseZone = (x: number, y: number): boolean => {
+      if (this.isCellInHouseZone(truthHz, x, y)) return true;
+      return (this.neighborhood?.lots ?? []).some((l) =>
+        this.isCellInHouseZone(l?.houseZone, x, y),
+      );
+    };
+    if (isInsideAnyHouseZone(home.x, home.y)) {
+      const truthDriveway = this.authoritativeHomeTruth?.geometry?.driveway;
+      const exteriorTruthCell = Array.isArray(truthDriveway)
+        ? [...truthDriveway]
+            .reverse()
+            .find((cell) => !isInsideAnyHouseZone(cell.x, cell.y))
+        : undefined;
+      if (exteriorTruthCell) {
+        home = { x: exteriorTruthCell.x, y: exteriorTruthCell.y };
+      } else {
+        const ownedLot =
+          (this.authoritativeHomeTruth?.plotId
+            ? this.neighborhood?.lots?.find(
+                (l) => l.id === this.authoritativeHomeTruth?.plotId,
+              )
+            : undefined) ??
+          this.neighborhood?.lots?.find((l) => l.ownerCitizenId === id) ??
+          this.neighborhood?.lots?.find((l) =>
+            this.isCellInHouseZone(l?.houseZone, home.x, home.y),
+          );
+        if (ownedLot) {
+          home = this.lotDoorstepCell(ownedLot);
+        }
+      }
+    }
     const hx = Math.round(home.x);
     const hy = Math.round(home.y);
     const car = { x: hx + 1, y: hy };
@@ -5530,9 +5562,15 @@ export class ColonyRuntime {
       { x: hx + 1, y: hy - 1 }, // north of the car
       { x: hx, y: hy }, // the home cell, looking east at the car
     ];
-    const stand = spots.find(
-      (s) => this.blockedStepReason(s.x, s.y) === null,
-    ) ?? { x: hx, y: hy };
+    const stand =
+      spots.find(
+        (s) =>
+          !isInsideAnyHouseZone(s.x, s.y) &&
+          this.blockedStepReason(s.x, s.y) === null,
+      ) ??
+      (!isInsideAnyHouseZone(hx, hy)
+        ? { x: hx, y: hy }
+        : (spots.find((s) => !isInsideAnyHouseZone(s.x, s.y)) ?? c.pos));
     c.pos = { x: stand.x, y: stand.y };
     c.target = { x: stand.x, y: stand.y };
     c.heading = Math.atan2(car.y - stand.y, car.x - stand.x); // face the car
@@ -8209,8 +8247,6 @@ export class ColonyRuntime {
       }
     }
     if (this.neighborhood?.lots?.length) {
-      const fromIx = from ? Math.round(from.x) : null;
-      const fromIy = from ? Math.round(from.y) : null;
       for (const lot of this.neighborhood.lots) {
         const hz = lot?.houseZone;
         if (!hz) continue;
@@ -8221,15 +8257,7 @@ export class ColonyRuntime {
             lot.doorX === ix &&
             lot.doorY === iy &&
             this.isHomesteadDriveway(ix, iy);
-          const fromInsideSameHouseInterior =
-            fromIx !== null &&
-            fromIy !== null &&
-            fromIx >= hz.x &&
-            fromIx < hz.x + w &&
-            fromIy >= hz.y &&
-            fromIy < hz.y + d &&
-            !(lot.doorX === fromIx && lot.doorY === fromIy);
-          if (!isOwnedDoorThreshold && !fromInsideSameHouseInterior) {
+          if (!isOwnedDoorThreshold) {
             return "building";
           }
         }
@@ -8328,10 +8356,16 @@ export class ColonyRuntime {
       y: Math.round(directTarget.y),
     };
     const path = leastCostPath(this.sim.state.terrain, start, goal, {
-      blocked: (x, y) => {
+      blocked: (x, y, fx, fy) => {
         if ((x === start.x && y === start.y) || (x === goal.x && y === goal.y))
           return false;
-        return this.blockedStepReason(x, y) !== null;
+        return (
+          this.blockedStepReason(
+            x,
+            y,
+            fx !== undefined && fy !== undefined ? { x: fx, y: fy } : undefined,
+          ) !== null
+        );
       },
     });
     if (!path || path.length < 2) return null;
@@ -8357,9 +8391,17 @@ export class ColonyRuntime {
     for (const target of candidates) {
       if (this.blockedStepReason(target.x, target.y) !== null) continue;
       const path = leastCostPath(this.sim.state.terrain, start, target, {
-        blocked: (x, y) => {
+        blocked: (x, y, fx, fy) => {
           if (x === start.x && y === start.y) return false;
-          return this.blockedStepReason(x, y) !== null;
+          return (
+            this.blockedStepReason(
+              x,
+              y,
+              fx !== undefined && fy !== undefined
+                ? { x: fx, y: fy }
+                : undefined,
+            ) !== null
+          );
         },
       });
       if (!path) continue;
@@ -8608,6 +8650,67 @@ export class ColonyRuntime {
     return this.neighborhood.lots;
   }
 
+  private isCellInHouseZone(
+    hz:
+      | {
+          x: number;
+          y: number;
+          w?: number;
+          d?: number;
+          width?: number;
+          depth?: number;
+        }
+      | null
+      | undefined,
+    x: number,
+    y: number,
+  ): boolean {
+    if (!hz) return false;
+    const ix = Math.round(x);
+    const iy = Math.round(y);
+    const w = hz.width ?? hz.w ?? 1;
+    const d = hz.depth ?? hz.d ?? 1;
+    return ix >= hz.x && ix < hz.x + w && iy >= hz.y && iy < hz.y + d;
+  }
+
+  private lotDoorstepCell(lot: Lot): { x: number; y: number } {
+    const hz = lot.houseZone;
+    if (Array.isArray(lot.driveway)) {
+      for (let i = lot.driveway.length - 1; i >= 0; i--) {
+        const cell = lot.driveway[i]!;
+        if (!this.isCellInHouseZone(hz, cell.x, cell.y)) {
+          return { x: cell.x, y: cell.y };
+        }
+      }
+    }
+    if (typeof lot.doorX === "number" && typeof lot.doorY === "number") {
+      const t = this.sim?.state?.terrain;
+      const cardinals = [
+        { x: lot.doorX, y: lot.doorY + 1 },
+        { x: lot.doorX + 1, y: lot.doorY },
+        { x: lot.doorX, y: lot.doorY - 1 },
+        { x: lot.doorX - 1, y: lot.doorY },
+      ];
+      for (const c of cardinals) {
+        if (
+          !this.isCellInHouseZone(hz, c.x, c.y) &&
+          (!t ||
+            (c.x >= 0 &&
+              c.y >= 0 &&
+              c.x < t.size &&
+              c.y < t.size &&
+              !t.isWater(c.x, c.y)))
+        ) {
+          return c;
+        }
+      }
+    }
+    if (lot.gate && !this.isCellInHouseZone(hz, lot.gate.x, lot.gate.y)) {
+      return { x: lot.gate.x, y: lot.gate.y };
+    }
+    return { x: lot.x, y: lot.y };
+  }
+
   /** Spec 078 — Joe the Crab, the founder. Reserve the shore-most homestead as permanently his, raise his
    *  fixed 077 house on it, and seed his crab citizen so he is always present and roams the streets. Pure +
    *  deterministic from the terrain and idempotent (the roster guards on the fixed id), so reloads reproduce
@@ -8624,10 +8727,7 @@ export class ColonyRuntime {
     plot.built = true;
     const joeStreet = streetDoorDir(plot);
     plot.blueprint = joeBlueprint(joeStreet);
-    const home = {
-      x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
-      y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),
-    };
+    const home = this.lotDoorstepCell(plot);
     const joe = this.citizens.seedFounder({
       id: JOE_ID,
       householdId: "household_joe",
@@ -8669,10 +8769,7 @@ export class ColonyRuntime {
     plot.ownerCitizenId = VIW_ID;
     plot.built = true;
     plot.blueprint = VIW_BLUEPRINT;
-    const home = {
-      x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
-      y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),
-    };
+    const home = this.lotDoorstepCell(plot);
     const viw = this.citizens.seedFounder({
       id: VIW_ID,
       householdId: "household_viw",
@@ -8684,7 +8781,7 @@ export class ColonyRuntime {
       nowMs: JOE_BORN_MS,
       spd: 0.8,
     });
-    if (viw) this.citizens.setTarget(VIW_ID, { x: plot.doorX, y: plot.doorY });
+    if (viw) this.citizens.setTarget(VIW_ID, home);
     this.seedDeposit(VIW_ID); // spec 085 — the Builder's account; it grows as KOOKER builds for the city
     this.ensureKbProfile({
       citizenId: VIW_ID,
@@ -8705,7 +8802,23 @@ export class ColonyRuntime {
     const lots = this.neighborhood.lots;
     const plot = lots[0];
     if (!plot) return;
-    const home = { x: plot.doorX, y: plot.doorY };
+    const doorstep = this.lotDoorstepCell(plot);
+    const leftCandidate = { x: doorstep.x - 1, y: doorstep.y };
+    const t = this.sim?.state?.terrain;
+    const home =
+      !this.isCellInHouseZone(
+        plot.houseZone,
+        leftCandidate.x,
+        leftCandidate.y,
+      ) &&
+      (!t ||
+        (leftCandidate.x >= 0 &&
+          leftCandidate.y >= 0 &&
+          leftCandidate.x < t.size &&
+          leftCandidate.y < t.size &&
+          !t.isWater(leftCandidate.x, leftCandidate.y)))
+        ? leftCandidate
+        : doorstep;
     const jack = this.citizens.seedFounder({
       id: JACK_ID,
       householdId: "household_jack",
@@ -8717,8 +8830,7 @@ export class ColonyRuntime {
       nowMs: JOE_BORN_MS,
       spd: 0.9,
     });
-    if (jack)
-      this.citizens.setTarget(JACK_ID, { x: plot.doorX + 1, y: plot.doorY });
+    if (jack) this.citizens.setTarget(JACK_ID, home);
     this.seedDeposit(JACK_ID);
     this.ensureKbProfile({
       citizenId: JACK_ID,
@@ -9321,13 +9433,14 @@ export class ColonyRuntime {
     const h = generateHousehold(seed);
     h.status = "approved";
 
+    const doorstep = this.lotDoorstepCell(freeLot);
     const plotInfo = {
       id: freeLot.id,
       name: `Plot ${freeLot.id.split("-")[1] || "Zoned"}`,
       vibe: "plains" as any,
       zone: "residential" as any,
-      x: freeLot.x,
-      y: freeLot.y,
+      x: doorstep.x,
+      y: doorstep.y,
       description: "A dynamically zoned plot.",
     };
 
@@ -9374,13 +9487,14 @@ export class ColonyRuntime {
         l.built = false;
       }
     lot.ownerCitizenId = citizenId;
-    // Home = the house-zone centre (set back from the street), so stepping into the citizen parks at
-    // their actual home; the avatar walks to the door cell facing the street.
-    c.homeXY = {
-      x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2),
-      y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2),
-    };
-    this.citizens.setTarget(citizenId, { x: lot.doorX, y: lot.doorY });
+    // Home = exterior doorstep outside the solid house zone, so avatars/cars never spawn trapped
+    // inside houseZone while remaining on their own lot's driveway threshold.
+    const doorstep = this.lotDoorstepCell(lot);
+    c.homeXY = { ...doorstep };
+    if (this.isCellInHouseZone(lot.houseZone, c.pos.x, c.pos.y)) {
+      c.pos = { ...doorstep };
+    }
+    this.citizens.setTarget(citizenId, doorstep);
     // Spec 082 P2 — the move-in becomes a timeline event on their Kookerbook page.
     this.kbPost(
       citizenId,

@@ -46,6 +46,29 @@ describe("night meetup flow (phase-1 S2)", () => {
     ).toBeLessThanOrEqual(3);
   });
 
+  it("headToNightMeetup produces a non-null guidedTarget.nextWaypoint from an occupied doorstep without operatorUserId and steps without building block", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list.find((c) => c.id !== FRIEND_ID)!;
+    rt.setOperatorName(me.displayName);
+
+    expect(rt.headToNightMeetup()).toBe(true);
+    const initialUi = rt.getUiState().firstPerson;
+    expect(initialUi.active).toBe(true);
+    expect(initialUi.guidedTarget).toBeTruthy();
+    expect(initialUi.guidedTarget?.nextWaypoint).toBeTruthy();
+
+    const startPos = { ...rosterOf(rt).byId(me.id)!.pos };
+    for (let i = 0; i < 120; i++) {
+      rt.stepFirstPersonDogfood(1 / 60);
+    }
+    const afterUi = rt.getUiState().firstPerson;
+    const afterPos = rosterOf(rt).byId(me.id)!.pos;
+    expect(afterUi.blockedReason).not.toBe("building");
+    expect(
+      Math.hypot(afterPos.x - startPos.x, afterPos.y - startPos.y),
+    ).toBeGreaterThan(0.5);
+  });
+
   it("rally.presentCitizens carries the seeded friend by id and public-safe name", () => {
     const rt = new ColonyRuntime(4242);
     const rally = rt.getUiState().rally;
