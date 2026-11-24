@@ -65,8 +65,8 @@ function readParams(): Params {
   return {
     citizenId: q.get("citizenId") ?? "citizen_dev",
     lotId: q.get("lotId") ?? "lot_dev",
-    w: num("w", 19), // 084 S6 — the ESTATE house zone is the new default canvas
-    d: num("d", 14),
+    w: num("w", 3), // Three cells = the 12 m compact/standard building envelope.
+    d: num("d", 3),
     seed: num("seed", 0x1234abcd),
     bp: q.get("bp"),
   };

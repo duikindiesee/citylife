@@ -10,6 +10,7 @@ import type { Terrain } from "./terrain";
 import { Biome } from "./terrain";
 import type { DoorDir } from "./voxelHouse";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
+import { gradePlot, type PlotGrading } from "./slope/plotGrading";
 
 export type FenceType = "fence" | "hedge" | "wall";
 
@@ -37,10 +38,15 @@ export interface Parcel {
   h: number;
   /** Which side of the spine the parcel sits on (-1 = toward -y, +1 = toward +y). */
   side: -1 | 1;
+  tier?: "COMPACT" | "BIG" | "ESTATE" | "GRAND";
+  grading?: Pick<PlotGrading, "band" | "technique" | "garageMode" | "padY" | "houseFloorY" | "garageFloorY" | "gradient">;
+  slot?: number;
   /** The house door cell, facing the street. */
   doorX: number;
   doorY: number;
   ownerCitizenId?: string;
+  /** Opt-in starter garage-first presentation; legacy claims continue to build the full house. */
+  starterGarage?: boolean;
   /** Spec 078 — a permanently reserved FOUNDER parcel (Joe the Crab). Never auto-assigned to a newcomer
    *  and not freed by ordinary demolition. */
   reservedFor?: string;
@@ -99,49 +105,43 @@ export interface ParcelSize {
   farmDepth: number;
   inset: number; // house-zone inset from the side fence (1 legacy, 2 estate — the side strip)
 }
+export type ParcelTier = "COMPACT" | "BIG" | "ESTATE" | "GRAND";
+export const MAX_HOUSE_ENVELOPE_M = { w: 20, d: 16 } as const;
+export function houseEnvelopeM(size: ParcelSize): { w: number; d: number; areaM2: number } {
+  const w = (size.W - 2 * size.inset) * 4;
+  const d = size.houseDepth * 4;
+  return { w, d, areaM2: w * d };
+}
 // Spec 084 S6 — the estate tiers of WORLD v2. Odd widths keep the compiled door's centre column on
 // the parcel axis, so the n/s driveway column never shifts on a redesign.
-export const GRAND: ParcelSize = {
-  W: 27,
-  D: 33,
-  setback: 4,
-  houseDepth: 16,
-  gardenDepth: 6,
-  farmDepth: 5,
-  inset: 2,
-}; // houseZone 23x16 — founders + waterfront
-export const ESTATE: ParcelSize = {
-  W: 23,
-  D: 29,
-  setback: 3,
-  houseDepth: 14,
-  gardenDepth: 5,
-  farmDepth: 5,
-  inset: 2,
-}; // houseZone 19x14 — the standard plot
-// The legacy tiers remain the small-ground fallback (their houses abut the side fence).
+export const GRAND: ParcelSize = { W: 25, D: 25, setback: 5, houseDepth: 4, gardenDepth: 4, farmDepth: 10, inset: 10 }; // 1 ha smallholding; Saldanha Bay IZS Smallholding zone (>= 1 ha): 20 m street line (setback 5 => 24 m), 10 m side/rear, 5% coverage.
+export const ESTATE: ParcelSize = { W: 7, D: 9, setback: 1, houseDepth: 4, gardenDepth: 2, farmDepth: 0, inset: 2 }; // Large: ~1,008 m²; 1970s large stands ~1,063 m².
 export const BIG: ParcelSize = {
-  W: 11,
-  D: 14,
-  setback: 2,
-  houseDepth: 6,
-  gardenDepth: 2,
-  farmDepth: 2,
-  inset: 1,
-};
-export const COMPACT: ParcelSize = {
-  W: 9,
-  D: 11,
+  W: 5,
+  D: 8,
   setback: 1,
-  houseDepth: 5,
+  houseDepth: 3,
   gardenDepth: 2,
-  farmDepth: 1,
+  farmDepth: 0,
   inset: 1,
-};
-const GAP = 4; // empty green cells between adjacent parcels along the street (beyond each fence)
+}; // Standard: FNB 2017 average 552 m²; Irwin ~600 m² stands.
+export const COMPACT: ParcelSize = {
+  W: 5,
+  D: 6,
+  setback: 1,
+  houseDepth: 3,
+  gardenDepth: 0,
+  farmDepth: 0,
+  inset: 1,
+}; // Compact: Irwin ~350 m² stands.
+export const STANDARD = BIG;
+export const LARGE = ESTATE;
+export const SMALLHOLDING = GRAND;
+export const PARCEL_TIER_LABEL: Record<ParcelTier, string> = { COMPACT: "Compact", BIG: "Standard", ESTATE: "Large", GRAND: "Smallholding" };
+const GAP = 2; // ASSUMPTION: two cells = an 8 m green strip between neighbouring boundaries. Real erven share a boundary, but each parcel owns its fence/hedge/wall ring (mixed types would overlap) and the bus-corridor router needs a connector lane clear of parcel boxes (GAP 1 left seed 4242 with no bus loop; GAP 2 and 3 route).
 const MAX_PER_SIDE = 6; // up to 6 homesteads per side of the avenue (084 S6)
 // Offset of the parcel's front fence from the spine centre: carriageway half (1) + verge (1) + 2.
-const FRONT_OFFSET = 4;
+const FRONT_OFFSET = 4; // Boundary is 14 m from street centre: 6 m carriage half-width + 4 m verge + 4 m front strip (spec 114).
 
 function key(x: number, y: number): string {
   return `${x},${y}`;
@@ -278,6 +278,7 @@ function tryParcel(
   corridor: Corridor,
   claimed: Set<string>,
   id: number,
+  slot: number,
 ): Parcel | null {
   const uHalf = (sz.W - 1) / 2;
   const houseSeed = (sx * 73856093) ^ (syStreet * 19349663);
@@ -386,22 +387,20 @@ function tryParcel(
     }
   }
 
-  // 5. Claim the footprint plus a GAP halo so neighbours never crowd it.
-  for (let d = -GAP; d < sz.D + GAP; d++) {
-    for (let u = -uHalf - GAP; u <= uHalf + GAP; u++) {
-      claimed.add(key(ax(u), ay(d)));
-    }
-  }
-
+  // The centre cell honours the floor-based bounds convention used by every consumer
+  // (bounds.y = y - floor((h - 1) / 2)). Odd depths are unchanged; the even Round-11 depths
+  // (Compact 6, Standard 8) previously rounded half a cell the wrong way on one side.
   const cx = sx,
-    cy = ay((sz.D - 1) / 2);
-  return {
+    cy = side === 1 ? ay(Math.floor((sz.D - 1) / 2)) : ay(Math.ceil((sz.D - 1) / 2));
+  const parcel: Parcel = {
     id: `lot_${id}`,
     x: cx,
     y: Math.round(cy),
     w: sz.W,
     h: sz.D,
     side,
+    slot,
+    tier: sz === COMPACT ? "COMPACT" : sz === BIG ? "BIG" : sz === ESTATE ? "ESTATE" : "GRAND",
     doorX,
     doorY,
     built: false,
@@ -414,6 +413,16 @@ function tryParcel(
     driveway,
     fence,
   };
+  const grading = gradePlot(parcel, (gx, gy) => t.worldYAt(gx, gy));
+  const grandIgnoreWholePlotReject = parcel.tier === "GRAND" && grading.violations.every((v) => v.limit === "rejectGradient");
+  if (!grading.ok && !grandIgnoreWholePlotReject) return null;
+  if (grading.band === "reject" && parcel.tier !== "GRAND") return null;
+  parcel.grading = { band: grading.band, technique: grading.technique, garageMode: grading.garageMode, padY: grading.padY, houseFloorY: grading.houseFloorY, garageFloorY: grading.garageFloorY, gradient: grading.gradient };
+  // Claim the footprint plus a GAP halo only after all acceptance filters pass.
+  for (let d = -GAP; d < sz.D + GAP; d++) {
+    for (let u = -uHalf - GAP; u <= uHalf + GAP; u++) claimed.add(key(ax(u), ay(d)));
+  }
+  return parcel;
 }
 
 // ── Door access contract (spec 077/083) ─────────────────────────────────────
@@ -527,13 +536,21 @@ export function retargetParcelAccess(p: Parcel, dir: DoorDir): void {
  *  carries its own size SEQUENCE (sizeFor(index)) and its own placement cursor, so a masterplan can
  *  mix tiers (the GRAND waterfront pair first, then the ESTATE row). Columns iterate shore-ward
  *  first when the corridor's shore end is known, so index 0 (the GRAND tier) lands by the water. */
+export interface LayParcelsStats { grandAttempts: number; grandSucceeded: number }
+let layParcelsStats: LayParcelsStats = { grandAttempts: 0, grandSucceeded: 0 };
+/** Read-only diagnostics for the most recent parcel-layout attempt. */
+export function lastLayParcelsStats(): Readonly<LayParcelsStats> {
+  return { ...layParcelsStats };
+}
+
 function layParcels(
   t: Terrain,
   corridor: Corridor,
-  sizeFor: (index: number) => ParcelSize,
+  sizeFor: (index: number, side: -1 | 1) => ParcelSize,
   maxPerSide: number = MAX_PER_SIDE,
   taken?: ReadonlySet<string>,
 ): Parcel[] {
+  layParcelsStats = { grandAttempts: 0, grandSucceeded: 0 };
   let xs = [...corridor.colY.keys()].sort((a, b) => a - b);
   if (xs.length === 0) return [];
   // Iterate from the shore-ward corridor end (terrain.distToWater is the precomputed BFS field).
@@ -547,19 +564,52 @@ function layParcels(
   let id = 1;
   const perSide = { [-1]: 0, [1]: 0 } as Record<number, number>;
   const nextAt = { [-1]: -Infinity, [1]: -Infinity } as Record<number, number>; // per-side |x| cursor
+  let grandPlaced = false;
+  let primaryGrandResolved = false;
   const step0 = xs[0]! <= xs[xs.length - 1]! ? 1 : -1; // travel direction along the column order
-  for (const x of xs) {
+  for (let xi = 0; xi < xs.length; xi++) {
+    const x = xs[xi]!;
     const syStreet = corridor.colY.get(x)!;
     for (const side of [-1, 1] as const) {
       if (perSide[side]! >= maxPerSide) continue;
       if (step0 > 0 ? x < nextAt[side]! : x > nextAt[side]!) continue;
-      const sz = sizeFor(perSide[side]!);
-      const p = tryParcel(t, x, syStreet, side, sz, corridor, claimed, id);
+      const slot = perSide[side]!;
+      let sz = sizeFor(slot, side);
+      const isGrandSlot = slot === 5 && side === 1 && sz === GRAND;
+      if (slot === 5 && side === -1 && !primaryGrandResolved) continue;
+      if (isGrandSlot) primaryGrandResolved = true;
+      let p: Parcel | null = null;
+      const tryGrandAhead = (from: number): Parcel | null => {
+        let tried = 0;
+        for (let j = from; j < xs.length && tried < 40; j++) {
+          const gx = xs[j]!;
+          if (step0 > 0 ? gx < nextAt[side]! : gx > nextAt[side]!) continue;
+          const gy = corridor.colY.get(gx)!;
+          layParcelsStats.grandAttempts++;
+          tried++;
+          const candidate = tryParcel(t, gx, gy, side, GRAND, corridor, claimed, id, slot);
+          if (candidate) {
+            layParcelsStats.grandSucceeded++;
+            return candidate;
+          }
+        }
+        return null;
+      };
+      // Slot five on side 1 owns the smallholding. If it does not fit at its nominal
+      // column, scan the remaining existing corridor before consuming the slot with a fallback.
+      if (isGrandSlot && !grandPlaced) p = tryGrandAhead(xi);
+      // If side 1 could not fit the GRAND, give side -1's last slot the same opportunity.
+      if (slot === 5 && side === -1 && primaryGrandResolved && !grandPlaced && !p) p = tryGrandAhead(xi);
+      if (!p) {
+        sz = isGrandSlot ? STANDARD : sizeFor(slot, side);
+        p = tryParcel(t, x, syStreet, side, sz, corridor, claimed, id, slot);
+      }
       if (p) {
         parcels.push(p);
+        if (p.tier === "GRAND") grandPlaced = true;
         perSide[side]!++;
         id++;
-        nextAt[side] = x + step0 * (sz.W + GAP);
+        nextAt[side] = p.tier === "GRAND" ? p.x + step0 * (GRAND.W + GAP) : x + step0 * (sz.W + GAP);
       }
     }
     if (perSide[-1]! >= maxPerSide && perSide[1]! >= maxPerSide) break;
@@ -606,12 +656,12 @@ function assemble(
   corridor: Corridor,
   parcels: Parcel[],
 ): Neighborhood {
-  // Spec 084 S6 — plot order is a DECLARED contract: the GRAND tier numbers first (the founders'
+  // Spec 084 S6 — plot order is a DECLARED contract: shore-ward slot 0 numbers first (the founders'
   // plots 1 + 2), then everything by distance to water ascending (ties by x). Joe takes lot_1,
   // Viw lot_2 — exactly the operator's plot-one-and-plot-two ask.
   const dw = (p: Parcel) =>
     t.distToWater[t.idx(Math.round(p.x), Math.round(p.y))] ?? 999;
-  const grand = (p: Parcel) => p.w >= GRAND.W;
+  const grand = (p: Parcel) => p.slot === 0;
   const byShore = [...parcels].sort((a, b) => {
     if (grand(a) !== grand(b)) return grand(a) ? -1 : 1;
     const da = dw(a),
@@ -654,21 +704,20 @@ export function makeNeighborhoodAt(
   // A SMALL hamlet (the satellites) needs only a short flat strip — 2 plots a side of the COMPACT
   // tier — so it fits a woodland/hill clearing; the coastal primary keeps the full estate masterplan.
   const maxPerSide = opts.small ? 2 : MAX_PER_SIDE;
-  const PLANS: ReadonlyArray<(i: number) => ParcelSize> = opts.small
-    ? [() => COMPACT, () => BIG]
+  const PLANS: ReadonlyArray<(i: number, side: -1 | 1) => ParcelSize> = opts.small
+    ? [() => COMPACT, () => STANDARD]
     : [
-        (i) => (i === 0 ? GRAND : ESTATE),
-        () => ESTATE,
-        () => BIG,
+        (i, side) => i === 0 ? LARGE : i === 5 && side === 1 ? SMALLHOLDING : [STANDARD, STANDARD, COMPACT, LARGE][(i - 1) % 4]!,
+        () => STANDARD,
         () => COMPACT,
       ];
   const dySweep = opts.small
     ? [0, -8, 8, -16, 16]
     : [0, -12, 12, -24, 24, -36, 36, -48, 48, -64, 64, -80, 80];
   const minParcels = opts.small ? 1 : 2;
-  const spanFor = (plan: (i: number) => ParcelSize) => {
+  const spanFor = (plan: (i: number, side: -1 | 1) => ParcelSize) => {
     let s = 4;
-    for (let i = 0; i < maxPerSide; i++) s += plan(i).W + GAP;
+    for (let i = 0; i < maxPerSide; i++) s += Math.max(plan(i, -1).W, plan(i, 1).W) + GAP;
     return s;
   };
   let best: { corridor: Corridor; parcels: Parcel[] } | null = null;
@@ -801,6 +850,7 @@ export function defaultBlueprint(
     [10, 10],
   ];
   const table =
+    // FOOTPRINTS_LARGE only triggers at zoneW >= 14; no current tier reaches that threshold.
     zoneW !== undefined && zoneW >= 14 ? FOOTPRINTS_LARGE : FOOTPRINTS;
   const [w, d] = table[h(1) % table.length]!;
   const wallH = 1 + (h(2) % 2); // cosy 1-2 storeys, never towers
@@ -887,6 +937,7 @@ export function createDynamicPlot(
   orientation: "n" | "s" | "e" | "w",
   id: string,
   type: "residential" | "commercial",
+  tier?: ParcelTier,
 ): Parcel | null {
   const W = size.W;
   const D = size.D;
@@ -1005,6 +1056,8 @@ export function createDynamicPlot(
     w: orientation === "n" || orientation === "s" ? W : D,
     h: orientation === "n" || orientation === "s" ? D : W,
     side: orientation === "n" || orientation === "w" ? -1 : 1,
+    tier: tier ?? (size === COMPACT ? "COMPACT" : size === BIG ? "BIG" : size === ESTATE ? "ESTATE" : "GRAND"),
+    slot: 0,
     doorX: doorCell.x,
     doorY: doorCell.y,
     built: false,

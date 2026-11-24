@@ -1,5 +1,6 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
+import { CELL_SIZE } from "./scale";
 import {
   MAX_LOCOMOTION_DT,
   advanceSprintCharge,
@@ -1002,6 +1003,8 @@ export class WorldLayoutPreflightError extends Error {
 }
 
 export class ColonyRuntime {
+  /** Spec 180 stays opt-in until the starter garage-first slice is accepted. */
+  static readonly STARTER_GARAGE_FIRST = false;
   readonly sim: ColonySim;
   private renderer: PlanetRenderer | null = null;
   private raf = 0;
@@ -1027,6 +1030,8 @@ export class ColonyRuntime {
   private cityPlan!: CityPlan;
   // Spec 075 — the buildable neighbourhood: a street of lots where citizens raise voxel homes.
   private neighborhood!: Neighborhood;
+  // Satellite hamlets retain their local street dressing for read-only scene/testbed queries.
+  private satelliteNeighborhoods: Neighborhood[] = [];
   // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
   private radio: RadioState = createRadio();
   // TV mode hides the operator UI so you can put the city on any screen and just watch.
@@ -1350,7 +1355,7 @@ export class ColonyRuntime {
     })();
     // Spec 086 — SATELLITE HAMLETS in the woods + hills, each routed + placed AROUND everything already
     // taken (the coast, the commercial reserve, prior hamlets), so scattered clusters never overlap.
-    const satellites: Neighborhood[] = [];
+    const satellites = this.satelliteNeighborhoods;
     for (const a of findSatelliteAnchors(
       t0,
       { x: t0.landing.x, y: t0.landing.y },
@@ -1825,7 +1830,9 @@ export class ColonyRuntime {
         const order: Cell[] = [];
         if (commercialStop) order.push(commercialStop);
         const wood3 = stopsMap.get("wood3");
-        if (wood3) order.push({ x: 441, y: 128 });
+        // Spec 180 R11: the hamlet shrank with the real-measure tiers, so the old hard-coded (441,128)
+        // snapped to the street's dead end beside illegal terrain. Use the hamlet's own centroid.
+        if (wood3) order.push(wood3);
         const wood1 = stopsMap.get("wood1");
         if (wood1) order.push(wood1);
         const wood2 = stopsMap.get("wood2");
@@ -2226,7 +2233,13 @@ export class ColonyRuntime {
         this.sim.state.busDepotSpurCells = new Set(
           spurCells
             .filter(
-              (c) => !(c.x === site.roadCell.x && c.y === site.roadCell.y),
+              (c) =>
+                !(c.x === site.roadCell.x && c.y === site.roadCell.y) &&
+                // Spec 180 R11: a spur apron laid over an EXISTING street must not turn that
+                // street into a car-free zone. With the smaller plots the depot can sit beside a
+                // through street (seed 7), and fencing its apron cut the street in two, so ambient
+                // traffic lost connectivity. Only cells the spur itself added are bus-only.
+                !roadKeys.has(`${c.x},${c.y}`),
             )
             .map((c) => `${c.x},${c.y}`),
         );
@@ -2411,8 +2424,9 @@ export class ColonyRuntime {
             // Spec 085 — the economic arrival: the newcomer lands with a ₭ deposit, BUYS the deed to
             // a free plot, then hires Viw to build what they can afford. The whole trade in one move.
             this.seedDeposit(citizen.id);
+            const wallet = this.walletK(citizen.id);
             const freeLot = this.neighborhood.lots.find(
-              (l) => !l.ownerCitizenId && !l.reservedFor,
+              (l) => !l.ownerCitizenId && !l.reservedFor && this.plotPriceK(l) <= wallet,
             );
             if (freeLot && this.purchaseLot(citizen.id, freeLot.id)) {
               this.commissionLot(freeLot.id); // Viw raises a home for the remaining purse
@@ -4735,7 +4749,7 @@ export class ColonyRuntime {
     return !!(lot && lot.built);
   }
 
-  claimStarterHome(target?: string | HomeTruth): boolean {
+  claimStarterHome(target?: string | HomeTruth, opts: { starterGarageFirst?: boolean } = {}): boolean {
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return false;
 
@@ -4857,7 +4871,10 @@ export class ColonyRuntime {
       if (!assigned) return false;
     }
 
-    if (!lot.built) {
+    if (opts.starterGarageFirst === true && ColonyRuntime.STARTER_GARAGE_FIRST) {
+      lot.starterGarage = true;
+      lot.built = true;
+    } else if (!lot.built) {
       this.buildHouse(lot.id);
     }
     this.isGpsNavigatingHome = true;
@@ -7901,6 +7918,26 @@ export class ColonyRuntime {
     return this.neighborhood.lots;
   }
 
+  /** Nearby carriage cells across the landing and satellite hamlets. */
+  carriageCellsNear(gx: number, gy: number, radiusCells: number): Cell[] {
+    return this.streetCellsNear(gx, gy, radiusCells, "carriage");
+  }
+
+  /** Nearby verge cells across the landing and satellite hamlets. */
+  vergeCellsNear(gx: number, gy: number, radiusCells: number): Cell[] {
+    return this.streetCellsNear(gx, gy, radiusCells, "verge");
+  }
+
+  private streetCellsNear(gx: number, gy: number, radiusCells: number, kind: "carriage" | "verge"): Cell[] {
+    const radius = Math.max(0, radiusCells);
+    const cells = [this.neighborhood, ...this.satelliteNeighborhoods].flatMap((hood) => hood[kind]);
+    const unique = new Map<string, Cell>();
+    for (const cell of cells) {
+      if (Math.hypot(cell.x - gx, cell.y - gy) <= radius) unique.set(`${cell.x},${cell.y}`, cell);
+    }
+    return [...unique.values()];
+  }
+
   /** Spec 078 — Joe the Crab, the founder. Reserve the shore-most homestead as permanently his, raise his
    *  fixed 077 house on it, and seed his crab citizen so he is always present and roams the streets. Pure +
    *  deterministic from the terrain and idempotent (the roster guards on the fixed id), so reloads reproduce
@@ -8302,7 +8339,7 @@ export class ColonyRuntime {
     const dw =
       t.distToWater[t.idx(Math.round(lot.x), Math.round(lot.y))] ?? 999;
     return plotPriceKook(
-      lot.houseZone.w * lot.houseZone.d,
+      lot.w * lot.h * CELL_SIZE * CELL_SIZE,
       dw,
       COLONY.economy.land,
     );
@@ -8527,6 +8564,7 @@ export class ColonyRuntime {
       orientation,
       id,
       type,
+      sizeName,
     );
     if (!lot) return { ok: false, survey, reason: "runtime-rejected" };
 
@@ -8638,7 +8676,7 @@ export class ColonyRuntime {
       });
 
       this.seedDeposit(citizen.id);
-      if (this.purchaseLot(citizen.id, freeLot.id)) {
+      if (this.plotPriceK(freeLot) <= this.walletK(citizen.id) && this.purchaseLot(citizen.id, freeLot.id)) {
         this.commissionLot(freeLot.id);
       }
     }

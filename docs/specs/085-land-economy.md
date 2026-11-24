@@ -19,12 +19,10 @@ ledger so it can sync to kooker-service-ledger later.
 ## The numbers (operator-anchored, grounded against engine prices)
 
 - **1 ₭ = R25** (`zarPerKook`) — premium, clean math (4₭ = R100).
-- **Plot price** = round(houseZoneArea × `plotAreaRate` 0.6 + waterfront premium), the premium
-  = max(0, `waterfrontPremium` 120 − distToWater × 2). ESTATE (266 cells) ~160–250 ₭; GRAND
-  (368 cells) ~220–340 ₭. Founder/reserved plots are NOT for sale.
+- **Plot price** = rounded full parcel area × 0.27 KCO/m² with waterfront premium; see spec 180 Round 11. Founder/reserved plots are NOT for sale.
 - **Starter deposit** on arrival = `starterDepositMin` 600 + seeded(0..`starterDepositSpread` 400)
   = 600–1000 ₭ (R15k–25k ≈ a Mac Mini starter package), deterministic per citizen seed. Always
-  covers the dearest plot, so a fresh arrival can always buy in.
+  covers the dearest suburban plot (waterfront Large = 340 KCO); smallholdings are aspirational.
 - Houses (Viw) keep the spec-083 priceBrief (~150–500 ₭); the commission now debits the wallet.
 
 ## Mechanic
