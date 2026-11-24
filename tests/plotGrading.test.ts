@@ -5,7 +5,7 @@ import { gradePlot, SLOPE_LIMITS, summarizeBands, type SlopeBand, type GradingTe
 
 const bandTechnique: Record<SlopeBand, GradingTechnique> = {
   level: "level-pad", gentle: "house-platform", moderate: "platform-retaining-wall",
-  "steep-uphill": "street-level-garage-cut", "steep-downhill": "undercroft-garage", reject: "reject",
+  "steep-uphill": "street-level-garage-cut", "steep-downhill": "street-level-front-garage", reject: "reject",
 };
 
 function parcel(tier: Parcel["tier"] = "COMPACT", w = 5, h = 6): Parcel {
@@ -43,14 +43,16 @@ describe("plot grading bands and constraints", () => {
         expect(result.garageMode).toBe("street-level-cut");
         expect(result.garageCutDepthM).toBeGreaterThan(0);
       } else if (expected === "steep-downhill") {
-        expect(result.garageMode).toBe("undercroft");
-        expect(result.houseFloorY - result.garageFloorY).toBeGreaterThanOrEqual(3.0 - 1e-6);
-        const garageDoorNgl = sign * g * ((p.gate.y - 1 / 4) - 10) * 4;
-        expect(result.garageFloorY).toBeLessThanOrEqual(garageDoorNgl + 0.5);
+        expect(result.garageMode).toBe("street-level-front");
+        expect(result.garageFloorY).toBeCloseTo(result.streetY, 6);
+        expect(result.houseFloorY - result.streetY).toBeGreaterThanOrEqual(0);
+        expect(result.houseFloorY - result.streetY).toBeLessThanOrEqual(0.5);
+        expect(result.padY).toBeCloseTo(result.streetY, 6);
+        expect(result.houseFloorY - 0.15).toBeCloseTo(result.padY, 6);
         expect(result.ok).toBe(true);
       } else expect(result.garageMode).toBe("on-pad");
       if (result.ok) {
-        expect(result.maxFillM, `${g}/${sign}`).toBeLessThanOrEqual(SLOPE_LIMITS.padFillMaxM + 1e-6);
+        if (expected !== "steep-downhill") expect(result.maxFillM, `${g}/${sign}`).toBeLessThanOrEqual(SLOPE_LIMITS.padFillMaxM + 1e-6);
         expect(result.drive.y[0]).toBeCloseTo(result.streetY, 9);
         expect(result.drive.y.at(-1)).toBeCloseTo(result.garageFloorY, 9);
         for (let i = 1; i < result.drive.stationsM.length; i++) {
@@ -61,12 +63,13 @@ describe("plot grading bands and constraints", () => {
             : SLOPE_LIMITS.driveMax;
           expect(grade).toBeLessThanOrEqual(limit + 1e-9);
         }
-        if (result.garageMode !== "undercroft") {
+        {
           const footprintSamples = [] as number[];
           for (let y = p.houseZone.y - 0.5; y <= p.houseZone.y + p.houseZone.d - 0.5 + 1e-8; y += 0.5 / 4) {
             for (let x = p.houseZone.x - 0.5; x <= p.houseZone.x + p.houseZone.w - 0.5 + 1e-8; x += 0.5 / 4) footprintSamples.push(sign * g * (y - 10) * 4);
           }
-          expect(result.houseFloorY - Math.min(...footprintSamples)).toBeLessThanOrEqual(0.65 + 1e-9);
+          if (expected === "steep-downhill") expect(result.houseFloorY - result.streetY).toBeLessThanOrEqual(0.5);
+          else expect(result.houseFloorY - Math.min(...footprintSamples)).toBeLessThanOrEqual(0.65 + 1e-9);
         }
         expect(result.banks.every((b) => b.gradient <= SLOPE_LIMITS.bankMaxGradient)).toBe(true);
         expect(result.retainingWalls.every((w) => w.faceHeightM <= SLOPE_LIMITS.wallFaceMaxM && w.needsEngineer === (w.faceHeightM > SLOPE_LIMITS.engineerWallM))).toBe(true);

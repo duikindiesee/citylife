@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { pickSlopeFixture, heightfieldWindow } from "../src/colony/testbed/slopeFixtures";
 import { housePoseForParcel } from "../src/colony/render/housePlacement";
+import { HOUSE_FOOTPRINT_M } from "../src/colony/render/housePlacement";
 import { buildEarthworksGeometry, buildFixtureObjects } from "../src/colony/render/earthworksGeometry";
 import { parcelFencePlacements } from "../src/colony/render/parcelFencePlacement";
 import { forSaleBoardPlacement } from "../src/colony/render/forSaleBoardPlacement";
@@ -144,10 +145,16 @@ describe("sloped fence and garage testbed fixtures", () => {
     const { parcel, grading, groundAt, mapSize } = fixture;
     expect(grading.band).toBe(expectedBand);
     expect(grading.ok).toBe(true);
+    if (kind === "downhill") {
+      expect(grading.houseFloorY - grading.streetY).toBeGreaterThanOrEqual(0);
+      expect(grading.houseFloorY - grading.streetY).toBeLessThanOrEqual(0.5);
+      expect(grading.garageFloorY).toBeCloseTo(grading.streetY, 2);
+      expect(grading.padY).toBeCloseTo(grading.streetY, 2);
+    }
 
     const pose = housePoseForParcel(parcel, mapSize, grading);
     expect(pose.position[1]+.15).toBeCloseTo(grading.houseFloorY,3);
-    if(grading.garageMode!=="undercroft") expect(pose.position[1]).toBeCloseTo(grading.padY,2);
+    expect(pose.position[1]).toBeCloseTo(grading.padY,2);
     const ring = [...parcel.fence, parcel.gate];
     const bounds = {
       minX: Math.min(...ring.map((c) => c.x)) - 0.5,
@@ -213,7 +220,7 @@ describe("sloped fence and garage testbed fixtures", () => {
       const fixture=pickSlopeFixture(kind), pieces=buildEarthworksGeometry(fixture.grading,fixture.parcel,fixture.groundAt,fixture.mapSize);
       counts[kind] = {};
       for (const item of pieces) counts[kind]![item.kind] = (counts[kind]![item.kind] ?? 0) + (item.vertices?.length ?? 0) / 12;
-      expect(pieces.some(piece => (piece.kind === "wall" || piece.kind === "bank" || piece.kind === "bench") && (piece.vertices?.length ?? 0) > 0), `${kind} must render earthworks`).toBe(true);
+      expect(pieces.some(piece => (piece.kind === "wall" || piece.kind === "bank" || piece.kind === "bench" || (kind === "downhill" && piece.kind === "lowerStorey")) && (piece.vertices?.length ?? 0) > 0), `${kind} must render earthworks`).toBe(true);
       const wallQuads=pieces.filter(piece=>piece.kind==="wall"&&piece.material==="#9a948a"&&piece.vertices).flatMap(piece=>Array.from({length:piece.vertices!.length/12},(_,i)=>piece.vertices!.slice(i*12,i*12+12)));
       const wallRuns: number[][][] = [];
       for (const quad of wallQuads) {
@@ -269,17 +276,36 @@ describe("sloped fence and garage testbed fixtures", () => {
       for(const object of objects){const rotation=new THREE.Euler(...object.rotation),up=new THREE.Vector3(0,1,0).applyEuler(rotation);expect(up.dot(new THREE.Vector3(0,1,0))).toBeGreaterThanOrEqual(.999);expect(object.rotation[0]).toBe(0);expect(object.rotation[2]).toBe(0);}
       expect(objects.every(o=>o.position.every(Number.isFinite))).toBe(true);
     }
-    const down=pickSlopeFixture("downhill"), pieces=buildEarthworksGeometry(down.grading,down.parcel,down.groundAt,down.mapSize), lower=pieces.find(p=>p.kind==="lowerStorey"&&p.material==="#b8b0a0");
-    const openingPiece=pieces.find(p=>p.kind==="lowerStorey"&&p.material==="#3a3732");
-    const masonryWallTopTiers=new Set(buildEarthworksGeometry(down.grading,down.parcel,down.groundAt,down.mapSize).filter(p=>p.kind==="wall"&&p.material==="#9a948a"&&p.vertices).flatMap(p=>Array.from({length:p.vertices!.length/12},(_,i)=>Math.round(Math.max(p.vertices![i*12+7]!,p.vertices![i*12+10]!)/.3))));
-    expect(masonryWallTopTiers.size).toBeGreaterThanOrEqual(2);
-    expect(lower).toBeDefined();expect(lower!.topY.every(y=>Math.abs(y-down.grading.houseFloorY)<=.02)).toBe(true);
-    const street=parcelStreetDirection(down.parcel), opening=openingPiece!.vertices!.slice(0,12), oa=new THREE.Vector3(opening[0]!,opening[1]!,opening[2]!), ob=new THREE.Vector3(opening[3]!,opening[4]!,opening[5]!), oc=new THREE.Vector3(opening[6]!,opening[7]!,opening[8]!);
-    const openingNormal=oc.clone().sub(oa).cross(ob.clone().sub(oa)).normalize();
-    expect(openingNormal.x*street[0]+openingNormal.z*street[1]).toBeGreaterThan(.99);
-    expect(lower!.topY.every(y=>y<=down.grading.houseFloorY+.02)).toBe(true);
-    expect(housePoseForParcel(down.parcel,down.mapSize,down.grading).position[1]+.15).toBeCloseTo(lower!.topY[0]!,3);
-    expect(lower!.vertices!.length).toBeGreaterThan(0);
+    const down=pickSlopeFixture("downhill"), pieces=buildEarthworksGeometry(down.grading,down.parcel,down.groundAt,down.mapSize);
+    expect(down.grading.garageMode).toBe("street-level-front");
+    expect(down.grading.houseFloorY-down.grading.streetY).toBeGreaterThanOrEqual(0);
+    expect(down.grading.houseFloorY-down.grading.streetY).toBeLessThanOrEqual(.5);
+    expect(down.grading.padY).toBeCloseTo(down.grading.streetY,2);
+    expect(buildFixtureObjects(down).map(o=>o.kind)).toEqual(["house"]);
+    const lowerStoreyFaces = pieces.filter(p=>p.kind==="lowerStorey"&&p.material==="#b8b0a0");
+    expect(lowerStoreyFaces.length).toBeGreaterThan(0);
+    expect(Math.max(...lowerStoreyFaces.flatMap(p=>p.topY))).toBeCloseTo(down.grading.houseFloorY, 6);
+    const street=parcelStreetDirection(down.parcel), pose=housePoseForParcel(down.parcel,down.mapSize,down.grading);
+    const padCorners: [number,number][] = [[-HOUSE_FOOTPRINT_M.w/2-.25,-HOUSE_FOOTPRINT_M.d/2-.25],[HOUSE_FOOTPRINT_M.w/2+.25,-HOUSE_FOOTPRINT_M.d/2-.25],[HOUSE_FOOTPRINT_M.w/2+.25,HOUSE_FOOTPRINT_M.d/2+.25],[-HOUSE_FOOTPRINT_M.w/2-.25,HOUSE_FOOTPRINT_M.d/2+.25]].map(([x,z])=>{
+      const rx=x*Math.cos(pose.rotationY)+z*Math.sin(pose.rotationY), rz=-x*Math.sin(pose.rotationY)+z*Math.cos(pose.rotationY);
+      return [pose.position[0]/CELL_SIZE+down.mapSize/2+rx/CELL_SIZE,pose.position[2]/CELL_SIZE+down.mapSize/2+rz/CELL_SIZE];
+    });
+    const frontEdge=padCorners.reduce((best,a,i)=>{
+      const b=padCorners[(i+1)%padCorners.length]!, midpoint:[number,number]=[(a[0]+b[0])/2, (a[1]+b[1])/2];
+      const projection=(midpoint[0]-pose.position[0]/CELL_SIZE-down.mapSize/2)*street[0]+(midpoint[1]-pose.position[2]/CELL_SIZE-down.mapSize/2)*street[1];
+      return projection>best.projection?{a,b,projection}:{...best};
+    },{a:padCorners[0]!,b:padCorners[1]!,projection:-Infinity});
+    const edgeWorld:[[number,number],[number,number]]=[[ (frontEdge.a[0]-down.mapSize/2)*CELL_SIZE,(frontEdge.a[1]-down.mapSize/2)*CELL_SIZE ],[ (frontEdge.b[0]-down.mapSize/2)*CELL_SIZE,(frontEdge.b[1]-down.mapSize/2)*CELL_SIZE ]];
+    const frontFaces=lowerStoreyFaces.flatMap(p=>Array.from({length:(p.vertices?.length??0)/12},(_,i)=>p.vertices!.slice(i*12,i*12+12)))
+      .filter(q=>{
+        const a:[number,number]=[q[0]!,q[2]!],b:[number,number]=[q[3]!,q[5]!];
+        const onEdge=(p:[number,number])=>Math.abs((edgeWorld[1][0]-edgeWorld[0][0])*(p[1]-edgeWorld[0][1])-(edgeWorld[1][1]-edgeWorld[0][1])*(p[0]-edgeWorld[0][0]))<=.02 &&
+          (p[0]-edgeWorld[0][0])*(p[0]-edgeWorld[1][0])+(p[1]-edgeWorld[0][1])*(p[1]-edgeWorld[1][1])<=.02;
+        return onEdge(a)&&onEdge(b);
+      });
+    expect(frontFaces).toHaveLength(0);
+    if (pieces.some(p=>p.kind==="wall"&&p.material==="#9a948a")) expect(pieces.some(p=>p.kind==="wall"&&p.material==="#9a948a")).toBe(true);
+    expect(pieces.some(p=>p.kind==="lowerStorey"&&p.material==="#3a3732")).toBe(false);
     for(const piece of pieces.filter(p=>["pad","bank","wall","lowerStorey"].includes(p.kind)&&p.vertices)){
       for(let q=0;q<piece.vertices!.length;q+=12){
         const v=piece.vertices!,a=new THREE.Vector3(v[q]!,v[q+1]!,v[q+2]!),b=new THREE.Vector3(v[q+3]!,v[q+4]!,v[q+5]!),c=new THREE.Vector3(v[q+6]!,v[q+7]!,v[q+8]!),d=new THREE.Vector3(v[q+9]!,v[q+10]!,v[q+11]!);

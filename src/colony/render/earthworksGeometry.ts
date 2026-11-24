@@ -1,9 +1,8 @@
 import type { Parcel } from "../neighborhood";
-import { UNDERCROFT_STOREY_M, type PlotGrading } from "../slope/plotGrading";
+import { type PlotGrading } from "../slope/plotGrading";
 import { CELL_SIZE } from "../scale";
 import { HOUSE_FOOTPRINT_M, housePoseForParcel } from "./housePlacement";
 import { parcelStreetDirection } from "../parcelGeometry";
-
 export type EarthworkPiece = {
   kind: "wall" | "bank" | "bench" | "lowerStorey" | "pad";
   material: string;
@@ -23,7 +22,7 @@ const rotate = (x: number, z: number, angle: number): Point => [x * Math.cos(ang
 export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, groundAt: (gx: number, gy: number) => number, mapSize: number, housePose = housePoseForParcel(parcel, mapSize, grading)): EarthworkPiece[] {
   const street = parcelStreetDirection(parcel), side: Point = [-street[1], street[0]];
   const cx = housePose.position[0] / CELL_SIZE + mapSize / 2, cz = housePose.position[2] / CELL_SIZE + mapSize / 2;
-  const halfW = HOUSE_FOOTPRINT_M.w / 2, halfD = HOUSE_FOOTPRINT_M.d / 2, padHalfW = halfW + 1.5, padHalfD = halfD + 1.5;
+  const halfW = HOUSE_FOOTPRINT_M.w / 2, halfD = HOUSE_FOOTPRINT_M.d / 2, padHalfW = halfW + 0.25, padHalfD = halfD + 0.25;
   const corners: Point[] = [[-padHalfW, -padHalfD], [padHalfW, -padHalfD], [padHalfW, padHalfD], [-padHalfW, padHalfD]].map(([x, z]) => { const [rx, rz] = rotate(x, z, housePose.rotationY); return [cx + rx / CELL_SIZE, cz + rz / CELL_SIZE]; });
   const pieces: EarthworkPiece[] = [];
   const piece = (kind: EarthworkPiece["kind"], material: string): EarthworkPiece => {
@@ -50,10 +49,33 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
     const aa: Point = [a[0] + offset[0], a[1] + offset[1]], bb: Point = [b[0] + offset[0], b[1] + offset[1]];
     quad("wall", COPING, [[a, topA], [b, topB], [bb, topB], [aa, topA]]);
   };
-  // Flat pad, a metre and a half wider than the 11.5 m house on each side.
+  // Flat pad with only a narrow footing border beyond the house footprint.
   quad("pad", PAD, corners.map((corner) => [corner, grading.padY]));
 
   const platform = grading.technique === "house-platform" || grading.technique === "level-pad";
+  if (grading.band === "steep-downhill") {
+    // A street-level downhill house stands on a foundation/lower storey at
+    // the rear and sides. Keep the street-facing edge open for the doors.
+    const frontEdge = corners.reduce((best, a, i) => {
+      const b = corners[(i + 1) % 4]!;
+      const midpoint: Point = [(a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cz];
+      const projection = midpoint[0] * street[0] + midpoint[1] * street[1];
+      return projection > best.projection ? { index: i, projection } : best;
+    }, { index: -1, projection: -Infinity }).index;
+    for (let e = 0; e < 4; e++) {
+      if (e === frontEdge) continue;
+      const a = corners[e]!, b = corners[(e + 1) % 4]!;
+      const len = Math.hypot((b[0] - a[0]) * CELL_SIZE, (b[1] - a[1]) * CELL_SIZE);
+      const count = Math.max(1, Math.ceil(len / 0.5));
+      for (let i = 0; i < count; i++) {
+        const t0 = i / count, t1 = (i + 1) / count;
+        const p: Point = [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0];
+        const q: Point = [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1];
+        const ga = groundAt(...p), gb = groundAt(...q);
+        if (Math.min(ga, gb) < grading.houseFloorY - 0.05) wallQuad(p, q, Math.min(ga, grading.houseFloorY), Math.min(gb, grading.houseFloorY), grading.houseFloorY, grading.houseFloorY, STOREY);
+      }
+    }
+  }
   for (let e = 0; e < 4; e++) {
     const a = corners[e]!, b = corners[(e + 1) % 4]!, len = Math.hypot((b[0] - a[0]) * CELL_SIZE, (b[1] - a[1]) * CELL_SIZE), count = Math.max(1, Math.ceil(len / 0.5));
     const edge: Point[] = Array.from({ length: count + 1 }, (_, i) => [a[0] + (b[0] - a[0]) * i / count, a[1] + (b[1] - a[1]) * i / count]);
@@ -66,7 +88,7 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
       let end = start + 1;
       while (end < count && cls((delta[end]! + delta[end + 1]!) / 2) === type) end++;
       const p = edge[start]!, q = edge[end]!, da = delta[start]!, db = delta[end]!;
-      if (type !== "level") {
+      if (type !== "level" && grading.band !== "steep-downhill") {
         if (type === "fill" && platform) {
           const depth = Math.max(0, da, db), bankMax = grading.banks.reduce((m, bank) => Math.max(m, bank.lengthM), 0), length = Math.min(2 * depth, bankMax);
           const steps = Math.max(1, Math.ceil(len / 0.5));
@@ -100,33 +122,8 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
     }
   }
 
-  if (grading.garageMode === "undercroft") {
-    const front: Point = [cx + street[0] * halfD / CELL_SIZE, cz + street[1] * halfD / CELL_SIZE], rear: Point = [cx - street[0] * halfD / CELL_SIZE, cz - street[1] * halfD / CELL_SIZE];
-    const left: Point = [front[0] + side[0] * halfW / CELL_SIZE, front[1] + side[1] * halfW / CELL_SIZE], right: Point = [front[0] - side[0] * halfW / CELL_SIZE, front[1] - side[1] * halfW / CELL_SIZE];
-    const rearLeft: Point = [rear[0] + side[0] * halfW / CELL_SIZE, rear[1] + side[1] * halfW / CELL_SIZE], rearRight: Point = [rear[0] - side[0] * halfW / CELL_SIZE, rear[1] - side[1] * halfW / CELL_SIZE];
-    const bottomAt = (p: Point) => Math.min(grading.garageFloorY - 0.15, groundAt(...p) - 0.3), top = grading.houseFloorY;
-    const openingBottom = grading.garageFloorY, openingTop = Math.min(openingBottom + 2.6, top), openingHalf = 2.1 / CELL_SIZE;
-    const openLeft: Point = [cx + side[0] * openingHalf, cz + side[1] * openingHalf], openRight: Point = [cx - side[0] * openingHalf, cz - side[1] * openingHalf];
-    const fb = bottomAt(left), frb = bottomAt(right);
-    wallQuad(left, openLeft, fb, bottomAt(openLeft), top, top, STOREY);
-    wallQuad(openRight, right, bottomAt(openRight), frb, top, top, STOREY);
-    wallQuad(openLeft, openRight, openingTop, openingTop, top, top, STOREY);
-    const setback = 0.05 / CELL_SIZE;
-    const recessLeft: Point = [openLeft[0] + street[0] * setback, openLeft[1] + street[1] * setback];
-    const recessRight: Point = [openRight[0] + street[0] * setback, openRight[1] + street[1] * setback];
-    // This single inset quad faces the street; reverse the generic wall winding.
-    quad("lowerStorey", RECESS, [[recessLeft, openingBottom], [recessLeft, openingTop], [recessRight, openingTop], [recessRight, openingBottom]]);
-    wallQuad(left, rearLeft, fb, bottomAt(rearLeft), top, top, STOREY);
-    wallQuad(rearLeft, rearRight, bottomAt(rearLeft), bottomAt(rearRight), top, top, STOREY);
-    wallQuad(rearRight, right, bottomAt(rearRight), frb, top, top, STOREY);
-    // Cut retaining faces are added wherever the surrounding ground rises above garage level.
-    for (const [a, b] of [[left, rearLeft], [rearLeft, rearRight], [rearRight, right]] as [Point, Point][]) {
-      const ga = groundAt(...a), gb = groundAt(...b);
-      if (Math.max(ga, gb) > grading.garageFloorY) wallQuad(a, b, grading.garageFloorY, grading.garageFloorY, ga + 0.05, gb + 0.05, WALL);
-    }
-  }
 
-  if (grading.garageMode === "street-level-cut") {
+  if (grading.garageMode === "street-level-cut" && grading.garageCutDepthM > 0) {
     const front: Point = [cx + street[0] * halfD / CELL_SIZE, cz + street[1] * halfD / CELL_SIZE], rear: Point = [cx - street[0] * halfD / CELL_SIZE, cz - street[1] * halfD / CELL_SIZE];
     const width = halfW / CELL_SIZE, depth = Math.min(grading.garageCutDepthM, halfD) / CELL_SIZE;
     const pts: Point[] = [[front[0] + side[0] * width, front[1] + side[1] * width], [front[0] - side[0] * width, front[1] - side[1] * width], [rear[0] - street[0] * depth, rear[1] - street[1] * depth], [rear[0] + street[0] * depth, rear[1] + street[1] * depth]];
@@ -135,12 +132,8 @@ export function buildEarthworksGeometry(grading: PlotGrading, parcel: Parcel, gr
   return pieces;
 }
 
-/** Pure upright object inventory used by the testbed and pose regression test. */
+/** Pure upright object inventory; the envelope GLB supplies its own street-facing garage. */
 export function buildFixtureObjects(fixture: { parcel: Parcel; grading: PlotGrading; mapSize: number; groundAt: (gx: number, gy: number) => number }): FixtureObject[] {
   const { parcel, grading, mapSize } = fixture, pose = housePoseForParcel(parcel, mapSize, grading), angle = pose.rotationY;
-  const out: FixtureObject[] = [{ kind: "house", position: [pose.position[0], grading.houseFloorY + 1.5, pose.position[2]], rotation: [0, angle, 0], size: [11.5, 3, 11.5] }];
-  if (grading.garageMode === "undercroft") { out.push({ kind: "lowerStorey", position: [pose.position[0], (grading.garageFloorY + grading.houseFloorY) / 2, pose.position[2]], rotation: [0, angle, 0], size: [11.5, UNDERCROFT_STOREY_M, 5.75] }); out.push({ kind: "garage", position: starterCentre(parcel, mapSize, grading.garageFloorY), rotation: [0, angle, 0], size: [4, 3, 8] }); }
-  else if (grading.garageMode === "street-level-cut") out.push({ kind: "garage", position: starterCentre(parcel, mapSize, grading.garageFloorY), rotation: [0, angle, 0], size: [4, 3, 8] });
-  return out;
+  return [{ kind: "house", position: [pose.position[0], grading.houseFloorY + 1.5, pose.position[2]], rotation: [0, angle, 0], size: [11.5, 3, 11.5] }];
 }
-function starterCentre(parcel: Parcel, mapSize: number, y: number): [number, number, number] { const s = parcelStreetDirection(parcel), d = parcel.driveway.at(-1) ?? parcel.gate, frontOffset = parcel.driveway.length <= 2 ? 1 : 0; return [(d.x - mapSize / 2) * CELL_SIZE - s[0] * (6 - frontOffset), y, (d.y - mapSize / 2) * CELL_SIZE - s[1] * (6 - frontOffset)]; }
