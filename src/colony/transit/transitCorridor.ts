@@ -503,7 +503,6 @@ export function computeTransitCorridorPavingCells(
         if (result.has(k)) continue;
 
         if (!checkRoadCell(rx, ry)) continue;
-        if (residentialSetbacks?.has(k)) continue;
         if (ownedCells?.has(k)) continue;
 
         result.set(k, { x: rx, y: ry });

@@ -25,16 +25,24 @@ export interface DevAuthBypassProbe {
   readonly urlSkip: boolean;
 }
 
+const RFC1918_IPV4_RE =
+  /^(?:10(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}|192\.168(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){2})$/;
+
 /** True iff the host is a loopback / LAN / *.local address — never a public kooker.co.za domain. Mirrors
  *  the AuthGate host allow-list exactly so both gates share one definition of "local". */
 export function isLocalBypassHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
   return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname === "::1" ||
-    hostname.endsWith(".local") ||
-    /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    (host.length > 6 &&
+      !host.startsWith(".") &&
+      !host.includes("..") &&
+      host.endsWith(".local")) ||
+    RFC1918_IPV4_RE.test(host)
   );
 }
 

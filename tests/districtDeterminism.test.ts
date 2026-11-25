@@ -240,7 +240,7 @@ describe("phase 2A/2B district determinism gate", () => {
         aRuntime = new ColonyRuntime(seed);
         totalConstructedRuntimes++;
         bootDurationA = performance.now() - t0;
-      }, 30000);
+      });
 
       beforeAll(() => {
         const t0 = performance.now();
@@ -272,7 +272,7 @@ describe("phase 2A/2B district determinism gate", () => {
         console.log(
           `[districtDeterminism] Seed ${seed} Vitest setup: bootA=${(bootDurationA / 1000).toFixed(2)}s, bootB+checks+snapshots=${(bootDurationB / 1000).toFixed(2)}s, pairTotal=${((bootDurationA + bootDurationB) / 1000).toFixed(2)}s`,
         );
-      }, 30000);
+      });
 
       afterEach(() => {
         // Verify asserted mutable state remains completely unchanged after each test
@@ -293,7 +293,7 @@ describe("phase 2A/2B district determinism gate", () => {
         expect(sortedHash(d.crossStreet)).toBe(golden.crossStreetHash);
         expect(parcelFootprintHash(rt)).toBe(golden.parcelFootprintHash);
         expect(sortedHash(rectCells(d.mallPad))).toBe(golden.mallPadHash);
-      }, 30000);
+      });
 
       it("reserves a deterministic mall pad inside the district end nearest the intersection", () => {
         const rt = pair.a;
@@ -330,7 +330,7 @@ describe("phase 2A/2B district determinism gate", () => {
         expect(sortedHash(rectCells(replay.mallPad))).toBe(
           sortedHash(rectCells(mallPad)),
         );
-      }, 30000);
+      });
 
       it("matches the spec reference picker and keeps the core crossing degree 4", () => {
         const rt = pair.a;
@@ -345,14 +345,14 @@ describe("phase 2A/2B district determinism gate", () => {
         );
         expect(d.intersection).toEqual(expected);
         expect(degreeAt(d.intersection!, d.street, d.crossStreet)).toBe(4);
-      }, 30000);
+      });
 
       it("weakly replays cross-street and intersection across fresh boots", () => {
         const a = pair.a.commercialDistrict!;
         const b = pair.b.commercialDistrict!;
         expect(b.crossStreet).toEqual(a.crossStreet);
         expect(b.intersection).toEqual(a.intersection);
-      }, 30000);
+      });
 
       it("proves instance isolation and detects unshared mutation (negative control)", () => {
         const origX = pair.a.commercialDistrict!.mallPad.x;
@@ -372,7 +372,7 @@ describe("phase 2A/2B district determinism gate", () => {
           pair.a.commercialDistrict!.mallPad.x = origX;
         }
         expect(snapshotState(pair.a)).toBe(snapshotBeforeA);
-      }, 30000);
+      });
     });
   }
 

@@ -61,7 +61,7 @@ describe("mall anchor shell render model", () => {
         aRuntime = new ColonyRuntime(seed);
         totalConstructedRuntimes++;
         bootDurationA = performance.now() - t0;
-      }, 30000);
+      });
 
       beforeAll(() => {
         const t0 = performance.now();
@@ -97,7 +97,7 @@ describe("mall anchor shell render model", () => {
         console.log(
           `[mallAnchorShell] Seed ${seed} Vitest setup: bootA=${(bootDurationA / 1000).toFixed(2)}s, bootB+model+checks=${(bootDurationB / 1000).toFixed(2)}s, pairTotal=${((bootDurationA + bootDurationB) / 1000).toFixed(2)}s`,
         );
-      }, 30000);
+      });
 
       afterEach(() => {
         expect(snapshotState(pair.a, modelA)).toBe(baselineSnapshotA);
@@ -138,7 +138,7 @@ describe("mall anchor shell render model", () => {
             pair.a.commercialDistrict!.mallPad.y,
           ),
         );
-      }, 30000);
+      });
 
       it("proves instance and model isolation with mutation negative control", () => {
         const origRoofY = modelA.roof.y;
@@ -156,7 +156,7 @@ describe("mall anchor shell render model", () => {
         }
         expect(modelA).toEqual(modelB);
         expect(snapshotState(pair.a, modelA)).toBe(snapshotBeforeA);
-      }, 30000);
+      });
     });
   }
 

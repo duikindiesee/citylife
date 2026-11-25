@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
 import {
   clampToGrid,
   clampCell,
@@ -22,9 +24,15 @@ import {
   ARRIVAL_RADIUS_CELLS,
   type Cell,
 } from "../src/colony/home/driveHome";
+import { DriveHomeOverlay } from "../src/colony/ui/DriveHomeOverlay";
 import { STARTER_PLACEMENT_GRID } from "../src/colony/home/starterHouseProjection";
 import type { HomeTruth } from "../src/colony/home/starterProperty";
 import { getAuthClient } from "../src/colony/authClient";
+import { ColonyRuntime } from "../src/colony/runtime";
+import { inspectFootprint, stepOwnedDrive } from "../src/colony/car/ownedDriving";
+import { defaultCarSpec } from "../src/colony/car/carSpec";
+import { deriveStats } from "../src/colony/car/carParts";
+import { COLONY } from "../src/colony/config";
 
 // PLAYER.HOME.1D.S2 — the dark, server-truth drive-home slice. Everything below is the pure model
 // (geometry, guidance, classifiers, residency, button views) plus the fail-soft backend layer; no DOM.
@@ -173,6 +181,37 @@ describe("driveHome — bounded arrival evidence", () => {
     const out = boundedArrivalEvidence({ x: 999, y: -5 }, home);
     expect(out.cell).toEqual({ x: STARTER_PLACEMENT_GRID - 1, y: 0 }); // clamped, never out of range
     expect(out.withinBounds).toBe(false);
+  });
+
+  it("reconciles legacy 64 boundary home without overflowing beyond 63", () => {
+    // Review 150 counterexample: legacy 64 grid/home(63,63), current(999,63) must clamp to (63,63), not 65
+    const legacyHome: Cell = { x: 63, y: 63 };
+    const boundaryArrival = boundedArrivalEvidence({ x: 999, y: 63 }, legacyHome);
+    expect(boundaryArrival.cell).toEqual({ x: 63, y: 63 });
+    expect(boundaryArrival.withinBounds).toBe(true);
+
+    const boundaryOut = boundedArrivalEvidence({ x: 999, y: 0 }, legacyHome);
+    expect(boundaryOut.cell).toEqual({ x: 63, y: 0 });
+    expect(boundaryOut.withinBounds).toBe(false);
+
+    // Dealership start cell also stays within [0, 63]
+    const dealerStart = dealershipStartCell(truth({ x: 63, y: 63, plotId: "legacy_63" }));
+    expect(dealerStart).not.toBeNull();
+    expect(dealerStart!.x).toBeLessThan(STARTER_PLACEMENT_GRID);
+    expect(dealerStart!.y).toBeLessThan(STARTER_PLACEMENT_GRID);
+  });
+
+  it("supports canonical 608 layout grid coordinates and enforces 608 bounds", () => {
+    const canonicalHome: Cell = { x: 150, y: 200 };
+    // Inside arrival radius on 608 layout
+    const canonicalInside = boundedArrivalEvidence({ x: 151, y: 200 }, canonicalHome, ARRIVAL_RADIUS_CELLS, 608);
+    expect(canonicalInside.cell).toEqual({ x: 151, y: 200 });
+    expect(canonicalInside.withinBounds).toBe(true);
+
+    // Outside bounds on 608 layout: clamps to 607 (608 - 1), never 63
+    const canonicalFar = boundedArrivalEvidence({ x: 999, y: 200 }, canonicalHome, ARRIVAL_RADIUS_CELLS, 608);
+    expect(canonicalFar.cell).toEqual({ x: 607, y: 200 });
+    expect(canonicalFar.withinBounds).toBe(false);
   });
 });
 
@@ -380,18 +419,36 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
     vi.stubGlobal("fetch", async (u: string, i: RequestInit) => {
       url = u;
       init = i;
-      return { ok: true, status: 200 };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          plotId: "starter-home:demo-user",
+          frameId: "starter-home-frame:demo-user",
+          homeGarageUnlocked: true,
+          vehicleStorageLocation: "HOME",
+        }),
+      };
     });
     const home = homeTargetCell(truth())!;
-    const r = await postHomeArrival(home, truth());
-    expect(r).toEqual({ kind: "confirmed" });
-    expect(url).toBe("/kooker/api/v1/citylife/players/me/home/arrival");
+    const r = await postHomeArrival(home, truth(), {
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: "karoo-x19-targa",
+    });
+    expect(r.kind).toBe("confirmed");
+    expect(url).toBe(
+      "/kooker/api/v1/citylife/players/me/home-deed/drive-home-arrival",
+    );
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer jwt.tok");
     expect(headers["Idempotency-Key"]).toContain("starter-home:demo-user");
-    // Bounded evidence only — the observed cell + the server plot echo, NO owner / deed / price claim.
+    // Authoritative payload: cell, plotRef, plotId, frameId, vehicleKey
     expect(JSON.parse(init.body as string)).toEqual({
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: "karoo-x19-targa",
       cell: home,
       plotRef: "starter-home:demo-user",
     });
@@ -399,10 +456,38 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
   it("maps a 409 duplicate to a neutral pending replay and a 422 to rejected", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     const home = homeTargetCell(truth())!;
-    vi.stubGlobal("fetch", async () => ({ ok: false, status: 409 }));
-    expect(await postHomeArrival(home, truth())).toEqual({ kind: "pending" });
+    const arrivalOpts = {
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: "karoo-x19-targa",
+    };
+    vi.stubGlobal("fetch", async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        plotId: "starter-home:demo-user",
+        frameId: "starter-home-frame:demo-user",
+        homeGarageUnlocked: true,
+        vehicleStorageLocation: "HOME",
+        alreadyArrived: true,
+      }),
+    }));
+    expect(await postHomeArrival(home, truth(), arrivalOpts)).toEqual({
+      kind: "pending",
+      receipt: {
+        plotId: "starter-home:demo-user",
+        frameId: "starter-home-frame:demo-user",
+        homeGarageUnlocked: true,
+        homeGarageUnlockedAt: null,
+        vehicleStorageLocation: "HOME",
+        onboardingState: null,
+        alreadyArrived: true,
+      },
+    });
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 422 }));
-    expect(await postHomeArrival(home, truth())).toEqual({ kind: "rejected" });
+    expect(await postHomeArrival(home, truth(), arrivalOpts)).toEqual({
+      kind: "rejected",
+    });
   });
   it("maps a thrown/network failure to a transient error", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
@@ -410,6 +495,630 @@ describe("driveHome — POST arrival (server authority, bounded evidence only)",
       throw new Error("offline");
     });
     const home = homeTargetCell(truth())!;
-    expect(await postHomeArrival(home, truth())).toEqual({ kind: "error" });
+    expect(
+      await postHomeArrival(home, truth(), {
+        plotId: "starter-home:demo-user",
+        frameId: "starter-home-frame:demo-user",
+        vehicleKey: "karoo-x19-targa",
+      }),
+    ).toEqual({ kind: "error" });
+  });
+  it("fails closed locally without POSTing when required identity (vehicleKey) is missing", async () => {
+    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const home = homeTargetCell(truth())!;
+    const res = await postHomeArrival(home, truth(), {
+      plotId: "starter-home:demo-user",
+      frameId: "starter-home-frame:demo-user",
+      vehicleKey: null,
+    });
+    expect(res).toEqual({ kind: "rejected" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+function setupTestDOM() {
+  (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  class MockHTMLElement {}
+  class MockHTMLIFrameElement extends MockHTMLElement {}
+  for (const tag of [
+    "Element",
+    "HTMLElement",
+    "HTMLDivElement",
+    "HTMLButtonElement",
+    "HTMLSpanElement",
+    "HTMLTextAreaElement",
+    "SVGElement",
+  ]) {
+    (globalThis as Record<string, unknown>)[tag] = class extends MockHTMLElement {};
+  }
+  (globalThis as any).HTMLIFrameElement = MockHTMLIFrameElement;
+
+  let mockDoc: Record<string, unknown>;
+  const createMockNode = (tag: string) => {
+    const nodeListeners = new Map<string, Set<(e: unknown) => void>>();
+    const propsStore: Record<string, any> = {};
+    const baseNode: Record<string, unknown> = {
+      tagName: tag.toUpperCase(),
+      style: {},
+      children: [] as unknown[],
+      parentNode: null,
+      ownerDocument: mockDoc,
+      nodeType: 1,
+      getAttribute: (attr: string) => (baseNode[attr] as unknown) ?? (propsStore[attr] as unknown) ?? null,
+      setAttribute: (attr: string, val: any) => {
+        baseNode[attr] = val;
+        propsStore[attr] = val;
+      },
+      removeAttribute: (attr: string) => {
+        delete baseNode[attr];
+        delete propsStore[attr];
+      },
+      hasAttribute: (attr: string) => baseNode[attr] != null || propsStore[attr] != null,
+      addEventListener: (evt: string, fn: (e: unknown) => void) => {
+        if (!nodeListeners.has(evt)) nodeListeners.set(evt, new Set());
+        nodeListeners.get(evt)!.add(fn);
+      },
+      removeEventListener: (evt: string, fn: (e: unknown) => void) => {
+        nodeListeners.get(evt)?.delete(fn);
+      },
+      dispatchEvent: () => {},
+      appendChild: (child: Record<string, unknown>) => {
+        child.parentNode = baseNode;
+        (baseNode.children as unknown[]).push(child);
+        return child;
+      },
+      removeChild: (child: Record<string, unknown>) => {
+        const arr = baseNode.children as unknown[];
+        const idx = arr.indexOf(child);
+        if (idx !== -1) arr.splice(idx, 1);
+        child.parentNode = null;
+        return child;
+      },
+      insertBefore: (newChild: Record<string, unknown>, refChild: unknown) => {
+        const arr = baseNode.children as unknown[];
+        const idx = arr.indexOf(refChild);
+        if (idx !== -1) arr.splice(idx, 0, newChild);
+        else arr.push(newChild);
+        newChild.parentNode = baseNode;
+        return newChild;
+      },
+      _nodeListeners: nodeListeners,
+      _propsStore: propsStore,
+    };
+    return new Proxy(baseNode, {
+      get(target, prop, receiver) {
+        if (prop === "disabled") {
+          if (propsStore.disabled === false || baseNode.disabled === false) return false;
+          return propsStore.disabled === true || propsStore.disabled === "" || Boolean(baseNode.disabled);
+        }
+        if (prop in target) return Reflect.get(target, prop, receiver);
+        return propsStore[prop as string];
+      },
+      set(target, prop, value, receiver) {
+        if (prop in target) return Reflect.set(target, prop, value, receiver);
+        propsStore[prop as string] = value;
+        return true;
+      },
+    });
+  };
+
+  mockDoc = {
+    nodeType: 9,
+    createElement: (tag: string) => createMockNode(tag),
+    createElementNS: (_ns: string, tag: string) => createMockNode(tag),
+    createTextNode: (text: string) => ({ nodeType: 3, nodeValue: text }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    body: createMockNode("body"),
+    defaultView: globalThis,
+    HTMLIFrameElement: MockHTMLIFrameElement,
+    activeElement: null,
+  };
+  const g = globalThis as Record<string, unknown>;
+  g.window = globalThis;
+  g.HTMLIFrameElement = MockHTMLIFrameElement;
+  (globalThis as any).location = { search: "", origin: "http://localhost" };
+  g.addEventListener = () => {};
+  g.removeEventListener = () => {};
+  g.dispatchEvent = () => {};
+  g.document = mockDoc;
+}
+
+const findNode = (node: any, predicate: (n: any) => boolean): any => {
+  if (!node) return null;
+  if (predicate(node)) return node;
+  for (const child of node.children || []) {
+    const found = findNode(child, predicate);
+    if (found) return found;
+  }
+  return null;
+};
+
+const triggerNodeClick = (node: any) => {
+  if (!node) return;
+  if (node.disabled) return;
+  const store = node._propsStore || node;
+  for (const k of Object.keys(store)) {
+    if (k.startsWith("__reactProps$") && store[k]?.onClick) {
+      store[k].onClick({ preventDefault() {}, stopPropagation() {} });
+      return;
+    }
+  }
+  if (typeof store.onClick === "function") {
+    store.onClick({ preventDefault() {}, stopPropagation() {} });
+    return;
+  }
+  if (typeof node.click === "function") {
+    node.click();
+  }
+};
+
+describe("driveHome — C1-C3 physical controller, authority fencing, and mounted regression battery", () => {
+  let rt: ColonyRuntime;
+
+  beforeAll(() => {
+    rt = new ColonyRuntime(4242);
+  }, 60_000);
+
+  beforeEach(() => {
+    rt.setOperatorUserId("demo-user");
+    rt.getActiveLayoutRevisionId = () => "canonical-rev-4242";
+    rt.setAuthoritativeHomeTruth(null);
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    (rt as any).sim.state.buildings = (rt as any).sim.state.buildings.filter(
+      (b: any) => !(b.x === 492 && b.y === 366),
+    );
+    (rt as any).multiplayerClient = null;
+    (rt as any).ownedDriveSeated = false;
+    (rt as any).guidedDriveActiveUntil = 0;
+    (rt as any).guidedTargetHeading = null;
+  });
+
+  it("ensures guided control burst of taps without elapsed ticks produces zero physical displacement", () => {
+    const initialPos = rt.getPhysicalCarPosition()!;
+    expect(initialPos).not.toBeNull();
+    expect(initialPos.x).toBe(491);
+    expect(initialPos.y).toBe(366);
+
+    // Burst of 5 taps in a row without advancing simulation ticks
+    for (let i = 0; i < 5; i++) {
+      const accepted = rt.stepGuidedDrive("right");
+      expect(accepted).toBe(true);
+    }
+
+    const poseAfterBurst = rt.getOwnedDrivePose()!;
+    expect(poseAfterBurst.x).toBe(491);
+    expect(poseAfterBurst.y).toBe(366);
+    expect(poseAfterBurst.speed).toBe(0);
+    // Distance moved without elapsed ticks is strictly 0
+    expect(Math.hypot(poseAfterBurst.x - initialPos.x, poseAfterBurst.y - initialPos.y)).toBe(0);
+    // Intent is expressed in ownedDriveInput
+    expect((rt as any).ownedDriveInput.throttle).toBe(true);
+  });
+
+  it("consumes guided driving input over actual simulation ticks with finite bounded displacement and speed limits", () => {
+    const initialPos = rt.getPhysicalCarPosition()!;
+    rt.stepGuidedDrive("right");
+
+    // Advance 5 simulation ticks of 0.1s each
+    for (let i = 0; i < 5; i++) {
+      rt.tickOwnedDrive(0.1);
+    }
+
+    const finalPose = rt.getOwnedDrivePose()!;
+    const distMoved = Math.hypot(finalPose.x - initialPos.x, finalPose.y - initialPos.y);
+    expect(distMoved).toBeGreaterThan(0.1);
+    expect(distMoved).toBeLessThan(4.0); // finite and bounded
+    expect(finalPose.speed).toBeGreaterThan(0);
+    expect(finalPose.speed).toBeLessThanOrEqual(COLONY.ownedDriving.topSpeedMps);
+  });
+
+  it("detects obstacle and corner footprint collisions in guided driving and refuses input without seating", () => {
+    // Add building obstacle directly to the right at (492, 366)
+    rt.sim.state.buildings.push({ x: 492, y: 366 } as any);
+
+    // Guided step into obstacle is rejected
+    expect(rt.stepGuidedDrive("right")).toBe(false);
+
+    // Car does not move and speed remains 0
+    const pos = rt.getPhysicalCarPosition()!;
+    expect(pos.x).toBe(491);
+    expect(pos.y).toBe(366);
+    expect((rt as any).ownedDrivePose.speed).toBe(0);
+    expect(rt.isOwnedDriveSeated()).toBe(false);
+  });
+
+  it("fails closed and preserves seat and pose on mismatched layout revision, foreign seed, unowned truth, or mismatched geometry", () => {
+    // 1. Mismatched revision
+    rt.setAuthoritativeHomeTruth({
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "mismatched-rev-xxx",
+      onboardingState: "OWNED",
+      priceKco: 350,
+    });
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect((rt as any).ownedDriveSeated).toBe(false);
+
+    // 2. Foreign seed in frameId
+    rt.setAuthoritativeHomeTruth({
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-9999:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "OWNED",
+      priceKco: 350,
+    });
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect((rt as any).ownedDriveSeated).toBe(false);
+
+    // 3. Unowned truth
+    rt.setAuthoritativeHomeTruth({
+      owned: false,
+      status: null,
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "UNOWNED",
+      priceKco: 350,
+      geometry: {
+        plotId: "wood1_plot_1",
+        driveway: [{ x: 491, y: 365 }],
+      },
+    });
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect((rt as any).ownedDriveSeated).toBe(false);
+
+    // 4. Mismatched nested geometry plotId
+    rt.setAuthoritativeHomeTruth({
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "OWNED",
+      priceKco: 350,
+      geometry: {
+        plotId: "foreign_plot_99",
+        driveway: [{ x: 491, y: 365 }],
+      },
+    });
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect((rt as any).ownedDriveSeated).toBe(false);
+
+    // 5. Unauthenticated operator
+    rt.setOperatorUserId(null);
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect((rt as any).ownedDriveSeated).toBe(false);
+  });
+
+  it("strictly denies owner-driveway exemption to unowned HomeTruth geometry and fences solid house bounds", () => {
+    // Unowned HomeTruth with geometry MUST NOT receive driveway exemption
+    const unownedTruth: HomeTruth = {
+      owned: false,
+      status: null,
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "UNOWNED",
+      priceKco: 350,
+      geometry: {
+        plotId: "wood1_plot_1",
+        driveway: [
+          { x: 491, y: 363 },
+          { x: 491, y: 364 },
+          { x: 491, y: 365 },
+        ],
+        spawn: { x: 491, y: 363 },
+      },
+    };
+    rt.setAuthoritativeHomeTruth(unownedTruth);
+    // Unowned geometry MUST return false and parcel reason
+    expect((rt as any).isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt as any).blockedStepReason(491, 364)).toBe("parcel");
+
+    // Owned HomeTruth with solid houseZone
+    const ownedTruth: HomeTruth = {
+      ...unownedTruth,
+      owned: true,
+      status: "OWNED",
+      onboardingState: "OWNED",
+      x: 491,
+      y: 361,
+      geometry: {
+        ...unownedTruth.geometry!,
+        door: { x: 491, y: 361 },
+        houseZone: { x: 490, y: 358, width: 4, depth: 3 },
+      },
+    };
+    rt.setAuthoritativeHomeTruth(ownedTruth);
+
+    // Inside solid houseZone (491, 359)
+    expect((rt as any).isHomesteadDriveway(491, 359)).toBe(false);
+    expect((rt as any).blockedStepReason(491, 359)).toBe("building");
+
+    // On driveway (491, 364)
+    expect((rt as any).isHomesteadDriveway(491, 364)).toBe(true);
+    expect((rt as any).blockedStepReason(491, 364)).toBeNull();
+  });
+
+  it("enforces anchored world seed matching in frameId across propertyRoadEntrance, isHomesteadDriveway, and stepGuidedDrive", () => {
+    const baseTruth: HomeTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "OWNED",
+      priceKco: 350,
+      geometry: {
+        plotId: "wood1_plot_1",
+        driveway: [
+          { x: 491, y: 363 },
+          { x: 491, y: 364 },
+          { x: 491, y: 365 },
+        ],
+        spawn: { x: 491, y: 363 },
+      },
+    };
+
+    // Negative 1: worldSeed=424 must reject seed-4242 (prefix bypass prevention)
+    const rt424 = new ColonyRuntime(424);
+    rt424.setOperatorUserId("demo-user");
+    rt424.getActiveLayoutRevisionId = () => "canonical-rev-424";
+    rt424.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+    const prefixSpoofTruth: HomeTruth = {
+      ...baseTruth,
+      layoutRevision: "canonical-rev-424",
+    };
+    rt424.setAuthoritativeHomeTruth(prefixSpoofTruth);
+    expect(rt424.stepGuidedDrive("down")).toBe(false);
+    expect(rt424.isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt424 as any).propertyRoadEntrance(prefixSpoofTruth)).toBeNull();
+
+    // Negative 2: worldSeed=4242 must reject seed-42420 (suffix bypass prevention)
+    const suffixSpoofTruth: HomeTruth = {
+      ...baseTruth,
+      frameId: "universe:citylife:world:seed-42420:region:surface:region:player-parcel-wood1_plot_1",
+    };
+    rt.setAuthoritativeHomeTruth(suffixSpoofTruth);
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt as any).propertyRoadEntrance(suffixSpoofTruth)).toBeNull();
+
+    // Negative 3: worldSeed=4242 must reject spoofed downstream segment containing seed-4242
+    const segmentSpoofTruth: HomeTruth = {
+      ...baseTruth,
+      frameId: "universe:citylife:world:seed-9999:region:surface:region:seed-4242",
+    };
+    rt.setAuthoritativeHomeTruth(segmentSpoofTruth);
+    expect(rt.stepGuidedDrive("down")).toBe(false);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(false);
+    expect((rt as any).propertyRoadEntrance(segmentSpoofTruth)).toBeNull();
+
+    // Positive control 1: world-level frameId "universe:citylife:world:seed-4242"
+    const worldFrameTruth: HomeTruth = {
+      ...baseTruth,
+      frameId: "universe:citylife:world:seed-4242",
+    };
+    rt.setAuthoritativeHomeTruth(worldFrameTruth);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(true);
+    expect((rt as any).propertyRoadEntrance(worldFrameTruth)).not.toBeNull();
+    expect(rt.stepGuidedDrive("right")).toBe(true);
+
+    // Positive control 2: full parcel frameId
+    rt.setAuthoritativeHomeTruth(baseTruth);
+    expect(rt.isHomesteadDriveway(491, 364)).toBe(true);
+    expect((rt as any).propertyRoadEntrance(baseTruth)).not.toBeNull();
+    expect(rt.stepGuidedDrive("right")).toBe(true);
+  });
+
+  it("clears authoritativeHomeTruth and resets input on operator user switch to eliminate stale geometry retention", () => {
+    rt.setOperatorUserId("user-alice");
+    rt.setAuthoritativeHomeTruth({
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "wood1_plot_1",
+      frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+      layoutRevision: "canonical-rev-4242",
+      onboardingState: "OWNED",
+      priceKco: 350,
+      geometry: {
+        plotId: "wood1_plot_1",
+        driveway: [{ x: 491, y: 363 }],
+      },
+    });
+    expect(rt.getAuthoritativeHomeTruth()).not.toBeNull();
+
+    // Switch account to user-bob
+    rt.setOperatorUserId("user-bob");
+    expect(rt.getAuthoritativeHomeTruth()).toBeNull();
+    expect((rt as any).ownedDrivePose).toBeNull();
+    expect((rt as any).guidedDriveActiveUntil).toBe(0);
+  });
+
+  it("synchronizes protocol 2 directional steer/throttle parity and protocol 1 speed/heading loopback", () => {
+    const drivingInputs: any[] = [];
+    const poses: any[] = [];
+    const mockMultiplayer = {
+      getStatus: () => "connected",
+      getModeEpoch: () => 1,
+      getProtocolVersion: () => 1,
+      sendDrivingInput: (inp: any) => drivingInputs.push(inp),
+      sendPose: (p: any) => poses.push(p),
+    };
+    (rt as any).multiplayerClient = mockMultiplayer;
+    (rt as any).lastMultiplayerInputSentAt = 0;
+
+    // Guided drive "down" (heading PI/2) from heading 0 (east) requires right steering
+    const accepted = rt.stepGuidedDrive("down");
+    expect(accepted).toBe(true);
+
+    expect(drivingInputs.length).toBeGreaterThan(0);
+    const lastInput = drivingInputs[drivingInputs.length - 1];
+    expect(lastInput.throttle).toBe(1);
+    expect(lastInput.steer).toBe(1); // Right steering towards south!
+
+    // Tick simulation
+    rt.tickOwnedDrive(0.1);
+    expect(poses.length).toBeGreaterThan(0);
+    const lastPose = poses[poses.length - 1];
+    expect(lastPose.speed).toBeGreaterThan(0); // Real speed, not forced 0
+    expect(lastPose.mode).toBe("driving");
+  });
+
+  it("mounts DriveHomeOverlay and proves physical vehicle arrival gating: disabled when away, 0 POSTs on click, enabled when arrived", async () => {
+    setupTestDOM();
+    const auth = getAuthClient();
+    vi.spyOn(auth, "operator", "get").mockReturnValue({
+      id: "Demo User",
+      userId: "demo-user",
+      scopes: [],
+      roles: ["CITYLIFE_PLAYER"],
+    });
+    vi.spyOn(auth, "isAuthenticated", "get").mockReturnValue(true);
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("jwt.tok");
+
+    let arrivalPostCount = 0;
+    const targetHome = { x: 491, y: 361 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("arrival")) {
+          arrivalPostCount++;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                plotId: "wood1_plot_1",
+                frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+                homeGarageUnlocked: true,
+                vehicleStorageLocation: "HOME",
+                onboardingState: "RESIDENT",
+              }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }
+        if (url.includes("/players/me/home")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                owned: true,
+                status: "OWNED",
+                neighbourhoodKey: "wood1",
+                plotId: "wood1_plot_1",
+                frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_plot_1",
+                layoutRevision: "canonical-rev-4242",
+                onboardingState: arrivalPostCount > 0 ? "RESIDENT" : "ONBOARDING",
+                x: targetHome.x,
+                y: targetHome.y,
+                priceKco: 350,
+              }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }
+        return Promise.resolve(new Response("{}", { status: 200 }));
+      }),
+    );
+
+    // Place vehicle 5 cells away from home (outside arrival radius 2)
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 366,
+      heading: 0,
+    });
+
+    const container = (globalThis as any).document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(DriveHomeOverlay, {
+          onClose: () => {},
+          runtime: rt as any,
+        }),
+      );
+    });
+
+    // Allow fetchHomeResidency to resolve
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+    }
+
+    const arriveBtn = findNode(
+      container,
+      (n: any) => n.getAttribute?.("data-testid") === "drive-home-arrive",
+    );
+    expect(arriveBtn).not.toBeNull();
+    // Disabled while vehicle is physically away
+    expect(arriveBtn.getAttribute("data-arrival-state")).toBe("far");
+    expect(arriveBtn.disabled).toBe(true);
+
+    // Clicking while away produces 0 arrival POSTs
+    await act(async () => {
+      triggerNodeClick(arriveBtn);
+    });
+    expect(arrivalPostCount).toBe(0);
+
+    // Move physical vehicle into arrival radius (x: 491, y: 362 -> distance 1 <= 2)
+    rt.setAuthoritativeOwnedVehicle({
+      id: "karoo-x19-targa",
+      model: "karoo-x19-targa",
+      x: 491,
+      y: 362,
+      heading: 0,
+    });
+    await act(async () => {
+      (rt as any).emit();
+    });
+
+    expect(arriveBtn.getAttribute("data-arrival-state")).toBe("ready");
+    expect(arriveBtn.disabled).toBe(false);
+
+    // Click arrival button at home
+    await act(async () => {
+      triggerNodeClick(arriveBtn);
+    });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+    }
+    expect(arrivalPostCount).toBe(1);
   });
 });

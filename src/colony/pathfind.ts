@@ -140,7 +140,7 @@ export function leastCostPath(
   goal: Cell,
   opts: {
     slopeWeight?: number;
-    blocked?: (x: number, y: number) => boolean;
+    blocked?: (x: number, y: number, fromX?: number, fromY?: number) => boolean;
     diagonal?: boolean;
     /** Spec 140 — treat Biome.Beach as impassable, exactly like water. ROAD routing opts in so
      *  boot roads bend inland along the grass line; walking and driveway routing do not, so
@@ -159,7 +159,9 @@ export function leastCostPath(
     const user = blocked;
     const beach = (x: number, y: number) =>
       t.biome[t.idx(x, y)] === Biome.Beach;
-    blocked = user ? (x, y) => beach(x, y) || user(x, y) : beach;
+    blocked = user
+      ? (x, y, fromX, fromY) => beach(x, y) || user(x, y, fromX, fromY)
+      : beach;
   }
   const neigh = opts.diagonal ? NEIGH8 : NEIGH;
   const SQRT2 = Math.SQRT2;
@@ -221,7 +223,7 @@ export function leastCostPath(
       if (sDone[ni] === sGen) continue;
       const step = cellCost(t, nx, ny);
       if (!Number.isFinite(step)) continue;
-      if (blocked && blocked(nx, ny)) continue; // reserved land (parcels, structures) is impassable
+      if (blocked && blocked(nx, ny, cx, cy)) continue; // reserved land (parcels, structures) is impassable
       const diag = dx !== 0 && dy !== 0;
       if (diag) {
         // no corner-cutting: both orthogonal cells the diagonal squeezes between must be passable, so a
@@ -231,7 +233,11 @@ export function leastCostPath(
           !Number.isFinite(cellCost(t, cx, cy + dy))
         )
           continue;
-        if (blocked && (blocked(cx + dx, cy) || blocked(cx, cy + dy))) continue;
+        if (
+          blocked &&
+          (blocked(cx + dx, cy, cx, cy) || blocked(cx, cy + dy, cx, cy))
+        )
+          continue;
       }
       let w = step * (diag ? SQRT2 : 1);
       if (slopeWeight > 0)

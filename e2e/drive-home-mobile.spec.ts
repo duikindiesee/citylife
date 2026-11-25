@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
 
 // PLAYER.HOME.1D.S2 — prove the dark, server-truth drive-home + home-garage step on a representative
@@ -18,7 +19,7 @@ const ASSERT_TIMEOUT = 15_000;
 const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-WebGL renderer
 
 const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
-const ARRIVAL_RE = /\/players\/me\/home\/arrival/;
+const ARRIVAL_RE = /\/players\/me\/(home\/arrival|home-deed\/drive-home-arrival)/;
 const TRUTH_RE = /\/players\/me\/home(\?.*)?$/; // GET truth only — not /home/arrival
 const SESSION_KEY = "citylife.session.v5";
 const READY_MARKER = '[data-testid="player-wallet-hud"]';
@@ -100,13 +101,37 @@ interface DriveState {
 const OWNED_TRUTH = {
   owned: true,
   status: "OWNED",
-  neighbourhoodKey: "coastal",
-  plotId: "starter-home:demo-user",
-  frameId: "starter-home-frame:demo-user",
+  neighbourhoodKey: "wood1",
+  plotId: "wood1_lot_1",
+  frameId: "universe:citylife:world:seed-4242:region:surface:region:player-parcel-wood1_lot_1",
+  layoutRevision: "be8e2659a22d8a41693994428bcdf2de85e201c2472edb2570057ce13305e027",
   priceKco: 350,
 };
 
 async function routeAll(page: Page, s: DriveState): Promise<void> {
+  await page.route("**/api/ledger/me/wallet", (route: Route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        userId: "demo-user",
+        currency: "KCO",
+        balance: 1000,
+      }),
+    });
+  });
+  await page.route("**/citylife/players/me/vehicle", (route: Route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        owned: true,
+        vehicleKey: "karoo-x19-targa",
+      }),
+    });
+  });
   await page.route(FLAG_GLOB, (route: Route) => {
     if (s.flagMode === "unavailable") return route.abort("failed");
     const enabled = s.flagMode === "on";
@@ -124,7 +149,17 @@ async function routeAll(page: Page, s: DriveState): Promise<void> {
   await page.route(ARRIVAL_RE, (route: Route) => {
     s.arrivalCount.n += 1;
     s.resident = true;
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        plotId: OWNED_TRUTH.plotId,
+        frameId: OWNED_TRUTH.frameId,
+        homeGarageUnlocked: true,
+        vehicleStorageLocation: "HOME",
+        onboardingState: "RESIDENT",
+      }),
+    });
   });
   await page.route(TRUTH_RE, (route: Route) => {
     const resident = s.resident || s.bootResident === true;
@@ -134,6 +169,7 @@ async function routeAll(page: Page, s: DriveState): Promise<void> {
       body: JSON.stringify({
         ...OWNED_TRUTH,
         onboardingState: resident ? "RESIDENT" : "OWNED",
+        homeGarageUnlocked: resident,
       }),
     });
   });
@@ -144,6 +180,7 @@ async function bootAs(
   userId: string,
   s: DriveState,
 ): Promise<void> {
+  await stubPublishedStarterCatalogue(page);
   await routeAll(page, s);
   await page.addInitScript(
     ([key, session]) => {

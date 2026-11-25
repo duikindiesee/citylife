@@ -25,4 +25,63 @@ describe("jump to my car (096 E)", () => {
     expect(rt.jumpToMyHouse()).toBe(false);
     expect(rt.getUiState().firstPerson.active).toBe(false);
   });
+
+  it("places citizen outside every lot.houseZone before and after claimStarterHome (including authoritativeHomeTruth)", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(me.displayName);
+
+    const isInsideAnyLotHouseZone = (pos: { x: number; y: number }) => {
+      const ix = Math.round(pos.x);
+      const iy = Math.round(pos.y);
+      return (rt as any).neighborhood.lots.some((l: any) => {
+        const hz = l?.houseZone;
+        if (!hz) return false;
+        const w = hz.width ?? hz.w ?? 1;
+        const d = hz.depth ?? hz.d ?? 1;
+        return ix >= hz.x && ix < hz.x + w && iy >= hz.y && iy < hz.y + d;
+      });
+    };
+
+    expect(rt.jumpToMyHouse()).toBe(true);
+    let citizen = (rt as any).citizens.byId(me.id)!;
+    expect(isInsideAnyLotHouseZone(citizen.pos)).toBe(false);
+    expect((rt as any).blockedStepReason(citizen.pos.x, citizen.pos.y)).not.toBe("building");
+
+    rt.setOperatorUserId("jump-car-owner-1");
+    expect(rt.claimStarterHome()).toBe(true);
+    expect(rt.jumpToMyHouse()).toBe(true);
+    citizen = (rt as any).citizens.byId(me.id)!;
+    expect(isInsideAnyLotHouseZone(citizen.pos)).toBe(false);
+    expect((rt as any).blockedStepReason(citizen.pos.x, citizen.pos.y)).not.toBe("building");
+
+    const ownedLot = (rt as any).neighborhood.lots.find(
+      (l: any) => l.ownerCitizenId === me.id,
+    )!;
+    expect(ownedLot).toBeTruthy();
+    const truth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: ownedLot.neighborhoodKey ?? null,
+      plotId: ownedLot.id,
+      frameId: null,
+      onboardingState: "OWNED",
+      priceKco: 350,
+      geometry: {
+        houseZone: { ...ownedLot.houseZone },
+        door: { x: ownedLot.doorX, y: ownedLot.doorY },
+        driveway: ownedLot.driveway,
+      },
+    };
+    expect(rt.claimStarterHome(truth as any)).toBe(true);
+    // Even if homeXY were synthetic inside houseZone, jumpToMyHouse resolves outside truth.geometry.houseZone
+    citizen.homeXY = {
+      x: Math.round(ownedLot.houseZone.x + ownedLot.houseZone.w / 2),
+      y: Math.round(ownedLot.houseZone.y + ownedLot.houseZone.d / 2),
+    };
+    expect(rt.jumpToMyHouse()).toBe(true);
+    citizen = (rt as any).citizens.byId(me.id)!;
+    expect(isInsideAnyLotHouseZone(citizen.pos)).toBe(false);
+    expect((rt as any).blockedStepReason(citizen.pos.x, citizen.pos.y)).not.toBe("building");
+  });
 });

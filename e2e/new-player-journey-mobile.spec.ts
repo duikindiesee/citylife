@@ -1,3 +1,4 @@
+import { stubPublishedStarterCatalogue } from "./helpers/publishedStarterCatalogue";
 import { test, expect, devices } from "@playwright/test";
 
 // PLAYER.FLAG.S3 — prove the fail-closed, default-OFF new-player-journey gate on a representative
@@ -12,7 +13,7 @@ import { test, expect, devices } from "@playwright/test";
 // re-hides it, proving no positive entitlement bleeds across sessions.
 
 const NAV_TIMEOUT = 30_000;
-const ASSERT_TIMEOUT = 15_000;
+const ASSERT_TIMEOUT = 30_000;
 const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-WebGL renderer
 
 // The endpoint the client GETs (through the /kooker proxy). Matched loosely so a proxied host prefix
@@ -82,11 +83,62 @@ function authAs(userId: string) {
   };
 }
 
+const walletBalances: Record<string, number> = {};
+
 async function bootAs(
   page: import("@playwright/test").Page,
   userId: string,
   enabled: boolean,
 ): Promise<void> {
+  await stubPublishedStarterCatalogue(page);
+  await page.route("**/api/ledger/me/wallet", (route) => {
+    const balance = walletBalances[userId] ?? 1000;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        ownerId: userId,
+        appName: "citylife",
+        walletType: "DEFAULT",
+        instrument: "KCO",
+        realm: "TEST",
+        balance,
+      }),
+    });
+  });
+  await page.route("**/api/v1/citylife/players/me/home", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({ owned: false }),
+    }),
+  );
+  await page.route("**/api/v1/social/profiles*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify([]),
+    }),
+  );
+  await page.route("**/api/v1/citylife/blueprints*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify([]),
+    }),
+  );
+  await page.route("**/api/v1/citylife/players/me/feature-flags/*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({ enabled: false }),
+    }),
+  );
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({
@@ -109,7 +161,7 @@ async function bootAs(
     [SESSION_KEY, JSON.stringify(authAs(userId))] as const,
   );
   await page.goto("/", { timeout: NAV_TIMEOUT });
-  await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });
+  await page.waitForSelector("canvas", { timeout: READY_TIMEOUT });
   // The self-scoped wallet chip only renders for an authenticated account. Do not couple readiness
   // to a particular menu page's logout control.
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
@@ -134,10 +186,12 @@ async function allowWalletSnapshot(
   userId: string,
   balance: number,
 ) {
+  walletBalances[userId] = balance;
   await page.route("**/api/ledger/me/wallet", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
       body: JSON.stringify({
         ownerId: userId,
         appName: "citylife",
@@ -153,7 +207,10 @@ async function allowWalletSnapshot(
 test("returning owner hydrates their exact car without opening Gearbox", async ({
   page,
 }) => {
-  test.setTimeout(360_000);
+  // Three full SwiftShader world boots (initial boot + reload + switchedPage account switch) plus
+  // driving, city-map interaction, and CDP touch input where each Playwright round-trip with the
+  // full 3D car + map open can take ~15s on software WebGL.
+  test.setTimeout(900_000);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -162,7 +219,9 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     }),
   );
   await bootAs(page, "returning-car-owner", true);
-  await expect(page.locator(OVERLAY)).toHaveCount(0);
+  await expect(page.locator(OVERLAY)).toHaveCount(0, {
+    timeout: ASSERT_TIMEOUT,
+  });
   await expect
     .poll(
       () =>
@@ -176,7 +235,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
           ).__colony;
           return runtime?.sim.state.operatorCar?.spec.id ?? null;
         }),
-      { timeout: ASSERT_TIMEOUT },
+      { timeout: READY_TIMEOUT },
     )
     .toBe("showroom:karoo-x19-targa");
   const placement = await page.evaluate(() => {
@@ -224,18 +283,33 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
-  await expect(page.getByTestId("owned-car-controls")).toBeVisible();
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible({
+    timeout: ASSERT_TIMEOUT,
+  });
   const cityMap = page.getByTestId("player-map");
-  await expect(cityMap).toBeHidden();
+  await expect(cityMap).toBeHidden({ timeout: ASSERT_TIMEOUT });
   await touchTap(page, '[data-testid="player-map-shortcut"]');
-  await expect(cityMap).toHaveAttribute("data-expanded", "true");
-  await expect(page.getByRole("button", { name: "Close map" })).toBeVisible();
-  const expandedMap = await cityMap.boundingBox();
+  await expect(cityMap).toHaveAttribute("data-expanded", "true", {
+    timeout: ASSERT_TIMEOUT,
+  });
+  await expect(page.getByRole("button", { name: "Close map" })).toBeVisible({
+    timeout: ASSERT_TIMEOUT,
+  });
+  const expandedMap = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="player-map"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
   expect(expandedMap).not.toBeNull();
   const playerMarker = page.getByTestId("city-map-player-marker");
-  await expect(playerMarker).toBeVisible();
-  const mapThrottle = page.locator('[data-drive-action="throttle"]');
-  const mapThrottleBox = await mapThrottle.boundingBox();
+  await expect(playerMarker).toBeVisible({ timeout: ASSERT_TIMEOUT });
+  const mapThrottleBox = await page.evaluate(() => {
+    const el = document.querySelector('[data-drive-action="throttle"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
   expect(mapThrottleBox).not.toBeNull();
   expect(
     await page.evaluate(
@@ -250,13 +324,21 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     ),
   ).toBe(true);
   const mapMarkerPosition = async () =>
-    playerMarker
-      .locator("circle")
-      .first()
-      .evaluate(
-        (node) => `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
+    page.evaluate(() => {
+      const circle = document.querySelector(
+        '[data-testid="city-map-player-marker"] circle',
       );
+      if (!circle) return null;
+      const cx = circle.getAttribute("cx");
+      const cy = circle.getAttribute("cy");
+      if (cx === null || cy === null) return null;
+      const ncx = Number(cx);
+      const ncy = Number(cy);
+      if (!Number.isFinite(ncx) || !Number.isFinite(ncy)) return null;
+      return `${ncx},${ncy}`;
+    });
   const markerBeforeDriving = await mapMarkerPosition();
+  expect(markerBeforeDriving).not.toBeNull();
   await page.keyboard.down("KeyW");
   await expect
     .poll(
@@ -270,56 +352,73 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
           const pose = runtime.getOwnedDrivePose();
           return pose ? Math.hypot(pose.x - start.x, pose.y - start.y) : 0;
         }, placement.cell),
-      { timeout: 10_000 },
+      { timeout: READY_TIMEOUT },
     )
     .toBeGreaterThan(0.1);
   await expect
-    .poll(mapMarkerPosition, { timeout: 10_000 })
-    .not.toBe(markerBeforeDriving);
+    .poll(
+      async () => {
+        const pos = await mapMarkerPosition();
+        if (!pos || pos === markerBeforeDriving) return null;
+        return pos;
+      },
+      { timeout: READY_TIMEOUT },
+    )
+    .toEqual(expect.stringMatching(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/));
   await page.keyboard.up("KeyW");
   await page.keyboard.down("Space");
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const runtime = (
-          window as unknown as {
-            __colony: import("../src/colony/runtime").ColonyRuntime;
-          }
-        ).__colony;
-        return runtime.getOwnedDrivePose()?.speed;
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const runtime = (
+            window as unknown as {
+              __colony: import("../src/colony/runtime").ColonyRuntime;
+            }
+          ).__colony;
+          return runtime.getOwnedDrivePose()?.speed;
+        }),
+      { timeout: READY_TIMEOUT },
     )
     .toBe(0);
   await page.keyboard.up("Space");
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const w = window as unknown as {
-          __colony: import("../src/colony/runtime").ColonyRuntime;
-          __r3fCamera: import("three").Camera;
-        };
-        const pose = w.__colony.getOwnedDrivePose()!;
-        const n = w.__colony.sim.state.terrain.size;
-        return Math.hypot(
-          w.__r3fCamera.position.x - (pose.x - n / 2) * 4,
-          w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
-        );
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const w = window as unknown as {
+            __colony: import("../src/colony/runtime").ColonyRuntime;
+            __r3fCamera: import("three").Camera;
+          };
+          const pose = w.__colony.getOwnedDrivePose()!;
+          const n = w.__colony.sim.state.terrain.size;
+          return Math.hypot(
+            w.__r3fCamera.position.x - (pose.x - n / 2) * 4,
+            w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
+          );
+        }),
+      { timeout: READY_TIMEOUT },
     )
     .toBeCloseTo(6.2, 1);
-  await page.screenshot({ path: "test-results/owned-car-seated-driving.png" });
+  await page.screenshot({
+    path: "test-results/owned-car-seated-driving.png",
+    timeout: READY_TIMEOUT,
+  });
   await touchTap(page, '[data-testid="exit-owned-car"]');
-  await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);
+  await expect(page.getByTestId("owned-car-controls")).toHaveCount(0, {
+    timeout: ASSERT_TIMEOUT,
+  });
   await touchTap(page, '[data-testid="enter-owned-car"]');
-  await expect(page.getByTestId("owned-car-controls")).toBeVisible();
-  const accelerator = await page
-    .locator('[data-drive-action="throttle"]')
-    .boundingBox();
-  expect(accelerator).not.toBeNull();
-  const touch = {
-    x: accelerator!.x + accelerator!.width / 2,
-    y: accelerator!.y + accelerator!.height / 2,
-  };
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible({
+    timeout: ASSERT_TIMEOUT,
+  });
+  const touch = await page.evaluate(() => {
+    const el = document.querySelector('[data-drive-action="throttle"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  expect(touch).not.toBeNull();
   expect(
     await page.evaluate(
       ({ x, y }) =>
@@ -336,15 +435,17 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   });
   try {
     await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (
-              window as unknown as {
-                __colony: import("../src/colony/runtime").ColonyRuntime;
-              }
-            ).__colony.getOwnedDrivePose()?.speed,
-        ),
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (
+                window as unknown as {
+                  __colony: import("../src/colony/runtime").ColonyRuntime;
+                }
+              ).__colony.getOwnedDrivePose()?.speed,
+          ),
+        { timeout: READY_TIMEOUT },
       )
       .toBeGreaterThan(0);
   } finally {
@@ -354,10 +455,14 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     });
     await cdp.detach();
   }
-  await expect(cityMap).toHaveAttribute("data-expanded", "true");
-  await expect(page.getByTestId("owned-car-controls")).toBeVisible();
+  await expect(cityMap).toHaveAttribute("data-expanded", "true", {
+    timeout: ASSERT_TIMEOUT,
+  });
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible({
+    timeout: ASSERT_TIMEOUT,
+  });
   await touchTap(page, '[data-testid="city-map-toggle"]');
-  await expect(cityMap).toBeHidden();
+  await expect(cityMap).toBeHidden({ timeout: ASSERT_TIMEOUT });
   // Keep the production controls mounted across a batched seated owner-to-owner change.
   // Navigation would erase the component ref and miss the stale held-throttle regression.
   await page.keyboard.down("KeyW");
@@ -417,18 +522,25 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
-  await page.route("**/citylife/players/me/vehicle", (route) =>
+  const switchedPage = await page.context().newPage();
+  await page.close();
+  await switchedPage.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: '{"owned":false}',
     }),
   );
-  await bootAs(page, "different-owner-without-car", true);
-  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);
+  await allowVehicleOffers(switchedPage);
+  await bootAs(switchedPage, "different-owner-without-car", true);
+  await expect(switchedPage.locator(OVERLAY)).toBeVisible({
+    timeout: READY_TIMEOUT,
+  });
+  await expect(switchedPage.getByTestId("owned-car-controls")).toHaveCount(0, {
+    timeout: ASSERT_TIMEOUT,
+  });
   expect(
-    await page.evaluate(() =>
+    await switchedPage.evaluate(() =>
       (
         window as unknown as {
           __colony: import("../src/colony/runtime").ColonyRuntime;
@@ -441,7 +553,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
 test("new player can exit and re-enter without losing server-priced acquisition eligibility", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -455,25 +567,33 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   const acquire = page.locator('[data-build-action="showroom-acquire"]');
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveText("Need ₭250 more", {
+    timeout: ASSERT_TIMEOUT,
+  });
   await expect(acquire).toHaveAttribute(
     "data-acquire-state",
     "insufficient_funds",
+    { timeout: ASSERT_TIMEOUT },
   );
 
   await touchTap(page, '[data-build-action="showroom-exit"]');
-  await expect(page.locator(OVERLAY)).toHaveCount(0);
+  await expect(page.locator(OVERLAY)).toHaveCount(0, {
+    timeout: ASSERT_TIMEOUT,
+  });
   await touchTap(page, ENTRY);
-  await expect(page.locator(OVERLAY)).toBeVisible();
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveText("Need ₭250 more", {
+    timeout: ASSERT_TIMEOUT,
+  });
   await expect(acquire).toHaveAttribute(
     "data-acquire-state",
     "insufficient_funds",
+    { timeout: ASSERT_TIMEOUT },
   );
   await expect(
     page.locator('[data-build-action="showroom-acquire-preview"]'),
-  ).toHaveCount(0);
+  ).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
 
   // A different identity with unavailable ownership truth must not inherit eligibility.
   // Close the continuously rendering WebGL page before booting the second account. Reusing the same
@@ -489,11 +609,11 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   });
   await touchTap(switchedPage, ENTRY);
   const unavailableAcquire = switchedPage.locator(ACQUIRE_CONTROL);
-  await expect(unavailableAcquire).toHaveCount(1);
-  await expect(unavailableAcquire).toBeDisabled();
+  await expect(unavailableAcquire).toHaveCount(1, { timeout: ASSERT_TIMEOUT });
+  await expect(unavailableAcquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
   await expect(
     switchedPage.locator('[data-testid="showroom-card-price"]'),
-  ).toHaveText("Price unavailable");
+  ).toHaveText("Price unavailable", { timeout: ASSERT_TIMEOUT });
 });
 
 test("server ownership opens Gearbox despite a stale cached car", async ({
@@ -522,7 +642,7 @@ test("server ownership opens Gearbox despite a stale cached car", async ({
   expect(ownershipReads).toBeGreaterThan(0);
   await expect(
     page.locator('[data-testid="showroom-card-price"]'),
-  ).toHaveAttribute("data-price-source", "server");
+  ).toHaveAttribute("data-price-source", "server", { timeout: ASSERT_TIMEOUT });
   await expect(
     page.locator('[data-build-action="showroom-acquire"]'),
   ).toBeDisabled({ timeout: ASSERT_TIMEOUT });
@@ -569,7 +689,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   );
   await expect(
     page.locator('[data-testid="showroom-card-price"]'),
-  ).toHaveAttribute("data-price-source", "server");
+  ).toHaveAttribute("data-price-source", "server", { timeout: ASSERT_TIMEOUT });
   await expect(
     page.locator('[data-testid="showroom-affordability"]'),
   ).toHaveText("Need ₭250 more", { timeout: ASSERT_TIMEOUT });

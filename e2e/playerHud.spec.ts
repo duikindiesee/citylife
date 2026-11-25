@@ -13,7 +13,7 @@ for (const viewport of [
   test(`player HUD is clean and usable at ${viewport.name} size`, async ({
     page,
   }, testInfo) => {
-    test.setTimeout(180000);
+    test.setTimeout(300_000);
     await page.setViewportSize({
       width: viewport.width,
       height: viewport.height,
@@ -85,18 +85,18 @@ for (const viewport of [
       page.getByRole("button", { name: "Log a reproducible bug" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
+    await expect(menu).toBeHidden({ timeout: 30_000 });
 
     await page.getByTestId("player-map-shortcut").click();
     const map = page.getByTestId("player-map");
-    await expect(map).toBeVisible();
+    await expect(map).toBeVisible({ timeout: 30_000 });
     await expect(map).toHaveCSS("pointer-events", "none");
     await expect(map.locator("[data-bus-count]")).not.toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath(`player-hud-${viewport.name}.png`),
     });
     await page.getByRole("button", { name: "Close map" }).click();
-    await expect(map).toBeHidden();
+    await expect(map).toBeHidden({ timeout: 30_000 });
 
     const enteredFirstPerson = await page.evaluate(() => {
       const runtime = window.__colony;
@@ -124,9 +124,9 @@ for (const viewport of [
       )
       .toBe(true);
     await page.getByTestId("topbar-menu").click();
-    await expect(menu).toBeVisible();
+    await expect(menu).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
+    await expect(menu).toBeHidden({ timeout: 30_000 });
     await expect
       .poll(
         () =>

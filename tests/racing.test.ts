@@ -186,7 +186,7 @@ describe("spec 087 road rally track generation", () => {
       excludeCells: commercialFrontageExclusion(rt.commercialDistrict),
     });
     expect(b).toEqual(a);
-  }, 30000);
+  });
 
   it("does not advance the sim rng that traffic consumes", () => {
     const withTrack = seededTrafficTown();
@@ -225,7 +225,7 @@ describe("spec 087 road rally track generation", () => {
         ).toBe(false);
       }
     }
-  }, 30000);
+  });
 
   it("has a first-class null-commercial out-and-back fallback on a minimal road line", () => {
     const track = makeRaceTrack(tinyRoadState(), {
@@ -257,7 +257,7 @@ describe("spec 087 road rally track generation", () => {
       for (const cp of track.checkpoints)
         expect(excluded.has(roadKey(cp.x, cp.y))).toBe(false);
     }
-  }, 30000);
+  });
 
   it("honors the numeric contracts on live seeds", () => {
     for (const seed of SEEDS) {
@@ -275,7 +275,7 @@ describe("spec 087 road rally track generation", () => {
           ),
         ).toBeLessThanOrEqual(COMMERCIAL_START_MAX_DIST);
     }
-  }, 30000);
+  });
 });
 
 describe("spec 087 road rally race stepper", () => {

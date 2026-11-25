@@ -19,6 +19,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -26,14 +27,24 @@ import {
   fetchEligibleNeighbourhoods,
   fetchHomeTruth,
   postPurchaseHome,
+  postBuildHome,
   purchaseButtonView,
   purchaseStateColor,
   isHomeOwned,
+  layoutRevisionsMatch,
   type EligibleNeighbourhood,
   type HomeTruth,
   type PurchaseOutcome,
+  type PurchaseHomeOptions,
 } from "../home/starterProperty";
+import { homePlotRef } from "../home/driveHome";
 import { projectStarterHome } from "../home/starterHouseProjection";
+import {
+  loadHouseBuild,
+  completeHouseBuild,
+  type HouseBuildSession,
+} from "../home/starterCatalogueClient";
+import { getAuthClient } from "../authClient";
 import type { PlayerWalletStatus } from "../wallet/playerWallet";
 
 const panelStyle: CSSProperties = {
@@ -71,6 +82,7 @@ export function StarterPropertyOverlay({
   onWalletRefresh,
   currency = "₭",
   onHomePurchased,
+  runtime,
 }: {
   onClose: () => void;
   walletKco?: number | null;
@@ -79,6 +91,7 @@ export function StarterPropertyOverlay({
   onWalletRefresh?: () => void;
   currency?: string;
   onHomePurchased?: (target: HomeTruth | string) => void;
+  runtime?: any;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [choices, setChoices] = useState<EligibleNeighbourhood[]>([]);
@@ -88,6 +101,262 @@ export function StarterPropertyOverlay({
   const [pending, setPending] = useState(false);
   const [relocateMode, setRelocateMode] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [buildSession, setBuildSession] = useState<HouseBuildSession | null>(null);
+  const [buildScript, setBuildScript] = useState("");
+  const [buildPending, setBuildPending] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildConfirmed, setBuildConfirmed] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const buildOpSeqRef = useRef(0);
+  const currentRuntimeRef = useRef(runtime);
+  const lastOperatorRef = useRef(runtime?.getOperatorUserId?.() ?? null);
+  const lastRevRef = useRef(runtime?.getActiveLayoutRevisionId?.() ?? null);
+
+  useEffect(() => {
+    currentRuntimeRef.current = runtime;
+    lastOperatorRef.current = runtime?.getOperatorUserId?.() ?? null;
+    lastRevRef.current = runtime?.getActiveLayoutRevisionId?.() ?? null;
+    buildOpSeqRef.current += 1;
+    setBuildPending(false);
+    setBuildError(null);
+    setBuildConfirmed(false);
+    setBuildSession(null);
+  }, [runtime]);
+
+  // Subscribe to runtime state changes so same-object operator/revision changes immediately invalidate build operations
+  useEffect(() => {
+    if (!runtime || typeof runtime.subscribe !== "function") return;
+    const unsub = runtime.subscribe(() => {
+      const curOp = runtime.getOperatorUserId?.() ?? null;
+      const curRev = runtime.getActiveLayoutRevisionId?.() ?? null;
+      if (curOp !== lastOperatorRef.current || curRev !== lastRevRef.current) {
+        lastOperatorRef.current = curOp;
+        lastRevRef.current = curRev;
+        buildOpSeqRef.current += 1;
+        setBuildPending(false);
+        setBuildError(null);
+        setBuildConfirmed(false);
+        setBuildSession(null);
+      }
+    });
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [runtime]);
+
+  const startHouseBuild = useCallback(async () => {
+    const opId = ++buildOpSeqRef.current;
+    const expectedRuntime = runtime;
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    const startRuntimeRev =
+      typeof runtime?.getActiveLayoutRevisionId === "function"
+        ? runtime.getActiveLayoutRevisionId()
+        : null;
+
+    const isCurrent = () => {
+      if (!mountedRef.current) return false;
+      if (buildOpSeqRef.current !== opId) return false;
+      if (currentRuntimeRef.current !== expectedRuntime) return false;
+      const curAuth = authClient.operator?.userId ?? null;
+      if (curAuth !== startAuthUserId) return false;
+      const curRtUser = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (curRtUser !== startRuntimeUserId) return false;
+      const curRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (curRev !== startRuntimeRev) return false;
+      return true;
+    };
+    if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
+      setBuildError("Authenticated user and runtime operator mismatch; aborted.");
+      return;
+    }
+    const startUserId = startAuthUserId ?? startRuntimeUserId;
+    if (!startUserId) {
+      setBuildError("No active operator identity; aborted.");
+      return;
+    }
+    setBuildError(null);
+    setBuildPending(true);
+    try {
+      const session = await loadHouseBuild();
+      if (!isCurrent()) return;
+      const currentAuthUserId = authClient.operator?.userId ?? null;
+      const currentRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!currentAuthUserId || !currentRuntimeUserId || currentAuthUserId !== startUserId || currentRuntimeUserId !== startUserId)) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+      if (!currentAuthUserId || currentAuthUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+      const currentRuntimeRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (startRuntimeRev && (!currentRuntimeRev || currentRuntimeRev !== startRuntimeRev)) {
+        throw new Error("Runtime layout revision changed during house build; aborted.");
+      }
+      if (currentRuntimeRev && session.context.layoutRevision && !layoutRevisionsMatch(currentRuntimeRev, session.context.layoutRevision)) {
+        throw new Error("Runtime layout revision does not match expected build session revision; aborted.");
+      }
+      if (isCurrent()) {
+        setBuildSession(session);
+        setBuildScript(
+          session.context.script || "// Starter home layout\nbox(0, 0, 4, 4, 3);\n",
+        );
+      }
+    } catch (err: any) {
+      if (isCurrent()) {
+        setBuildError(err?.message || "House building unavailable");
+      }
+    } finally {
+      if (isCurrent()) {
+        setBuildPending(false);
+      }
+    }
+  }, [runtime]);
+
+  const finishHouseBuild = useCallback(async () => {
+    if (!buildSession) return;
+    const opId = ++buildOpSeqRef.current;
+    const expectedRuntime = runtime;
+    const authClient = getAuthClient();
+    const startAuthUserId = authClient.operator?.userId ?? null;
+    const startRuntimeUserId = runtime?.getOperatorUserId?.() ?? null;
+    const startRuntimeRev =
+      typeof runtime?.getActiveLayoutRevisionId === "function"
+        ? runtime.getActiveLayoutRevisionId()
+        : null;
+
+    const isCurrent = () => {
+      if (!mountedRef.current) return false;
+      if (buildOpSeqRef.current !== opId) return false;
+      if (currentRuntimeRef.current !== expectedRuntime) return false;
+      const curAuth = authClient.operator?.userId ?? null;
+      if (curAuth !== startAuthUserId) return false;
+      const curRtUser = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (curRtUser !== startRuntimeUserId) return false;
+      const curRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (curRev !== startRuntimeRev) return false;
+      return true;
+    };
+
+    if (runtime && (!startAuthUserId || !startRuntimeUserId || startAuthUserId !== startRuntimeUserId)) {
+      setBuildConfirmed(false);
+      setBuildError("Authenticated user and runtime operator mismatch; aborted.");
+      return;
+    }
+    const startUserId = startAuthUserId ?? startRuntimeUserId;
+    if (!startUserId) {
+      setBuildConfirmed(false);
+      setBuildError("No active operator identity; aborted.");
+      return;
+    }
+    const expectedPlotId = buildSession.context.plotId;
+    const expectedFrameId = buildSession.context.frameId;
+    const expectedRevision = buildSession.context.layoutRevision;
+
+    setBuildError(null);
+    setBuildPending(true);
+    try {
+      const receipt = await completeHouseBuild(buildSession, buildScript);
+      if (!isCurrent()) return;
+      const midAuthUserId = authClient.operator?.userId ?? null;
+      const midRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!midAuthUserId || !midRuntimeUserId || midAuthUserId !== startUserId || midRuntimeUserId !== startUserId)) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+      if (!midAuthUserId || midAuthUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+      const midRuntimeRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (startRuntimeRev && (!midRuntimeRev || midRuntimeRev !== startRuntimeRev)) {
+        throw new Error("Runtime layout revision changed during house build; aborted.");
+      }
+
+      const updatedTruth = await fetchHomeTruth();
+      if (!isCurrent()) return;
+      const endAuthUserId = authClient.operator?.userId ?? null;
+      const endRuntimeUserId = expectedRuntime?.getOperatorUserId?.() ?? null;
+      if (expectedRuntime && (!endAuthUserId || !endRuntimeUserId || endAuthUserId !== startUserId || endRuntimeUserId !== startUserId)) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+      if (!endAuthUserId || endAuthUserId !== startUserId) {
+        throw new Error("Account changed during house build; aborted.");
+      }
+
+      if (!updatedTruth) {
+        throw new Error("Failed to re-read authoritative home truth after build.");
+      }
+      const truthPlotId = updatedTruth.plotId ?? homePlotRef(updatedTruth);
+      if (!truthPlotId || truthPlotId !== expectedPlotId) {
+        throw new Error(`Home truth plot mismatch: expected ${expectedPlotId}, got ${truthPlotId ?? "null"}`);
+      }
+      const truthFrameId = updatedTruth.frameId ?? (updatedTruth.geometry as any)?.frameId ?? null;
+      if (!truthFrameId || (expectedFrameId && truthFrameId !== expectedFrameId)) {
+        throw new Error(`Home truth frame mismatch or missing frameId: expected ${expectedFrameId}, got ${truthFrameId ?? "null"}`);
+      }
+      const truthRevision = updatedTruth.layoutRevision ?? (updatedTruth.geometry as any)?.layoutRevision ?? null;
+      if (!truthRevision || (expectedRevision && !layoutRevisionsMatch(truthRevision, expectedRevision))) {
+        throw new Error(`Home truth layout revision mismatch or missing layoutRevision: expected ${expectedRevision}, got ${truthRevision ?? "null"}`);
+      }
+
+      const currentRuntimeRev =
+        typeof expectedRuntime?.getActiveLayoutRevisionId === "function"
+          ? expectedRuntime.getActiveLayoutRevisionId()
+          : null;
+      if (startRuntimeRev && (!currentRuntimeRev || currentRuntimeRev !== startRuntimeRev)) {
+        throw new Error("Runtime layout revision changed during house build; aborted.");
+      }
+      if (currentRuntimeRev && expectedRevision && !layoutRevisionsMatch(currentRuntimeRev, expectedRevision)) {
+        throw new Error("Runtime layout revision does not match expected build session revision; aborted.");
+      }
+
+      if (updatedTruth.completed !== true || (updatedTruth as any).requiresBuild === true) {
+        throw new Error("Authoritative home truth indicates build is not completed or still required.");
+      }
+      if (!isHomeOwned(updatedTruth)) {
+        throw new Error("Authoritative home truth does not confirm home ownership.");
+      }
+
+      if (!isCurrent()) return;
+      const claimOk = expectedRuntime?.claimStarterHome?.(updatedTruth);
+      if (claimOk === false) {
+        throw new Error("Runtime rejected starter home claim.");
+      }
+      expectedRuntime?.applyBlueprint?.(expectedPlotId, receipt.script);
+      if (isCurrent()) {
+        setBuildConfirmed(true);
+        setTruth(updatedTruth);
+        onHomePurchased?.(updatedTruth);
+      }
+    } catch (err: any) {
+      if (isCurrent()) {
+        setBuildConfirmed(false);
+        setBuildError(err?.message || "Failed to confirm house build");
+      }
+    } finally {
+      if (isCurrent()) {
+        setBuildPending(false);
+      }
+    }
+  }, [buildSession, buildScript, runtime, onHomePurchased]);
 
   // Load the authoritative eligible choices + home truth together. Fail-soft: a null from either read
   // (signed out / endpoint absent / malformed) surfaces the retry state and never a client-invented list.
@@ -103,9 +372,9 @@ export function StarterPropertyOverlay({
       setTruth(home);
       if (elig === null) {
         setChoices([]);
-        // If the player already owns a home, an eligible-list miss is not an error — we go straight to
+        // If the player already owns a home or secured plot, an eligible-list miss is not an error — we go straight to
         // the owned projection. Otherwise it is a genuine read failure the player can retry.
-        setPhase(isHomeOwned(home) ? "ready" : "error");
+        setPhase(isHomeOwned(home) || Boolean((home as any)?.plotOwned || (home as any)?.requiresBuild || (home as any)?.status === "PLOT_OWNED") ? "ready" : "error");
         return;
       }
       setChoices(elig);
@@ -118,6 +387,12 @@ export function StarterPropertyOverlay({
   }, [reloadToken]);
 
   const owned = isHomeOwned(truth);
+  const hasPlot = Boolean(
+    owned ||
+    truth?.plotOwned ||
+    truth?.requiresBuild ||
+    truth?.status === "PLOT_OWNED",
+  );
   // EXACTLY ONE deterministic, identity-bound house — a pure function of the authoritative truth, so a
   // refresh / re-login / second device all converge on this same projection.
   const projected = useMemo(() => projectStarterHome(truth), [truth]);
@@ -126,10 +401,15 @@ export function StarterPropertyOverlay({
   const selectedChoice = choices.find((c) => c.key === selected) ?? null;
 
   const purchase = useCallback(() => {
-    if (pending || (!relocateMode && owned) || !selected) return;
+    if (pending || (!relocateMode && hasPlot) || !selected) return;
     const key = selected;
     setPending(true);
-    void postPurchaseHome(key, eligibleKeys).then((result) => {
+    const options: PurchaseHomeOptions = {
+      neighbourhoodKey: key,
+      ...(selectedChoice?.plotId ? { plotId: selectedChoice.plotId } : {}),
+      ...(selectedChoice?.layoutRevision ? { layoutRevision: selectedChoice.layoutRevision } : {}),
+    };
+    void postPurchaseHome(options, eligibleKeys).then((result) => {
       setOutcome(result);
       if (result.kind === "owned") {
         onWalletRefresh?.();
@@ -149,7 +429,7 @@ export function StarterPropertyOverlay({
     });
   }, [
     pending,
-    owned,
+    hasPlot,
     relocateMode,
     selected,
     eligibleKeys,
@@ -158,7 +438,7 @@ export function StarterPropertyOverlay({
   ]);
 
   const view = purchaseButtonView(
-    relocateMode ? false : owned,
+    relocateMode ? false : hasPlot,
     !!selected,
     pending,
     outcome,
@@ -283,7 +563,7 @@ export function StarterPropertyOverlay({
         </div>
       )}
 
-      {phase === "error" && !owned && (
+      {phase === "error" && !hasPlot && (
         <div
           data-testid="home-error"
           style={{ ...panelStyle, marginTop: 10, padding: 16, fontSize: 13 }}
@@ -302,14 +582,14 @@ export function StarterPropertyOverlay({
         </div>
       )}
 
-      {/* OWNED — the deterministic, identity-bound house projection */}
-      {owned && projected && (
+      {/* OWNED OR SECURED PLOT — the deterministic, identity-bound house projection or paid builder */}
+      {hasPlot && (
         <div
-          data-testid="home-owned"
-          data-plot-id={projected.plotId ?? ""}
-          data-frame-id={projected.frameId ?? ""}
-          data-house-seed={String(projected.seed)}
-          data-placement={`${projected.placement.x},${projected.placement.y}`}
+          data-testid={!projected ? "plot-secured-card" : "home-owned"}
+          data-plot-id={projected?.plotId ?? truth?.plotId ?? ""}
+          data-frame-id={projected?.frameId ?? truth?.frameId ?? ""}
+          data-house-seed={projected ? String(projected.seed) : ""}
+          data-placement={projected ? `${projected.placement.x},${projected.placement.y}` : ""}
           style={{
             ...panelStyle,
             marginTop: 10,
@@ -320,37 +600,150 @@ export function StarterPropertyOverlay({
             gap: 8,
           }}
         >
-          <span style={{ color: "#9fd4a6", fontWeight: 700, fontSize: 15 }}>
-            ✓ Your home is yours
-          </span>
-          <span style={{ color: "#c8dff0" }}>
-            A {projected.spec.character} {projected.spec.floors}-storey home
-            {truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
-          </span>
-          <span style={{ color: "#7ab0d0", fontSize: 11 }}>
-            Placed at {projected.placement.x},{projected.placement.y} · the same
-            on every device.
-          </span>
-          <button
-            type="button"
-            data-testid="home-relocate-btn"
-            onClick={() => setRelocateMode((m) => !m)}
-            style={{
-              ...controlButtonStyle,
-              marginTop: 6,
-              alignSelf: "flex-start",
-              fontSize: 12,
-            }}
-          >
-            {relocateMode
-              ? "✕ Cancel plot change"
-              : "📍 Select a different coastal plot"}
-          </button>
+          {projected ? (
+            <>
+              <span style={{ color: "#9fd4a6", fontWeight: 700, fontSize: 15 }}>
+                ✓ Your home is yours
+              </span>
+              <span style={{ color: "#c8dff0" }}>
+                A {projected.spec.character} {projected.spec.floors}-storey home
+                {truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
+              </span>
+              <span style={{ color: "#7ab0d0", fontSize: 11 }}>
+                Placed at {projected.placement.x},{projected.placement.y} · the same
+                on every device.
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ color: "#9fd4a6", fontWeight: 700, fontSize: 15 }}>
+                ✓ Plot Secured
+              </span>
+              <span style={{ color: "#c8dff0" }}>
+                Your plot is secured{truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
+                Build your house to complete your starter home.
+              </span>
+            </>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              data-testid="home-build-start-btn"
+              onClick={startHouseBuild}
+              style={{ ...controlButtonStyle, fontSize: 12 }}
+            >
+              {truth?.completed ? "🔨 Build / Edit Your House" : "🔨 Build Your House"}
+            </button>
+            <button
+              type="button"
+              data-testid="home-relocate-btn"
+              onClick={() => setRelocateMode((m) => !m)}
+              style={{
+                ...controlButtonStyle,
+                fontSize: 12,
+              }}
+            >
+              {relocateMode
+                ? "✕ Cancel plot change"
+                : "📍 Select a different coastal plot"}
+            </button>
+          </div>
+
+          {buildError && !buildSession && (
+            <div
+              data-testid="home-builder-error"
+              role="alert"
+              style={{ color: "#e07a7a", fontSize: 12, marginTop: 4 }}
+            >
+              {buildError}
+            </div>
+          )}
+
+          {buildSession && (
+            <div
+              data-testid="home-builder-panel"
+              style={{
+                ...panelStyle,
+                marginTop: 8,
+                padding: 12,
+                border: "1px solid #3a6080",
+              }}
+            >
+              <div style={{ color: "#ffd25a", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+                Plot {buildSession.context.plotId} House Builder
+              </div>
+              <div style={{ fontSize: 11, color: "#7ab0d0", marginBottom: 6 }}>
+                Layout revision: {buildSession.context.layoutRevision}
+              </div>
+              <textarea
+                data-testid="home-builder-script"
+                value={buildScript}
+                onChange={(e) => setBuildScript(e.target.value)}
+                rows={4}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#050d18",
+                  color: "#dceaff",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  padding: 8,
+                  borderRadius: 4,
+                  border: "1px solid #244060",
+                }}
+              />
+              {buildError && (
+                <div
+                  data-testid="home-builder-error"
+                  role="alert"
+                  style={{ color: "#e07a7a", fontSize: 12, marginTop: 4 }}
+                >
+                  {buildError}
+                </div>
+              )}
+              {buildConfirmed && (
+                <div
+                  data-testid="home-builder-confirmed"
+                  style={{ color: "#9fd4a6", fontSize: 12, marginTop: 4, fontWeight: 700 }}
+                >
+                  ✓ House build confirmed by server!
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  data-testid="home-builder-submit"
+                  disabled={buildPending}
+                  onClick={finishHouseBuild}
+                  style={{
+                    ...controlButtonStyle,
+                    background: "#163a24",
+                    borderColor: "#3ca05a",
+                    color: "#9fd4a6",
+                    fontSize: 12,
+                  }}
+                >
+                  {buildPending ? "Confirming…" : "Save House Blueprint"}
+                </button>
+                <button
+                  type="button"
+                  data-testid="home-builder-cancel"
+                  onClick={() => {
+                    setBuildSession(null);
+                    setBuildError(null);
+                  }}
+                  style={{ ...controlButtonStyle, fontSize: 12 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* SELECT — server-eligible choices only */}
-      {(!owned || relocateMode) && phase === "ready" && (
+      {(!hasPlot || relocateMode) && phase === "ready" && (
         <div
           style={{
             marginTop: 10,

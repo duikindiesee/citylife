@@ -271,22 +271,37 @@ export function buildBus(): THREE.Group {
   });
 
   // Shell: skirt at 0.35 m, roofline at H. All body details ride the sway group.
-  // Open shell: lower body, roof rail, end frames and pillars leave real window apertures.
-  const lowerShell = new THREE.Mesh(new THREE.BoxGeometry(L, 1.05, W), bodyMat);
+  // Open shell: lower body (0.55m height at y=0.625) sits strictly below passenger floor (y=1.08),
+  // and open window frame rails/pillars leave actual windscreen and passenger window apertures.
+  const lowerShell = new THREE.Mesh(new THREE.BoxGeometry(L, 0.55, W), bodyMat);
   lowerShell.name = "bus-lower-shell";
-  lowerShell.position.y = 0.875;
+  lowerShell.position.y = 0.625;
   const upperRail = new THREE.Mesh(new THREE.BoxGeometry(L, 0.28, W), bodyMat);
   upperRail.name = "bus-upper-shell-rail";
   upperRail.position.y = 2.78;
-  const frontCap = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 1.55, W),
-    bodyMat,
-  );
-  frontCap.name = "bus-front-shell-frame";
-  frontCap.position.set(L / 2 - 0.11, 1.96, 0);
-  const rearCap = frontCap.clone();
+
+  // Open front frame surrounding the windscreen aperture
+  const frontX = L / 2 - 0.08;
+  const frontTop = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, W), bodyMat);
+  frontTop.name = "bus-front-frame-top";
+  frontTop.position.set(frontX, 2.71, 0);
+
+  const frontBottom = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, W), bodyMat);
+  frontBottom.name = "bus-front-frame-bottom";
+  frontBottom.position.set(frontX, 1.39, 0);
+
+  const frontLeft = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.16, 0.16), bodyMat);
+  frontLeft.name = "bus-front-frame-left";
+  frontLeft.position.set(frontX, 2.05, W / 2 - 0.22);
+
+  const frontRight = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.16, 0.16), bodyMat);
+  frontRight.name = "bus-front-frame-right";
+  frontRight.position.set(frontX, 2.05, -(W / 2 - 0.22));
+
+  const rearCap = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.55, W), bodyMat);
   rearCap.name = "bus-rear-shell-frame";
-  rearCap.position.x = -L / 2 + 0.11;
+  rearCap.position.set(-L / 2 + 0.08, 1.65, 0);
+
   const beltLine = new THREE.Mesh(
     new THREE.BoxGeometry(L + 0.1, 0.16, W + 0.06),
     trimMat,
@@ -299,7 +314,7 @@ export function buildBus(): THREE.Group {
   );
   roof.name = "bus-roof";
   roof.position.y = H;
-  body.add(lowerShell, upperRail, frontCap, rearCap, beltLine, roof);
+  body.add(lowerShell, upperRail, frontTop, frontBottom, frontLeft, frontRight, rearCap, beltLine, roof);
   for (const x of [-4.7, -2.75, -0.8, 1.15, 3.1, 4.15]) {
     for (const z of [-W / 2, W / 2]) {
       const pillar = new THREE.Mesh(
@@ -401,7 +416,7 @@ function addPassengerInterior(
   addBox(
     "bus-interior-aisle",
     [length - 2.1, 0.025, 0.62],
-    [-0.55, 1.15, 0],
+    [-0.55, 1.1525, 0],
     aisleMat,
   );
   addBox(

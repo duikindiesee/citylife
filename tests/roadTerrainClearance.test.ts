@@ -127,15 +127,16 @@ function buildLiveRoadScene(seed: number) {
   };
 }
 
-/** Build the live world's ribbons and return every point where ground beats the rendered surface.
+/** Inspect a single generated road scene and return every point where ground beats the rendered surface.
  *
  *  The ground compared against is the GRADED, RENDERED height sampled across the actual
  *  piecewise indexed triangles constructed by buildChunkedTerrain / terrainChunks. */
 function protrusions(
   seed: number,
+  scene: ReturnType<typeof buildLiveRoadScene>,
   levelOverride?: Map<number, number>,
 ): Violation[] {
-  const { terrain, group, level: defaultLevel, gridOf } = buildLiveRoadScene(seed);
+  const { terrain, group, level: defaultLevel, gridOf } = scene;
   const level = levelOverride ?? defaultLevel;
   const out: Violation[] = [];
   let sampleCount = 0;
@@ -256,7 +257,7 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
   // kerb/shoulder vertices at the carriageway edge.
   for (const seed of SEEDS) {
     it(`keeps every rendered road surface above the ground on seed ${seed}`, () => {
-      const bad = protrusions(seed);
+      const bad = protrusions(seed, buildLiveRoadScene(seed));
       const worst = bad.sort((a, b) => b.protrusion - a.protrusion)[0];
       expect(
         worst
@@ -314,7 +315,8 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
   });
 
   it("detects an artificial ground protrusion on an injected raised cell (negative control)", () => {
-    const { terrain, level, gridOf, group } = buildLiveRoadScene(4242);
+    const scene = buildLiveRoadScene(4242);
+    const { terrain, level, gridOf, group } = scene;
     // Road sample near cell [384, 322]
     let sample: { gx: number; gy: number; surfaceY: number } | null = null;
     let minD2 = Infinity;
@@ -358,7 +360,8 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
     const protrusionAtSample = raisedGroundAtSample - sample!.surfaceY;
     expect(protrusionAtSample).toBeCloseTo(2.50, 2);
 
-    const bad = protrusions(4242, modifiedLevel);
+    // Hold the mesh fixed: the detector should respond only to the injected ground edit.
+    const bad = protrusions(4242, scene, modifiedLevel);
     expect(bad.length).toBeGreaterThan(0);
     const exactViolation = bad.find(
       (v) =>

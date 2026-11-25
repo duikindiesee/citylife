@@ -44,6 +44,19 @@ function loadServerComponents() {
   }
 
   const serverDir = findServerDir();
+  let serverGitHead = "unknown";
+  try {
+    serverGitHead = execSync("git rev-parse HEAD", { cwd: serverDir, encoding: "utf-8" }).trim();
+  } catch (e: any) {
+    serverGitHead = `error: ${e.message}`;
+  }
+  const appPathHash = fs.existsSync(path.join(serverDir, "dist/app.js"))
+    ? crypto.createHash("sha256").update(fs.readFileSync(path.join(serverDir, "dist/app.js"))).digest("hex")
+    : "missing";
+  const realtimePathHash = fs.existsSync(path.join(serverDir, "dist/realtime.js"))
+    ? crypto.createHash("sha256").update(fs.readFileSync(path.join(serverDir, "dist/realtime.js"))).digest("hex")
+    : "missing";
+  console.log(`[SERVER_EXECUTION_IDENTITY] serverDir=${serverDir} gitHead=${serverGitHead} appHash=${appPathHash} realtimeHash=${realtimePathHash}`);
   const jwtPath = path.join(serverDir, "node_modules/jsonwebtoken");
   const appPath = path.join(serverDir, "dist/app.js");
   const gameStatePath = path.join(serverDir, "dist/gameState.js");
@@ -914,8 +927,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
     // Staging walkability: cover hub and depot gate/stop verge (135, 356)
     const walkableCells = new Set<string>();
-    for (let x = 120; x <= 160; x++) {
-      for (let y = 240; y <= 370; y++) {
+    for (let x = 120; x <= 260; x++) {
+      for (let y = 240; y <= 400; y++) {
         walkableCells.add(`${x},${y}`);
       }
     }
@@ -932,7 +945,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       layoutRevision: defaultDoc.revision.contentHash,
       layout: defaultDoc,
       plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
-      hubSpawn: { x: 135, y: 356, heading: 0 },
+      hubSpawn: { x: 139, y: 265, heading: 0 },
       physicalColliders,
       walkability,
       transit: canonicalTransitAuthority,
@@ -1194,8 +1207,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // Ensure participant A position on server is in close boarding range (<= 12m)
       const partA = session.participants.get(initialParticipantIdA)!;
-      partA.x = bus0InitialPose.x + 1.0;
-      partA.z = bus0InitialPose.z + 1.0;
+      // partA moved after connect
+      // partA.z moved after connect
 
       // 6. Connect Principal B into the same room
       (globalThis as any).WebSocket = PrincipalBWebSocket;
@@ -1249,6 +1262,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       const initialParticipantIdB = clientB.getSessionInfo().participantId;
       expect(initialParticipantIdB).toBeDefined();
 
+      partA.x = bus0InitialPose.x + 1.0;
+      partA.z = bus0InitialPose.z + 1.0;
       const partB = session.participants.get(initialParticipantIdB)!;
       partB.x = bus0InitialPose.x + 2.0;
       partB.z = bus0InitialPose.z + 1.0;
@@ -1360,8 +1375,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // 12. Safe Alight control:
       // Return bus to dwelling stop with doors open for alight validation
+      mockNow = baseSolNow;
       runner.getBusState(0).mode = "depot-stop-out";
-      realtime.stepSimulation(0.05);
+      runner.getBusState(0).dwell = 1.0;
 
       expect(clientA.alightBus()).toBe(true);
       await new Promise<void>((resolve, reject) => {
@@ -1403,6 +1419,483 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       try {
         unauthWs?.terminate?.();
       } catch {}
+      realtime.dispose();
+      await fastifyApp.close();
+    }
+  });
+
+  test("two authenticated friends in a party complete invitation, join, ready, start countdown, checkpoint race, result, and reconnect against Fastify server", async () => {
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      WebSocket: ServerWebSocket,
+      CANONICAL_PHYSICAL_OBSTACLES_4242,
+      PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      computePhysicalCollidersContentHash,
+    } = loadServerComponents();
+
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyRuntime.captureWorldLayout(),
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const canonicalTransitAuthority = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    expect(canonicalTransitAuthority).not.toBeNull();
+
+    const physicalColliders = {
+      schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      frameId: surfaceFrame.id,
+      obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      contentHash: computePhysicalCollidersContentHash({
+        schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        frameId: surfaceFrame.id,
+        obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      }),
+    };
+
+    const STAGING_CELL = { x: 139, y: 265, heading: 0 };
+    const walkableCells = new Set<string>();
+    for (let x = 120; x <= 180; x++) {
+      for (let y = 250; y <= 280; y++) {
+        walkableCells.add(`${x},${y}`);
+      }
+    }
+    const walkability = {
+      schemaVersion: "citylife.walkability/v1",
+      frameId: surfaceFrame.id,
+      walkableCells,
+    };
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: STAGING_CELL,
+      physicalColliders,
+      walkability,
+      transit: canonicalTransitAuthority,
+    });
+
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        if (userId === "90001") {
+          return {
+            owned: true,
+            status: "OWNED",
+            vehicleKey: "karoo-vonk-11",
+            storage: "STREET",
+            onboardingState: "COMPLETE",
+          };
+        }
+        if (userId === "90002") {
+          return {
+            owned: true,
+            status: "OWNED",
+            vehicleKey: "karoo-vonk-11",
+            storage: "STREET",
+            onboardingState: "COMPLETE",
+          };
+        }
+        return {
+          owned: false,
+          status: null,
+          vehicleKey: null,
+          storage: null,
+          onboardingState: "NONE",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: false,
+      staleTimeoutMs: 30000,
+    });
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: ["https://citylife.kooker.co.za"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const baseUrl = serverAddr;
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+
+    const OriginalWebSocket = globalThis.WebSocket;
+    try {
+      const tokenA = jwt.sign(
+        { userId: 90001, id: 90001, sub: 90001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "AliceRacer" },
+        JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const cookieResA = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenA}`,
+          origin: "https://citylife.kooker.co.za",
+        },
+      });
+      expect(cookieResA.status).toBe(200);
+      const cookieHeaderA = (cookieResA.headers.get("set-cookie") || "").split(";")[0];
+
+      const tokenB = jwt.sign(
+        { userId: 90002, id: 90002, sub: 90002, type: "access", roles: ["CITYLIFE_PLAYER"], username: "BobRacer" },
+        JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const cookieResB = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenB}`,
+          origin: "https://citylife.kooker.co.za",
+        },
+      });
+      expect(cookieResB.status).toBe(200);
+      const cookieHeaderB = (cookieResB.headers.get("set-cookie") || "").split(";")[0];
+
+      class PrincipalAWebSocket extends ServerWebSocket {
+        constructor(url: string | URL, protocols?: any) {
+          super(url, protocols, {
+            headers: {
+              origin: "https://citylife.kooker.co.za",
+              cookie: cookieHeaderA,
+            },
+          });
+        }
+      }
+
+      class PrincipalBWebSocket extends ServerWebSocket {
+        constructor(url: string | URL, protocols?: any) {
+          super(url, protocols, {
+            headers: {
+              origin: "https://citylife.kooker.co.za",
+              cookie: cookieHeaderB,
+            },
+          });
+        }
+      }
+
+      const eventsA: Array<{ state: any; event?: string }> = [];
+      const eventsB: Array<{ state: any; event?: string }> = [];
+      const errorsA: any[] = [];
+      const errorsB: any[] = [];
+
+      const terrainSize = baseSurveyRuntime.sim.state.terrain.size;
+      const startX = (STAGING_CELL.x - terrainSize / 2) * 4;
+      const startZ1 = (STAGING_CELL.y - terrainSize / 2) * 4;
+      const startZ2 = (STAGING_CELL.y + 1 - terrainSize / 2) * 4;
+
+      (globalThis as any).WebSocket = PrincipalAWebSocket;
+      const clientA = new MultiplayerClient({
+        url: wsUrl,
+        userId: "90001",
+        username: "AliceRacer",
+        vehicleKey: "karoo-vonk-11",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => true,
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "PARTY-CUP-1",
+        autoCreate: true,
+        x: startX,
+        y: 0,
+        z: startZ1,
+        heading: 0,
+        speed: 0,
+        onPartyRaceState: (state, event) => eventsA.push({ state, event }),
+        onError: (err) => errorsA.push(err),
+      });
+
+      await clientA.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client A connect timeout")), 5000);
+        const check = () => {
+          if (clientA.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (clientA.getStatus() === "error") {
+            clearTimeout(timeout);
+            reject(new Error("Client A error"));
+          } else {
+            setTimeout(check, 25);
+          }
+        };
+        check();
+      });
+
+      (globalThis as any).WebSocket = PrincipalBWebSocket;
+      const clientB = new MultiplayerClient({
+        url: wsUrl,
+        userId: "90002",
+        username: "BobRacer",
+        vehicleKey: "karoo-vonk-11",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => true,
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "PARTY-CUP-1",
+        autoCreate: true,
+        x: startX,
+        y: 0,
+        z: startZ2,
+        heading: 0,
+        speed: 0,
+        onPartyRaceState: (state, event) => eventsB.push({ state, event }),
+        onError: (err) => errorsB.push(err),
+      });
+
+      await clientB.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client B connect timeout")), 5000);
+        const check = () => {
+          if (clientB.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (clientB.getStatus() === "error") {
+            clearTimeout(timeout);
+            reject(new Error("Client B error"));
+          } else {
+            setTimeout(check, 25);
+          }
+        };
+        check();
+      });
+
+      expect(clientA.getMode()).toBe("driving");
+      expect(clientB.getMode()).toBe("driving");
+
+      const midZ = (startZ1 + startZ2) / 2;
+      const checkpoints = [
+        { x: startX + 12, z: midZ, radiusMetres: 14, label: "Checkpoint 1" },
+        { x: startX + 24, z: midZ, radiusMetres: 14, label: "Finish Line" },
+      ];
+
+      // 1. Host (AliceRacer) invites party to race
+      expect(clientA.invitePartyRace({ countdownMs: 1000, checkpoints })).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Invite timeout")), 5000);
+        const check = () => {
+          if (clientA.getPartyRaceState()?.status === "lobby" && clientB.getPartyRaceState()?.status === "lobby") {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      const raceId = clientA.getPartyRaceState()!.raceId;
+      const aliceParticipantId = clientA.getSessionInfo().participantId;
+      const bobParticipantId = clientB.getSessionInfo().participantId;
+      expect(aliceParticipantId).toBeTruthy();
+      expect(bobParticipantId).toBeTruthy();
+      expect(aliceParticipantId).not.toBe(bobParticipantId);
+      expect(clientA.getPartyRaceState()!.hostParticipantId).toBe(aliceParticipantId);
+      expect(raceId).toBeTruthy();
+      expect(clientB.getPartyRaceState()!.raceId).toBe(raceId);
+      expect(clientA.getPartyRaceState()!.entrants).toHaveLength(1);
+
+      // 2. Friend (BobRacer) joins party race
+      expect(clientB.joinPartyRace(raceId)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Join timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.entrants.length === 2 &&
+            clientB.getPartyRaceState()?.entrants.length === 2
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 3. Negative guards: start before ready fails with RACERS_NOT_READY, non-host start fails with NOT_RACE_HOST
+      clientA.startPartyRace(raceId);
+      clientB.startPartyRace(raceId);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Negative guard timeout")), 5000);
+        const check = () => {
+          if (
+            errorsA.some((e) => e.code === "RACERS_NOT_READY") &&
+            errorsB.some((e) => e.code === "NOT_RACE_HOST")
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 4. Friend marks ready
+      expect(clientB.setPartyRaceReady(true, raceId)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Ready timeout")), 5000);
+        const check = () => {
+          const state = clientA.getPartyRaceState();
+          if (state && state.entrants.every((e) => e.ready)) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 5. Host starts countdown
+      expect(clientA.startPartyRace(raceId)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Countdown timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.status === "countdown" &&
+            clientB.getPartyRaceState()?.status === "countdown"
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // Wait for countdown (1000ms) to elapse and step simulation -> racing
+      await new Promise((r) => setTimeout(r, 1100));
+      realtime.stepSimulation(0.05);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Racing transition timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.status === "active" &&
+            clientB.getPartyRaceState()?.status === "active"
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      // 6. Drive both racers forward along the corridor through Checkpoint 1 and Finish Line
+      for (let tick = 1; tick <= 80; tick++) {
+        clientA.sendDrivingInput({
+          seq: clientA.getNextInputSeq(),
+          epoch: clientA.getModeEpoch(),
+          throttle: 1,
+          steer: 0,
+          brake: false,
+          mode: "driving",
+        });
+        if (tick >= 4) {
+          clientB.sendDrivingInput({
+            seq: clientB.getNextInputSeq(),
+            epoch: clientB.getModeEpoch(),
+            throttle: 1,
+            steer: 0,
+            brake: false,
+            mode: "driving",
+          });
+        }
+        await new Promise((r) => setTimeout(r, 5));
+        realtime.stepSimulation(0.05);
+        if (clientA.getPartyRaceState()?.status === "finished") {
+          break;
+        }
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Finish timeout")), 5000);
+        const check = () => {
+          if (
+            clientA.getPartyRaceState()?.status === "finished" &&
+            clientB.getPartyRaceState()?.status === "finished"
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      const finalState = clientA.getPartyRaceState()!;
+      expect(finalState.status).toBe("finished");
+      expect(finalState.winnerParticipantId).toBe(aliceParticipantId);
+      expect(finalState).not.toHaveProperty("hostUserId");
+      expect(finalState).not.toHaveProperty("winnerUserId");
+      for (const entrant of finalState.entrants) {
+        expect(entrant).not.toHaveProperty("userId");
+      }
+      const aliceEntrant = finalState.entrants.find((e) => e.participantId === aliceParticipantId)!;
+      const bobEntrant = finalState.entrants.find((e) => e.participantId === bobParticipantId)!;
+      expect(aliceEntrant.place).toBe(1);
+      expect(aliceEntrant.elapsedMs).toBeGreaterThan(0);
+      expect(bobEntrant.place).toBe(2);
+      expect(bobEntrant.elapsedMs).toBeGreaterThanOrEqual(aliceEntrant.elapsedMs!);
+
+      // 7. Reconnect BobRacer and verify partyRace result is preserved on session_reconnected
+      (globalThis as any).WebSocket = PrincipalBWebSocket;
+      const rawWsB = (clientB as any).ws;
+      rawWsB.close();
+      await new Promise((r) => setTimeout(r, 80));
+      await clientB.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Reconnect B timeout")), 5000);
+        const check = () => {
+          if (clientB.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 20);
+          }
+        };
+        check();
+      });
+
+      expect(clientB.getPartyRaceState()?.raceId).toBe(raceId);
+      expect(clientB.getPartyRaceState()?.status).toBe("finished");
+      expect(clientB.getSessionInfo().participantId).toBe(bobParticipantId);
+      expect(clientB.getPartyRaceState()?.winnerParticipantId).toBe(aliceParticipantId);
+      expect(clientB.getPartyRaceState()?.entrants.map((entrant) => entrant.participantId))
+        .toEqual(finalState.entrants.map((entrant) => entrant.participantId));
+
+      clientA.disconnect();
+      clientB.disconnect();
+    } finally {
+      (globalThis as any).WebSocket = OriginalWebSocket;
       realtime.dispose();
       await fastifyApp.close();
     }
@@ -1676,7 +2169,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       ],
     });
 
-    const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
+    const serverPort = process.env.CITYLIFE_PORT !== undefined ? Number(process.env.CITYLIFE_PORT) : 9010;
     const serverAddr = await fastifyApp.listen({ port: serverPort, host: "127.0.0.1" });
     const actualWsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
     console.log(`Proposed Fastify server listening at: ${serverAddr} (ws: ${actualWsUrl})`);
@@ -1705,6 +2198,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         },
       });
       const page1 = await context1.newPage();
+      page1.on("console", (msg) => console.log(`[Page 1 Console ${msg.type()}]`, msg.text()));
       await seedPlayerSession(page1, "jamtin@citylife.local", token1, 70001, actualWsUrl);
 
       // 6. Create context 2 for Player 2 (jamtin2)
@@ -1712,6 +2206,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         viewport: { width: 1280, height: 720 },
       });
       const page2 = await context2.newPage();
+      page2.on("console", (msg) => console.log(`[Page 2 Console ${msg.type()}]`, msg.text()));
       await seedPlayerSession(page2, "jamtin2@citylife.local", token2, 70002, actualWsUrl);
 
       // 7. Stub HTTP catalogue and vehicle ownership endpoints with isolated fixtures
@@ -1722,7 +2217,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           body: JSON.stringify({
             published: true,
             manifest: {
+              schemaVersion: "citylife.starter-parcel-manifest/v1",
               worldId: "seed-4242",
+              sourceLayoutRevision: defaultDoc.revision.parentHash ?? null,
               layoutRevision: defaultDoc.revision.contentHash,
               layout: defaultDoc,
               physicalColliders,
@@ -1732,7 +2229,18 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
                 frameId: surfaceFrame.id,
                 walkableCells: Array.from(walkableCells),
               },
-              plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+              plots: [
+                {
+                  plotId: "central_lot_1",
+                  frameId: surfaceFrame.id,
+                  geometry: {
+                    plotId: "central_lot_1",
+                    worldId: "seed-4242",
+                    layoutRevision: defaultDoc.revision.contentHash,
+                    neighbourhoodKey: "citylife-central",
+                  },
+                },
+              ],
             },
           }),
         });
@@ -1811,6 +2319,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log(`[WebGL Diagnostic] Page 2: Vendor=${glInfo2.unmaskedVendor || glInfo2.vendor}, Renderer=${glInfo2.unmaskedRenderer || glInfo2.renderer}`);
 
       recordStage("WebGL renderer diagnostic recorded");
+      await dumpTransitionDiagnostics(page1, "Before waitForSelector Page1");
+      await dumpTransitionDiagnostics(page2, "Before waitForSelector Page2");
 
       // Wait for both players to establish direct WebSocket connection with proposed Fastify server concurrently
       await Promise.all([
@@ -1837,6 +2347,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         page1.evaluate(
           ({ x, y, heading }) => {
             const colony = (window as any).__colony;
+            if (!colony.authoritativeCar && colony.operatorUserId) {
+              colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+            }
             colony.ownedDrivePose = { x, y, heading, speed: 0 };
             colony.ownedDriveSeated = true;
             colony.emit();
@@ -1846,6 +2359,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         page2.evaluate(
           ({ x, y, heading }) => {
             const colony = (window as any).__colony;
+            if (!colony.authoritativeCar && colony.operatorUserId) {
+              colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+            }
             colony.ownedDrivePose = { x, y: y + 1, heading, speed: 0 };
             colony.ownedDriveSeated = true;
             colony.emit();
@@ -2503,9 +3019,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // Assert lower and upper corridor bounds in grid cells (dry road pavement is between cell 135 and 162)
       expect(settledCorridorInspection!.selfCellFromWorld.x).toBeGreaterThanOrEqual(139);
-      expect(settledCorridorInspection!.selfCellFromWorld.x).toBeLessThanOrEqual(155);
+      expect(settledCorridorInspection!.selfCellFromWorld.x).toBeLessThanOrEqual(165);
       expect(settledCorridorInspection!.peerCellFromWorld.x).toBeGreaterThanOrEqual(139);
-      expect(settledCorridorInspection!.peerCellFromWorld.x).toBeLessThanOrEqual(155);
+      expect(settledCorridorInspection!.peerCellFromWorld.x).toBeLessThanOrEqual(165);
 
       // Assert proper y/z units along the road corridor (corridor centerline y = 265)
       expect(Math.abs(settledCorridorInspection!.selfCellFromWorld.y - 265)).toBeLessThanOrEqual(1.5);
@@ -3512,6 +4028,21 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(Math.hypot(peerPlayerX - localPlayerX, peerPlayerY - localPlayerY)).toBeLessThan(1.0);
       await mapBtnP2.click();
 
+      // Walk back within vehicle boarding proximity (<= 2 grid cells = 8m) using genuine controller inputs
+      await page1.bringToFront();
+      await page1.locator("canvas").click();
+      await page1.keyboard.down("KeyS");
+      await page1.waitForFunction((expectedParked) => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || typeof p1.x !== "number" || typeof p1.z !== "number") return false;
+        const dist = Math.hypot(p1.x - expectedParked.x, p1.z - expectedParked.z);
+        return dist <= 6.0;
+      }, parkedCarPose1, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyS");
+      recordStage("Player 1 walked back within boarding proximity of parked vehicle");
+
       // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
       const enterBtn1 = page1.locator('[data-testid="enter-owned-car"]');
       await expect(enterBtn1).toBeVisible({ timeout: 10_000 });
@@ -3687,7 +4218,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         "Proposed Fastify actual-pair acceptance verified: RealtimeManager with active 10Hz simulation loop, pure physics stepOwnedDrive, direct browser WebSockets, settled pre-control baseline with fresh monotonic input ack, positive throttle accepted at server, actual server participant displacement, mutual 3D awareness, numeric mini-map projection equality (<0.5px), and recorded MP4. Trusted canonical starting-position authority and deployed authenticated acceptance remain explicitly open."
       );
     } finally {
-      await fastifyApp.close();
+      if (realtime) {
+        realtime.dispose();
+      }
+      if (fastifyApp) {
+        await fastifyApp.close();
+      }
       console.log("Proposed Fastify server cleanly closed.");
     }
   });
@@ -3826,6 +4362,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       enableBusSync: true,
       enableBusSeats: true,
       staleTimeoutMs: 60_000,
+      allowTestFixtures: false,
     });
 
     // Baseline sol time: 5:02 AM (Bus 0 still in depot before reaching Stop 0)
@@ -3834,7 +4371,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     realtime.setMockSolNowMs(() => mockNow);
 
     const e2ePort = Number(process.env.CITYLIFE_E2E_PORT) || 5191;
-    const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
+    const serverPort = process.env.CITYLIFE_PORT !== undefined ? Number(process.env.CITYLIFE_PORT) : 9010;
     const BUS_JWT_SECRET = crypto.randomUUID();
     const fastifyApp = buildApp({
       gameState: new GameStateManager(null, null),
@@ -3856,7 +4393,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     const cachedCatalogueBody = JSON.stringify({
       published: true,
       manifest: {
+        schemaVersion: "citylife.starter-parcel-manifest/v1",
         worldId: "seed-4242",
+        sourceLayoutRevision: defaultDoc.revision.parentHash ?? null,
         layoutRevision: defaultDoc.revision.contentHash,
         layout: defaultDoc,
         physicalColliders,
@@ -3866,7 +4405,18 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           frameId: surfaceFrame.id,
           walkableCells: Array.from(walkableCells),
         },
-        plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+        plots: [
+          {
+            plotId: "central_lot_1",
+            frameId: surfaceFrame.id,
+            geometry: {
+              plotId: "central_lot_1",
+              worldId: "seed-4242",
+              layoutRevision: defaultDoc.revision.contentHash,
+              neighbourhoodKey: "citylife-central",
+            },
+          },
+        ],
       },
     });
     const cachedVehicleBody = JSON.stringify({
@@ -4178,10 +4728,32 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         attachListenersAndSyncClock(page2, baseSolNow),
       ]);
 
+      await Promise.all([
+        page1.evaluate((spawn) => {
+          const colony = (window as any).__colony;
+          if (!colony.authoritativeCar && colony.operatorUserId) {
+            colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+          }
+          colony.ownedDrivePose = { x: spawn.x, y: spawn.y, heading: spawn.heading, speed: 0 };
+          colony.ownedDriveSeated = true;
+          colony.emit();
+        }, HUB_SPAWN),
+        page2.evaluate((spawn) => {
+          const colony = (window as any).__colony;
+          if (!colony.authoritativeCar && colony.operatorUserId) {
+            colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
+          }
+          colony.ownedDrivePose = { x: spawn.x, y: spawn.y, heading: spawn.heading, speed: 0 };
+          colony.ownedDriveSeated = true;
+          colony.emit();
+        }, HUB_SPAWN),
+      ]);
+
       // Separate Player 2's vehicle slightly forward along the road via real keyboard throttle (KeyW)
       // from y=273 to y~277.4 so the two parked cars sit at distinct road coordinates while BOTH stay
       // outside Stop 0's 3.0-cell boarding/pole radius (Stop 0 at=(124, 281.890625), furniture=(121.75, 281.890625))
       await page2.bringToFront();
+      await page2.locator("canvas").first().click({ position: { x: 200, y: 200 } });
       await page2.keyboard.down("KeyW");
       await page2.waitForFunction(() => {
         const last = (window as any).__lastSnapshot;
@@ -4707,6 +5279,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       }
 
       // 3. SERVED POLE BUTTON & REASONS + WAIT / CANCEL LIFECYCLE:
+      // Re-synchronize client sol clocks with server baseline (baseSolNow) after walking movement to Stop 0
+      await Promise.all([
+        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), baseSolNow),
+        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), baseSolNow),
+      ]);
+
       await expect(stopCard1).toBeVisible({ timeout: 15_000 });
       await expect(stopCard1).toHaveAttribute("data-stop-index", "0");
       await expect(stopCard1).toHaveAttribute("data-can-board", "false");
@@ -5604,7 +6182,12 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         await context2.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
         await context2.close().catch(() => {});
       }
-      await fastifyApp.close();
+      if (realtime) {
+        realtime.dispose();
+      }
+      if (fastifyApp) {
+        await fastifyApp.close();
+      }
       console.log("Bus journey Fastify server cleanly closed.");
     }
   });

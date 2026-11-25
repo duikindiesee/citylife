@@ -27,7 +27,7 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
 
 - **`create_session`**: Creates a new racing lobby with an optional custom invite code or auto-generated 6-character room code.
 - **`join_session`**: Joins an existing lobby by session ID or room code (`inviteCode`). If `autoCreate: true` or a custom room code is requested that does not exist, the server automatically initializes the room.
-- **`pose` / `peer_pose`**: Clients multicast their vehicle kinematic transform:
+- **`pose` / `peer_pose`**: Clients multicast their vehicle kinematic transform (in protocol v2, pedestrian walking controls stream intent via `sendWalkingInput` / `walking_input`, while `pose` is preserved for legacy kinematics and vehicles):
   ```ts
   interface RacerPose {
     x: number;       // Grid cell X
@@ -37,15 +37,23 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
   }
   ```
 - **`input`**: Streams driver control inputs (`throttle`, `steer`, `brake`) with monotonic sequence numbers (`seq`). On vehicle exit (`exitOwnedCar`), sends neutralized inputs (`throttle: 0, steer: 0, brake: false, seq: seq + 1`).
-- **`snapshot`**: Server multicasts 10Hz authoritative physical simulation snapshots (`peers`, `x/y/z`, `heading`, `speed`, `lastInputSeq`) reconciling client-side prediction.
+- **`snapshot`**: Server multicasts 10Hz authoritative physical simulation snapshots (`peers`, `x/y/z`, `heading`, `speed`, `lastInputSeq`, and active `partyRace` state) reconciling client-side prediction.
 - **`peer_joined` & `peer_left`**: Broadcasts participant connection and disconnection lifecycle events to all peers in the room.
+- **Authoritative Party Race Lifecycle (`party_race_*`)**:
+  - **`party_race_invite`**: Hosted by an authenticated session participant with an owned vehicle (`vehicleKey !== null`). Accepts optional road `checkpoints` (`1..32` checkpoints `{ x, z, radiusMetres, label }`, or derives 3 road checkpoints ahead of the host along their current heading) and `countdownMs` (`200..15000`, default `3000`). Initializes a room-scoped `PartyRaceState` in `"lobby"` status and broadcasts `party_race_state` (`event: "invited"`).
+  - **`party_race_join`**: Authenticated peers in the room with an owned vehicle join the open `"lobby"` race (`event: "joined"`).
+  - **`party_race_ready`**: Joined entrants toggle `ready: boolean` (`event: "ready_changed"`). Setting `ready: true` requires the entrant to be actively seated in their owned vehicle in `"driving"` mode (`MUST_BE_DRIVING_TO_READY`); exiting the vehicle in `"lobby"` automatically resets `ready` to `false`.
+  - **`party_race_start`**: The race host starts the race once at least 2 entrants have joined (`INSUFFICIENT_RACERS`) and all joined entrants are connected, driving, and marked `ready === true` (`RACERS_NOT_READY`). Transitions `status` to `"countdown"` (`countdownEndsAtMs = now + countdownMs`, `event: "countdown_started"`) and holds entrants' speeds at `0` at the starting line during countdown.
+  - **20Hz Authoritative Race Evaluation (`stepPartyRace`)**: When `now >= countdownEndsAtMs`, transitions `status` to `"active"` (`startedAtMs = now`, `event: "race_started"`). Evaluates each driving entrant's authoritative coordinates `(x, z)` against `checkpoints[entrant.checkpointIndex]`, advancing `checkpointIndex` (`event: "checkpoint_reached"`), recording `finishedAtMs`, `elapsedMs`, `place` (`1, 2, ...`), and the winner, and transitioning `status` to `"finished"` (`event: "race_finished"`) once all entrants finish.
+  - **`party_race_cancel` / `party_race_leave`**: Host cancels (`status: "cancelled"`) or non-host entrant leaves.
+  - **Reconnect Preservation**: The server keys race state internally by authenticated account. The peer-facing `partyRace` payload in race events, session admission/reconnect, and snapshots exposes only room-local `hostParticipantId`, entrant `participantId` values, and nullable `winnerParticipantId`. Clients correlate lobby and result entries using these opaque references, without account IDs or identity fallbacks.
 
 ### 2. Client Networking Layer (`MultiplayerClient`)
 
 Implemented in `src/colony/multiplayer/multiplayerClient.ts`:
 - Manages WebSocket lifecycle, approved endpoint boundaries, ping/pong heartbeats, and auto-reconnection.
 - Streams driving inputs via `sendInput` with monotonic sequence tracking and reconciles authoritative snapshots (`onSnapshot`).
-- Dispatches walking poses via `sendPose` and receives peer updates via `onPeerPose`.
+- Dispatches walking intent via `sendWalkingInput` (and `sendPose` for vehicle transform) and receives peer updates via `onPeerPose`.
 - Emits reactive callbacks (`onPeerJoined`, `onPeerLeft`, `onPeerPose`, `onStatusChange`) wired directly into `ColonyRuntime` and `sim.state.remoteRacers`.
 
 ### 3. Sim State & Runtime Integration

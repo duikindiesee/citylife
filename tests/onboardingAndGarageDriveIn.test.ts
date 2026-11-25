@@ -87,6 +87,63 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     const houseCenterX = Math.round(lot!.houseZone.x + lot!.houseZone.w / 2);
     const houseCenterY = Math.round(lot!.houseZone.y + lot!.houseZone.d / 2);
     expect(rt.isHomesteadDriveway(houseCenterX, houseCenterY)).toBe(false);
+
+    // Non-door lot.houseZone interior blocks as "building" without authoritativeHomeTruth
+    expect(rt.getAuthoritativeHomeTruth()).toBeNull();
+    expect((rt as any).blockedStepReason(houseCenterX, houseCenterY)).toBe("building");
+    expect(
+      (rt as any).blockedStepReason(houseCenterX, houseCenterY, {
+        x: drivewayX,
+        y: drivewayY,
+      }),
+    ).toBe("building");
+    expect(
+      (rt as any).blockedSegmentReason(
+        { x: drivewayX, y: drivewayY },
+        { x: houseCenterX, y: houseCenterY },
+      ),
+    ).toBe("building");
+
+    // Owned door threshold remains walkable when stepping onto it
+    expect((rt as any).blockedStepReason(drivewayX, drivewayY)).toBeNull();
+    const prevDriveway =
+      lot!.driveway?.find(
+        (c: { x: number; y: number }) => c.x !== drivewayX || c.y !== drivewayY,
+      ) ?? { x: drivewayX, y: drivewayY };
+    expect(
+      (rt as any).blockedStepReason(drivewayX, drivewayY, prevDriveway),
+    ).toBeNull();
+
+    // Unowned / other lot door and houseZone interior both block as "building" (with and without `from`)
+    const otherLot = (rt as any).neighborhood.lots.find(
+      (l: any) =>
+        l.id !== lot!.id &&
+        l.ownerCitizenId !== opId &&
+        l.houseZone &&
+        typeof l.doorX === "number" &&
+        typeof l.doorY === "number",
+    );
+    expect(otherLot).toBeTruthy();
+    const otherCenterX = Math.round(otherLot.houseZone.x + otherLot.houseZone.w / 2);
+    const otherCenterY = Math.round(otherLot.houseZone.y + otherLot.houseZone.d / 2);
+    expect((rt as any).blockedStepReason(otherLot.doorX, otherLot.doorY)).toBe(
+      "building",
+    );
+    expect(
+      (rt as any).blockedStepReason(otherLot.doorX, otherLot.doorY, {
+        x: otherLot.doorX,
+        y: otherLot.doorY,
+      }),
+    ).toBe("building");
+    expect((rt as any).blockedStepReason(otherCenterX, otherCenterY)).toBe(
+      "building",
+    );
+    expect(
+      (rt as any).blockedStepReason(otherCenterX, otherCenterY, {
+        x: otherLot.doorX,
+        y: otherLot.doorY,
+      }),
+    ).toBe("building");
   });
 
   it("enforces authority-bound and neighbourhood-matched starter home resolution (MoJoJo finding)", () => {
@@ -161,7 +218,8 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(testRt.claimStarterHome("nonexistent_hamlet_99")).toBe(false);
     expect(testRt.hasOperatorHome()).toBe(false);
 
-    // 5. Positive: Explicit neighbourhood key string 'coast4' resolves strictly to a coast4 lot
+    // 5. Positive: With no authority snapshot, the separate legacy path resolves 'coast4' strictly.
+    testRt.setAuthoritativeHomeTruth(null);
     const okKey = testRt.claimStarterHome("coast4");
     expect(okKey).toBe(true);
     expect(testRt.hasOperatorHome()).toBe(true);
@@ -198,6 +256,20 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(truthLot?.neighborhoodKey).toBe("coast4");
     expect(truthLot?.ownerCitizenId).toBe(opId);
     expect(truthLot?.built).toBe(true);
+
+    // A malformed claim cannot replace the previously verified ownership projection.
+    expect(testRt.claimStarterHome(mismatchedTruth as any)).toBe(false);
+    expect(testRt.getAuthoritativeHomeTruth()).toEqual(validTruth);
+    expect(testRt.getOperatorHomeTarget()).toEqual(truthTarget);
+
+    // A concrete unowned result withdraws the projection, even if local assignment remains built.
+    expect(testRt.claimStarterHome(unownedTruth as any)).toBe(false);
+    expect(testRt.getAuthoritativeHomeTruth()).toEqual(unownedTruth);
+    expect(testRt.getOperatorHomeTarget()).toBeNull();
+    expect(testRt.getPlayerHomeDriveway()).toBeNull();
+    expect(testRt.hasOperatorHome()).toBe(false);
+    expect(truthLot?.built).toBe(true);
+
   });
 
   it("ensures showroom catalog carries authentic GLB models for all display vehicles", async () => {
@@ -240,5 +312,191 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     const showroomX = cx - 2.5 * cos + -0.5 * sin;
     const showroomY = cy + 2.5 * sin + -0.5 * cos;
     expect(rt.isGaragePadWalkable(showroomX, showroomY, garagePad)).toBe(true);
+  });
+
+  it("spawns founders outside every lot.houseZone", () => {
+    const testRt = new ColonyRuntime(4242);
+    const lots = (testRt as any).neighborhood.lots as any[];
+    const inAnyHouseZone = (pos: { x: number; y: number }) => {
+      const ix = Math.round(pos.x);
+      const iy = Math.round(pos.y);
+      return lots.some((l) => {
+        const hz = l?.houseZone;
+        if (!hz) return false;
+        const w = hz.width ?? hz.w ?? 1;
+        const d = hz.depth ?? hz.d ?? 1;
+        return ix >= hz.x && ix < hz.x + w && iy >= hz.y && iy < hz.y + d;
+      });
+    };
+
+    for (const id of ["citizen_joe", "citizen_viw", "citizen_jack"]) {
+      const c = (testRt as any).citizens.byId(id);
+      expect(c, `${id} should be seeded`).toBeTruthy();
+      expect(inAnyHouseZone(c.pos), `${id}.pos must be outside houseZone`).toBe(false);
+      expect(inAnyHouseZone(c.homeXY), `${id}.homeXY must be outside houseZone`).toBe(false);
+    }
+  });
+
+  it("walks citizen_joe south off lot_1 parcel at 60fps when unauthenticated", () => {
+    const walkRt = new ColonyRuntime(4242);
+    const joe = (walkRt as any).citizens.byId("citizen_joe")!;
+    const joeStart = { ...joe.pos };
+    walkRt.enterFirstPerson("citizen_joe");
+    walkRt.placeFirstPersonDogfood(joeStart, Math.PI / 2); // south along lot_1 driveway
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(joe.pos.y).toBeGreaterThan(joeStart.y + 1.0);
+    // Continue walking onto the street off the parcel
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 480; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(
+      (walkRt as any).sim.state.occupied.has(
+        `${Math.round(joe.pos.x)},${Math.round(joe.pos.y)}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("walks citizen_joe south off lot_1 parcel at 60fps when authenticated", () => {
+    const walkRt = new ColonyRuntime(4242);
+    const joe = (walkRt as any).citizens.byId("citizen_joe")!;
+    walkRt.setOperatorName(joe.displayName);
+    walkRt.setOperatorUserId("founder-walk-auth-1");
+    const joeStart = { ...joe.pos };
+    walkRt.enterFirstPerson("citizen_joe");
+    walkRt.placeFirstPersonDogfood(joeStart, Math.PI / 2); // south along lot_1 driveway
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(joe.pos.y).toBeGreaterThan(joeStart.y + 1.0);
+    // Continue walking onto the street off the parcel
+    walkRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 480; i++) walkRt.stepFirstPersonDogfood(1 / 60);
+    walkRt.setFpKey("KeyW", false);
+    expect(walkRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(
+      (walkRt as any).sim.state.occupied.has(
+        `${Math.round(joe.pos.x)},${Math.round(joe.pos.y)}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("walks citizen_viw east from lot_2 doorstep at 60fps when unauthenticated", () => {
+    const viwRt = new ColonyRuntime(4242);
+    const viw = (viwRt as any).citizens.byId("citizen_viw")!;
+    const viwStart = { ...viw.pos };
+    viwRt.enterFirstPerson("citizen_viw");
+    viwRt.placeFirstPersonDogfood(viwStart, 0); // east along lot_2 driveway
+    viwRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) viwRt.stepFirstPersonDogfood(1 / 60);
+    viwRt.setFpKey("KeyW", false);
+    expect(viwRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(viw.pos.x).toBeGreaterThan(viwStart.x + 1.0);
+  });
+
+  it("walks citizen_viw east from lot_2 doorstep at 60fps when authenticated", () => {
+    const viwRt = new ColonyRuntime(4242);
+    const viw = (viwRt as any).citizens.byId("citizen_viw")!;
+    viwRt.setOperatorName(viw.displayName);
+    viwRt.setOperatorUserId("founder-walk-auth-2");
+    const viwStart = { ...viw.pos };
+    viwRt.enterFirstPerson("citizen_viw");
+    viwRt.placeFirstPersonDogfood(viwStart, 0); // east along lot_2 driveway
+    viwRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 120; i++) viwRt.stepFirstPersonDogfood(1 / 60);
+    viwRt.setFpKey("KeyW", false);
+    expect(viwRt.getUiState().firstPerson.blockedReason).toBeNull();
+    expect(viw.pos.x).toBeGreaterThan(viwStart.x + 1.0);
+  });
+
+  it("blocks fractional houseZone entry and parcel outer fence crossings", () => {
+    const testRt = new ColonyRuntime(4242);
+    const lot1 = (testRt as any).neighborhood.lots[0]!;
+    const lot2 = (testRt as any).neighborhood.lots[1]!;
+
+    // Fractional from at hz.x - 0.4 stepping into houseZone must return "building"
+    expect(
+      (testRt as any).blockedStepReason(lot1.houseZone.x + 1, lot1.houseZone.y, {
+        x: lot1.houseZone.x - 0.4,
+        y: lot1.houseZone.y,
+      }),
+    ).toBe("building");
+    // Unowned door, back wall, side wall of lot_1 & lot_2 all return "building"
+    expect((testRt as any).blockedStepReason(lot2.doorX, lot2.doorY)).toBe("building");
+    expect(
+      (testRt as any).blockedStepReason(
+        lot1.houseZone.x + 1,
+        lot1.houseZone.y,
+        { x: lot1.houseZone.x + 1, y: lot1.houseZone.y + 1 },
+      ),
+    ).toBe("building");
+    expect(
+      (testRt as any).blockedStepReason(
+        lot1.houseZone.x,
+        lot1.houseZone.y + 1,
+        { x: lot1.houseZone.x + 1, y: lot1.houseZone.y + 1 },
+      ),
+    ).toBe("building");
+
+    // Walking east across an unowned parcel's outer fence boundary via stepFirstPersonDogfood(0.05)
+    // stops at x < minX - 0.5 with fpBlockedReason === "parcel"
+    const unownedLot = (testRt as any).neighborhood.lots.find(
+      (l: any) => !l.ownerCitizenId && !l.reservedFor && l.fence?.length,
+    )!;
+    expect(unownedLot).toBeTruthy();
+    const minX = Math.min(...unownedLot.fence.map((f: { x: number }) => f.x));
+    const fenceRow = unownedLot.fence.find(
+      (f: { x: number; y: number }) => f.x === minX && f.y !== unownedLot.gate?.y,
+    )!;
+    const joe = (testRt as any).citizens.byId("citizen_joe")!;
+    testRt.enterFirstPerson("citizen_joe");
+    testRt.placeFirstPersonDogfood({ x: minX - 1.2, y: fenceRow.y }, 0);
+    testRt.setFpKey("KeyW", true);
+    for (let i = 0; i < 60; i++) {
+      testRt.stepFirstPersonDogfood(0.05);
+    }
+    testRt.setFpKey("KeyW", false);
+    expect(joe.pos.x).toBeLessThan(minX - 0.5);
+    expect(testRt.getUiState().firstPerson.blockedReason).toBe("parcel");
+  });
+
+  it("protects authoritativeHomeTruth driveway while blocking owned door threshold", () => {
+    // With authoritativeHomeTruth.geometry.houseZone set, owned citizen at doorstep steps around driveway/yard (null)
+    const authRt = new ColonyRuntime(4242);
+    const owner = (authRt as any).citizens.byId("citizen_joe")!;
+    authRt.setOperatorName(owner.displayName);
+    authRt.setOperatorUserId("auth-driveway-owner");
+    const ownedLot = (authRt as any).neighborhood.lots[0]!;
+    const truth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: ownedLot.neighborhoodKey ?? null,
+      plotId: ownedLot.id,
+      frameId: null,
+      onboardingState: "OWNED",
+      priceKco: 350,
+      geometry: {
+        houseZone: { ...ownedLot.houseZone },
+        door: { x: ownedLot.doorX, y: ownedLot.doorY },
+        driveway: ownedLot.driveway,
+      },
+    };
+    expect(authRt.claimStarterHome(truth as any)).toBe(true);
+    const doorstep = (authRt as any).lotDoorstepCell(ownedLot);
+    const nextDriveway = ownedLot.driveway.find(
+      (c: { x: number; y: number }) =>
+        (c.x !== doorstep.x || c.y !== doorstep.y) &&
+        !(authRt as any).isCellInHouseZone(ownedLot.houseZone, c.x, c.y),
+    )!;
+    expect(
+      (authRt as any).blockedStepReason(nextDriveway.x, nextDriveway.y, doorstep),
+    ).toBeNull();
+    expect(
+      (authRt as any).blockedStepReason(ownedLot.doorX, ownedLot.doorY, doorstep),
+    ).toBe("building");
   });
 });

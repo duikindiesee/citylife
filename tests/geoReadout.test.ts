@@ -72,6 +72,8 @@ describe("GeoReadout", () => {
   it("prints no coordinate for a coarse entry", () => {
     const html = render({ stamp, entries: [coarseOther], hidden: [] });
     expect(html).toContain("Ada Kell");
+    expect(html).toContain("SIMULATION CITIZEN");
+    expect(html).toContain("not an authenticated online session");
     expect(html).toContain("kooker-hq");
     expect(html).toContain("location coarse");
     expect(html).not.toMatch(/(grid|world) -?\d/);
@@ -131,5 +133,29 @@ describe("GeoReadout", () => {
       hidden: [],
     });
     expect(html).toContain("outside frame extent");
+  });
+
+  describe("PR#500 Desktop/Mobile provenance and legacy chrome absence", () => {
+    it("desktop local boot renders SIMULATION CITIZEN, unauthenticated provenance, and zero Road Rally legacy chrome", () => {
+      const html = render({ stamp, entries: [coarseOther], hidden: [] });
+      // Desktop provenance
+      expect(html).toContain("SIMULATION CITIZEN");
+      expect(html).toContain("not an authenticated online session");
+      expect(html).toContain("class=\"geo-readout\"");
+      
+      // Zero legacy road rally chrome
+      expect(html).not.toContain("Road Rally");
+      expect(html).not.toContain("rally-social-read");
+      expect(html).not.toContain("road-rally-minigame");
+    });
+
+    it("diagnostic hiding: suppresses coordinate readouts and private tokens when unauthenticated or coarse", () => {
+      const html = render({ stamp, entries: [coarseOther], hidden: [] });
+      expect(html).not.toContain("JWT");
+      expect(html).not.toContain("bearer");
+      expect(html).not.toContain("token");
+      expect(html).not.toMatch(/(grid|world) -?\d/);
+      expect(html).not.toContain("rally-social-read");
+    });
   });
 });

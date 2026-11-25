@@ -28,6 +28,7 @@ import { getAuthClient } from "../authClient";
 import {
   HOME_TRUTH_PATH,
   isHomeOwned,
+  layoutRevisionsMatch,
   parseHomeTruth,
   type HomeTruth,
 } from "./starterProperty";
@@ -41,6 +42,8 @@ import {
  *  advisory and re-checked server-side. */
 export const HOME_ARRIVAL_PATH =
   "/kooker/api/v1/citylife/players/me/home/arrival";
+export const HOME_DEED_DRIVE_HOME_ARRIVAL_PATH =
+  "/kooker/api/v1/citylife/players/me/home-deed/drive-home-arrival";
 
 /** The authoritative home-truth GET (shared with PLAYER.HOME.1C) — residency + garage unlock are read
  *  from the SAME endpoint so there is a single source of home truth. */
@@ -71,10 +74,191 @@ export function clampCell(cell: Cell, grid = STARTER_PLACEMENT_GRID): Cell {
 /** The owned-home target cell — the SAME deterministic placement the house projects to, so the drive
  *  destination is server-derived truth (a pure function of the deed), never a client-authored point.
  *  Null unless the truth is unambiguously OWNED, so no destination exists until the server grants one. */
-export function homeTargetCell(truth: HomeTruth | null): Cell | null {
+/**
+ * Helper to determine canonical grid size from authority or fallback.
+ * Derives from authority.getWorldGridSize() or authority.sim.state.terrain.size when present.
+ * Defaults to 608 for canonical wide coordinates, or STARTER_PLACEMENT_GRID (64) for legacy plots.
+ */
+export function resolveGridSize(authorityOrGrid?: any, home?: Cell | null): number {
+  if (typeof authorityOrGrid === "number" && authorityOrGrid > 0) {
+    return authorityOrGrid;
+  }
+  if (authorityOrGrid && typeof authorityOrGrid === "object") {
+    if (typeof authorityOrGrid.getWorldGridSize === "function") {
+      const s = authorityOrGrid.getWorldGridSize();
+      if (typeof s === "number" && s > 0) return s;
+    }
+    if (
+      typeof authorityOrGrid.sim?.state?.terrain?.size === "number" &&
+      authorityOrGrid.sim.state.terrain.size > 0
+    ) {
+      return authorityOrGrid.sim.state.terrain.size;
+    }
+  }
+  if (home && (home.x >= STARTER_PLACEMENT_GRID || home.y >= STARTER_PLACEMENT_GRID)) {
+    return 608;
+  }
+  return STARTER_PLACEMENT_GRID;
+}
+
+/** The server-authoritative grid cell the player's home occupies. Pure and deterministic — the
+ *  destination is server-derived truth (a pure function of the deed), never a client-authored point.
+ *  Null unless the truth is unambiguously OWNED, so no destination exists until the server grants one. */
+export function homeTargetCell(
+  truth: HomeTruth | null,
+  authority?: any,
+): Cell | null {
   if (!isHomeOwned(truth)) return null;
   const t = truth as HomeTruth;
-  if (!t.frameId && !t.plotId && !t.neighbourhoodKey) return null;
+  if (
+    !t.frameId &&
+    !t.plotId &&
+    !t.neighbourhoodKey &&
+    !t.geometry &&
+    t.x === undefined &&
+    t.y === undefined
+  ) {
+    return null;
+  }
+  // Direct published coordinates or geometry on truth take precedence when present
+  if (
+    typeof t.x === "number" &&
+    typeof t.y === "number" &&
+    Number.isFinite(t.x) &&
+    Number.isFinite(t.y)
+  ) {
+    return { x: Math.round(t.x), y: Math.round(t.y) };
+  }
+  if (
+    t.geometry?.door &&
+    Number.isFinite(t.geometry.door.x) &&
+    Number.isFinite(t.geometry.door.y)
+  ) {
+    return { x: Math.round(t.geometry.door.x), y: Math.round(t.geometry.door.y) };
+  }
+  if (
+    t.geometry?.spawn &&
+    Number.isFinite(t.geometry.spawn.x) &&
+    Number.isFinite(t.geometry.spawn.y)
+  ) {
+    return { x: Math.round(t.geometry.spawn.x), y: Math.round(t.geometry.spawn.y) };
+  }
+  if (
+    t.geometry?.houseZone &&
+    Number.isFinite(t.geometry.houseZone.x) &&
+    Number.isFinite(t.geometry.houseZone.y)
+  ) {
+    const hz = t.geometry.houseZone;
+    const w = (hz as any).width ?? (hz as any).w ?? 1;
+    const d = (hz as any).depth ?? (hz as any).d ?? 1;
+    return {
+      x: Math.round(hz.x + (w - 1) / 2),
+      y: Math.round(hz.y + (d - 1) / 2),
+    };
+  }
+
+  // If authority is provided and truth lacks coordinates/geometry (10-field wire DTO), resolve via authority
+  if (authority) {
+    if (t.layoutRevision && typeof authority.getActiveLayoutRevisionId === "function") {
+      const authRev = authority.getActiveLayoutRevisionId();
+      if (authRev && !layoutRevisionsMatch(t.layoutRevision, authRev)) {
+        return null;
+      }
+    }
+    if (t.plotId) {
+      if (typeof authority.getStarterCatalogueManifest === "function") {
+        const manifest = authority.getStarterCatalogueManifest();
+        const plot = manifest?.plots?.find?.(
+          (p: any) => p && (p.plotId === t.plotId || p.id === t.plotId),
+        );
+        if (plot) {
+          if (t.frameId && plot.frameId && plot.frameId !== t.frameId) {
+            return null;
+          }
+          if (plot?.geometry?.spawn) {
+            return {
+              x: Math.round(plot.geometry.spawn.x),
+              y: Math.round(plot.geometry.spawn.y),
+            };
+          }
+          if (plot?.geometry?.houseZone) {
+            const hz = plot.geometry.houseZone;
+            const w = hz.width ?? 1;
+            const d = hz.depth ?? 1;
+            return {
+              x: Math.round(hz.x + (w - 1) / 2),
+              y: Math.round(hz.y + (d - 1) / 2),
+            };
+          }
+        }
+      }
+      if (typeof authority.lots === "function") {
+        const allLots = authority.lots();
+        if (Array.isArray(allLots)) {
+          const lot = allLots.find(
+            (l: any) =>
+              l &&
+              (l.id === t.plotId ||
+                l.id === `lot-${t.plotId}` ||
+                l.id === `lot_${t.plotId}`),
+          );
+          if (lot) {
+            if (t.frameId && lot.frameId && lot.frameId !== t.frameId) {
+              return null;
+            }
+            if (lot.spawn && Number.isFinite(lot.spawn.x) && Number.isFinite(lot.spawn.y)) {
+              return { x: Math.round(lot.spawn.x), y: Math.round(lot.spawn.y) };
+            }
+            if (
+              lot.doorX !== undefined &&
+              lot.doorY !== undefined &&
+              Number.isFinite(lot.doorX) &&
+              Number.isFinite(lot.doorY)
+            ) {
+              return { x: Math.round(lot.doorX), y: Math.round(lot.doorY) };
+            }
+            if (
+              lot.houseZone &&
+              Number.isFinite(lot.houseZone.x) &&
+              Number.isFinite(lot.houseZone.y)
+            ) {
+              const w = lot.houseZone.width ?? lot.houseZone.w ?? 1;
+              const d = lot.houseZone.depth ?? lot.houseZone.d ?? 1;
+              return {
+                x: Math.round(lot.houseZone.x + (w - 1) / 2),
+                y: Math.round(lot.houseZone.y + (d - 1) / 2),
+              };
+            }
+          }
+        }
+      }
+      if (authority.plotGeometry && typeof authority.plotGeometry.get === "function") {
+        const geom = authority.plotGeometry.get(t.plotId);
+        if (geom) {
+          if (t.frameId && geom.frameId && geom.frameId !== t.frameId) {
+            return null;
+          }
+          if (geom?.spawn) {
+            return {
+              x: Math.round(geom.spawn.x),
+              y: Math.round(geom.spawn.y),
+            };
+          }
+          if (geom?.houseZone) {
+            const hz = geom.houseZone;
+            const w = hz.width ?? 1;
+            const d = hz.depth ?? 1;
+            return {
+              x: Math.round(hz.x + (w - 1) / 2),
+              y: Math.round(hz.y + (d - 1) / 2),
+            };
+          }
+        }
+      }
+    }
+    // Fail closed if authority is present but plot is not found in authority
+    return null;
+  }
   return deriveHomePlacement(t);
 }
 
@@ -87,15 +271,26 @@ export const DEALERSHIP_OFFSET_CELLS = 6; // ARRIVAL_RADIUS_CELLS (2) + 4 — co
  *  toward whichever side of the grid has room, so the journey begins a short, followable drive away yet is
  *  identical on every device. Only used to seed the guidance HUD's initial cursor; it carries no authority
  *  and is never submitted. Null when there is no owned home. Pure. */
-export function dealershipStartCell(truth: HomeTruth | null): Cell | null {
-  const home = homeTargetCell(truth);
+export function dealershipStartCell(
+  truth: HomeTruth | null,
+  authorityOrGrid?: any,
+): Cell | null {
+  const authority =
+    authorityOrGrid && typeof authorityOrGrid === "object"
+      ? authorityOrGrid
+      : undefined;
+  const home = homeTargetCell(truth, authority);
   if (!home) return null;
   const off = DEALERSHIP_OFFSET_CELLS;
+  const effectiveGrid = resolveGridSize(authorityOrGrid, home);
   // Offset toward whichever side has room to stay in-grid; the fixed magnitude keeps it outside the
   // arrival radius (a real drive) without ever leaving the bounded grid.
   const dx = home.x >= off ? -off : off;
   const dy = home.y >= off ? -off : off;
-  return { x: clampToGrid(home.x + dx), y: clampToGrid(home.y + dy) };
+  return {
+    x: clampToGrid(home.x + dx, effectiveGrid),
+    y: clampToGrid(home.y + dy, effectiveGrid),
+  };
 }
 
 // ── Driving guidance (pure) ─────────────────────────────────────────────────────────
@@ -237,15 +432,53 @@ export function boundedArrivalEvidence(
   current: Cell,
   home: Cell,
   radius = ARRIVAL_RADIUS_CELLS,
+  gridOrAuthority?: number | any,
 ): ArrivalEvidence {
-  const cell = clampCell(current);
+  const effectiveGrid = resolveGridSize(gridOrAuthority, home);
+  const cell = clampCell(current, effectiveGrid);
   return { cell, withinBounds: isWithinArrivalBounds(cell, home, radius) };
+}
+
+/** Authoritative arrival receipt returned by DriveHomeArrivalController / User service. */
+export interface DriveHomeArrivalReceipt {
+  readonly plotId: string;
+  readonly frameId: string;
+  readonly homeGarageUnlocked: boolean;
+  readonly homeGarageUnlockedAt?: string | null;
+  readonly vehicleStorageLocation: string;
+  readonly onboardingState?: string | null;
+  readonly alreadyArrived?: boolean;
+}
+
+export function parseDriveHomeArrivalReceipt(raw: unknown): DriveHomeArrivalReceipt | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const plotId = typeof o.plotId === "string" && o.plotId.trim() ? o.plotId.trim() : null;
+  const frameId = typeof o.frameId === "string" && o.frameId.trim() ? o.frameId.trim() : null;
+  if (!plotId || !frameId) return null;
+  if (o.homeGarageUnlocked !== true) return null;
+  const storage =
+    typeof o.vehicleStorageLocation === "string" ? o.vehicleStorageLocation.trim() : null;
+  if (storage !== "HOME") return null;
+  return {
+    plotId,
+    frameId,
+    homeGarageUnlocked: true,
+    homeGarageUnlockedAt:
+      typeof o.homeGarageUnlockedAt === "string" ? o.homeGarageUnlockedAt : null,
+    vehicleStorageLocation: "HOME",
+    onboardingState:
+      typeof o.onboardingState === "string" && o.onboardingState.trim()
+        ? o.onboardingState.trim()
+        : null,
+    alreadyArrived: typeof o.alreadyArrived === "boolean" ? o.alreadyArrived : undefined,
+  };
 }
 
 /** The closed set of outcomes one arrival submission settles into — the overlay renders exactly one. */
 export type ArrivalOutcome =
-  | { kind: "confirmed" } // 200/201 — the server accepted the arrival and moved the player to RESIDENT
-  | { kind: "pending" } // 202/409 — accepted / an idempotent replay of an in-flight-or-settled arrival
+  | { kind: "confirmed"; receipt?: DriveHomeArrivalReceipt } // 200/201 — the server accepted the arrival and moved the player to RESIDENT
+  | { kind: "pending"; receipt?: DriveHomeArrivalReceipt } // 202/409 — accepted / an idempotent replay of an in-flight-or-settled arrival
   | { kind: "rejected" } // 422 — the authority rejected the evidence (not actually in the owned plot)
   | { kind: "disabled" } // 401/403/503 — signed out, feature off, or kill switch; never blind-retry
   | { kind: "error"; status?: number }; // anything else — a transient/unknown failure
@@ -437,33 +670,84 @@ export async function fetchHomeResidency(): Promise<HomeResidency | null> {
  *  SAME request and can never record a second arrival. The service alone validates the evidence and moves
  *  the player to RESIDENT; while the flag / kill switch are OFF it answers 403/503 (→ disabled). Returns a
  *  classified {@link ArrivalOutcome}. */
+export interface PostHomeArrivalOptions {
+  plotId?: string | null;
+  frameId?: string | null;
+  vehicleKey?: string | null;
+  grid?: number | null;
+  authority?: any;
+}
+
 export async function postHomeArrival(
   current: Cell,
   truth: HomeTruth | null,
+  options?: PostHomeArrivalOptions,
 ): Promise<ArrivalOutcome> {
-  const home = homeTargetCell(truth);
+  const home = homeTargetCell(truth, options?.authority);
   const plotRef = homePlotRef(truth);
   if (!home || !plotRef) return { kind: "disabled" };
-  const evidence = boundedArrivalEvidence(current, home);
+  const effectiveGrid = resolveGridSize(
+    options?.grid ?? options?.authority,
+    home,
+  );
+  const evidence = boundedArrivalEvidence(
+    current,
+    home,
+    ARRIVAL_RADIUS_CELLS,
+    effectiveGrid,
+  );
   if (!evidence.withinBounds) return { kind: "disabled" };
   const auth = getAuthClient();
   const token = await auth.getValidToken();
   if (!token) return { kind: "disabled" };
   const idemKey = arrivalIdempotencyKey(auth.operator?.userId ?? null, plotRef);
+
+  const plotId = options?.plotId ?? truth?.plotId ?? null;
+  const frameId = options?.frameId ?? truth?.frameId ?? null;
+  const vehicleKey =
+    options?.vehicleKey ?? ((truth as any)?.vehicleId ? String((truth as any).vehicleId).trim() : null);
+
+  if (!plotId || !frameId || !vehicleKey) {
+    // Fail closed for incomplete identity/context without automatic fallback
+    return { kind: "rejected" };
+  }
+
   try {
-    const resp = await fetch(HOME_ARRIVAL_PATH, {
+    const resp = await fetch(HOME_DEED_DRIVE_HOME_ARRIVAL_PATH, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         Authorization: `Bearer ${token}`,
         "Idempotency-Key": idemKey,
       },
-      // Bounded evidence only: the clamped observed cell + the server-owned plot echo. No owner, no deed,
-      // no price, no residency claim — the service re-derives identity from the bearer token.
-      body: JSON.stringify({ cell: evidence.cell, plotRef }),
+      body: JSON.stringify({
+        plotId,
+        frameId,
+        vehicleKey,
+        cell: evidence.cell,
+        plotRef,
+      }),
     });
-    return classifyArrivalStatus(resp.status);
+    if (resp.status === 200 || resp.status === 201) {
+      const data = await resp.json().catch(() => null);
+      const receipt = parseDriveHomeArrivalReceipt(data);
+      if (!receipt || receipt.plotId !== plotId || receipt.frameId !== frameId) {
+        return { kind: "rejected" };
+      }
+      return { kind: "confirmed", receipt };
+    }
+    if (resp.status === 202 || resp.status === 409) {
+      const data = await resp.json().catch(() => null);
+      const receipt = parseDriveHomeArrivalReceipt(data);
+      return { kind: "pending", receipt: receipt ?? undefined };
+    }
+    if (resp.status === 422) return { kind: "rejected" };
+    if (resp.status === 401 || resp.status === 403 || resp.status === 503) {
+      return { kind: "disabled" };
+    }
+    return { kind: "error", status: resp.status };
   } catch {
     return { kind: "error" };
   }
 }
+

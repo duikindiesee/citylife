@@ -1,3 +1,7 @@
+import {
+  isAuthorizedBugValidator,
+  setBugValidatorAuthority,
+} from "../src/colony/bug/bugBounty";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   AuthClient,
@@ -16,7 +20,7 @@ import {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Build a minimal JWT (unsigned — only the payload matters for client-side exp parsing). */
-function fakeJwt(expEpochMs: number, email = "mayor@test.com"): string {
+function fakeJwt(expEpochMs: number, email = "mayor@example.invalid"): string {
   const payload = btoa(
     JSON.stringify({ sub: email, exp: Math.floor(expEpochMs / 1000) }),
   )
@@ -27,7 +31,7 @@ function fakeJwt(expEpochMs: number, email = "mayor@test.com"): string {
 }
 
 /** Build an unsigned JWT carrying roles + a far-future exp (only the payload matters client-side). */
-function fakeJwtWithRoles(roles: string[], email = "player@test.com"): string {
+function fakeJwtWithRoles(roles: string[], email = "player@example.invalid"): string {
   const payload = btoa(
     JSON.stringify({ sub: email, exp: 4070908800, roles }), // exp ~year 2099
   )
@@ -38,15 +42,21 @@ function fakeJwtWithRoles(roles: string[], email = "player@test.com"): string {
 }
 
 /** Build an unsigned JWT carrying an explicit kooker userId claim + a far-future exp. */
-function fakeJwtWithUserId(userId: string, email = "player@test.com"): string {
-  const payload = btoa(JSON.stringify({ sub: email, exp: 4070908800, userId }))
+function fakeJwtWithUserId(
+  userId: string,
+  email = "player@example.invalid",
+  roles: string[] = [],
+): string {
+  const payload = btoa(
+    JSON.stringify({ sub: email, exp: 4070908800, userId, roles }),
+  )
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=/g, "");
   return `eyJhbGciOiJub25lIn0.${payload}.sig`;
 }
 
-function mockFetchOk(token: string, email = "mayor@test.com", name = "Mayor") {
+function mockFetchOk(token: string, email = "mayor@example.invalid", name = "Mayor") {
   vi.stubGlobal("fetch", async () => ({
     ok: true,
     status: 200,
@@ -101,8 +111,8 @@ afterEach(() => {
 
 describe("AuthClient (kooker login gate)", () => {
   it("builds an encoded Basic Auth header without plaintext password", () => {
-    const h = basicAuth("mayor@test.com", "hunter2");
-    expect(h).toBe("Basic " + btoa("mayor@test.com:hunter2"));
+    const h = basicAuth("mayor@example.invalid", "hunter2");
+    expect(h).toBe("Basic " + btoa("mayor@example.invalid:hunter2"));
     expect(h.includes("hunter2")).toBe(false);
   });
 
@@ -116,7 +126,7 @@ describe("AuthClient (kooker login gate)", () => {
   it("exposes the kooker userId from the JWT on the operator", async () => {
     mockFetchOk(fakeJwtWithUserId("kooker-77"));
     const a = new AuthClient();
-    await a.login("player@test.com", "pw");
+    await a.login("player@example.invalid", "pw");
     expect(a.operator?.userId).toBe("kooker-77");
     // The display id stays the human label, distinct from the identity key.
     expect(a.operator?.id).toBe("Mayor");
@@ -124,48 +134,48 @@ describe("AuthClient (kooker login gate)", () => {
 
   it("falls back to the sub claim when no userId claim is present", async () => {
     // fakeJwt carries only sub (the kooker subject) — userIdFromToken-style fallback reads it.
-    mockFetchOk(fakeJwt(Date.now() + 1000 * 60 * 60, "sub-user@test.com"));
+    mockFetchOk(fakeJwt(Date.now() + 1000 * 60 * 60, "sub-user@example.invalid"));
     const a = new AuthClient();
-    await a.login("sub-user@test.com", "pw");
-    expect(a.operator?.userId).toBe("sub-user@test.com");
+    await a.login("sub-user@example.invalid", "pw");
+    expect(a.operator?.userId).toBe("sub-user@example.invalid");
   });
 
   it("restricts every non-operator to the player view (fail closed); full view only for operators", async () => {
     // The restricted own-data view applies to a CITYLIFE_PLAYER...
     mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER"]));
     const player = new AuthClient();
-    await player.login("player@test.com", "pw");
+    await player.login("player@example.invalid", "pw");
     expect(player.isCityLifePlayer).toBe(true);
 
     // ...to an activated CITYLIFE_VISITOR (the bug: a visitor was loading as admin + FP on anyone)...
     mockFetchOk(fakeJwtWithRoles(["CITYLIFE_VISITOR"]));
     const visitor = new AuthClient();
-    await visitor.login("visitor@test.com", "pw");
+    await visitor.login("visitor@example.invalid", "pw");
     expect(visitor.isCityLifePlayer).toBe(true);
 
     // ...to a plain KOOKER_USER, and to an empty/unrecognised role set (fail closed).
     mockFetchOk(fakeJwtWithRoles(["KOOKER_USER"]));
     const basic = new AuthClient();
-    await basic.login("basic@test.com", "pw");
+    await basic.login("basic@example.invalid", "pw");
     expect(basic.isCityLifePlayer).toBe(true);
 
     mockFetchOk(fakeJwtWithRoles([]));
     const none = new AuthClient();
-    await none.login("none@test.com", "pw");
+    await none.login("none@example.invalid", "pw");
     expect(none.isCityLifePlayer).toBe(true);
 
     // ONLY operator/admin roles keep the full whole-colony view.
     for (const role of ["ADMIN", "KOOKER_ADMIN", "CITYLIFE_ADMIN"]) {
       mockFetchOk(fakeJwtWithRoles([role]));
       const op = new AuthClient();
-      await op.login("op@test.com", "pw");
+      await op.login("op@example.invalid", "pw");
       expect(op.isCityLifePlayer).toBe(false);
     }
 
     // An operator who also holds CITYLIFE_PLAYER still keeps the full view.
     mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER", "ADMIN"]));
     const adminPlayer = new AuthClient();
-    await adminPlayer.login("admin@test.com", "pw");
+    await adminPlayer.login("admin@example.invalid", "pw");
     expect(adminPlayer.isCityLifePlayer).toBe(false);
   });
 
@@ -173,14 +183,14 @@ describe("AuthClient (kooker login gate)", () => {
     // A CITYLIFE_PLAYER — the exact regression this guards — must not be able to build.
     mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER"]));
     const player = new AuthClient();
-    await player.login("player@test.com", "pw");
+    await player.login("player@example.invalid", "pw");
     expect(canEnterCityBuilder(player)).toBe(false);
 
     // Every other non-operator role, and no roles at all, also fail closed.
     for (const roles of [["CITYLIFE_VISITOR"], ["KOOKER_USER"], []]) {
       mockFetchOk(fakeJwtWithRoles(roles));
       const restricted = new AuthClient();
-      await restricted.login("restricted@test.com", "pw");
+      await restricted.login("restricted@example.invalid", "pw");
       expect(canEnterCityBuilder(restricted)).toBe(false);
     }
 
@@ -188,7 +198,7 @@ describe("AuthClient (kooker login gate)", () => {
     for (const role of ["ADMIN", "KOOKER_ADMIN", "CITYLIFE_ADMIN"]) {
       mockFetchOk(fakeJwtWithRoles([role]));
       const op = new AuthClient();
-      await op.login("op@test.com", "pw");
+      await op.login("op@example.invalid", "pw");
       expect(canEnterCityBuilder(op)).toBe(true);
     }
 
@@ -196,9 +206,41 @@ describe("AuthClient (kooker login gate)", () => {
     // role is authoritative.
     mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER", "ADMIN"]));
     const adminPlayer = new AuthClient();
-    await adminPlayer.login("admin@test.com", "pw");
+    await adminPlayer.login("admin@example.invalid", "pw");
     expect(canEnterCityBuilder(adminPlayer)).toBe(true);
   });
+
+  it("installs bug validator authority from the signed-in server-derived admin identity", async () => {
+    const signedOut = new AuthClient();
+    expect(signedOut.operator).toBeNull();
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+
+    mockFetchOk(
+      fakeJwtWithUserId("kooker", "player@example.invalid", ["CITYLIFE_PLAYER"]),
+    );
+    const player = new AuthClient();
+    await player.login("player@example.invalid", "pw");
+    expect(player.isCityLifeAdmin).toBe(false);
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+
+    mockFetchOk(fakeJwtWithUserId("someone-else", "admin@example.invalid", ["ADMIN"]));
+    const wrongAdmin = new AuthClient();
+    await wrongAdmin.login("admin@example.invalid", "pw");
+    expect(wrongAdmin.isCityLifeAdmin).toBe(true);
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+
+    mockFetchOk(fakeJwtWithUserId("kooker", "operator@example.invalid", ["ADMIN"]));
+    const operator = new AuthClient();
+    await operator.login("operator@example.invalid", "pw");
+    expect(operator.isCityLifeAdmin).toBe(true);
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(true);
+    expect(isAuthorizedBugValidator("bot:some-worker")).toBe(false);
+
+    operator.logout();
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+  });
+
+
 
   it("allows City Builder for a signed-out session — the only way this occurs is AuthGate's own local DEV/E2E skip-auth bypass, which is provably impossible on a production build/host", () => {
     const signedOut = new AuthClient();
@@ -208,7 +250,7 @@ describe("AuthClient (kooker login gate)", () => {
 
   it("rejects an empty password before hitting the network", async () => {
     const a = new AuthClient();
-    const r = await a.login("mayor@test.com", "");
+    const r = await a.login("mayor@example.invalid", "");
     expect(r).toEqual({ ok: false, error: "Enter your password." });
     expect(a.isAuthenticated).toBe(false);
   });
@@ -216,7 +258,7 @@ describe("AuthClient (kooker login gate)", () => {
   it("returns ok:false and stays logged out on a 401 from the server", async () => {
     mockFetchFail(401);
     const a = new AuthClient();
-    const r = await a.login("mayor@test.com", "wrong");
+    const r = await a.login("mayor@example.invalid", "wrong");
     expect(r).toEqual({ ok: false, error: "Wrong email or password." });
     expect(a.isAuthenticated).toBe(false);
     expect(a.authHeader()).toEqual({});
@@ -225,7 +267,7 @@ describe("AuthClient (kooker login gate)", () => {
   it("flags a 403 'Account disabled' as pending so the gate can prompt for a code", async () => {
     mockFetchFail403("Account disabled");
     const a = new AuthClient();
-    const r = await a.login("newbie@test.com", "correctpw");
+    const r = await a.login("newbie@example.invalid", "correctpw");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.pending).toBe(true);
@@ -237,7 +279,7 @@ describe("AuthClient (kooker login gate)", () => {
   it("treats a 403 'no app access' as a non-pending access error", async () => {
     mockFetchFail403("User does not have access to app: citylife");
     const a = new AuthClient();
-    const r = await a.login("u@test.com", "correctpw");
+    const r = await a.login("u@example.invalid", "correctpw");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.pending).toBeUndefined();
@@ -254,7 +296,7 @@ describe("AuthClient (kooker login gate)", () => {
       },
     }));
     const a = new AuthClient();
-    const r = await a.login("u@test.com", "pw");
+    const r = await a.login("u@example.invalid", "pw");
     expect(r).toEqual({
       ok: false,
       error: "This account can't sign in to CityLife right now.",
@@ -269,12 +311,12 @@ describe("AuthClient (kooker login gate)", () => {
       status: 200,
       json: async () => ({
         accessToken: token,
-        user: { email: "mayor@test.com", name: "Mayor" },
+        user: { email: "mayor@example.invalid", name: "Mayor" },
       }),
     }));
     vi.stubGlobal("fetch", fetchSpy);
     const a = new AuthClient({ now: () => now });
-    const r = await a.login("mayor@test.com", "correct");
+    const r = await a.login("mayor@example.invalid", "correct");
     expect(r).toEqual({ ok: true });
     expect(a.isAuthenticated).toBe(true);
     expect(a.operator?.id).toBe("Mayor"); // uses name from user object
@@ -290,7 +332,7 @@ describe("AuthClient (kooker login gate)", () => {
     const token = fakeJwt(t + 1000 * 60 * 60 * 8); // JWT expires 8 h from now
     mockFetchOk(token);
     const a = new AuthClient({ now: () => t });
-    await a.login("mayor@test.com", "correct");
+    await a.login("mayor@example.invalid", "correct");
     expect(a.isAuthenticated).toBe(true);
     t += 1000 * 60 * 60 * 9; // advance 9 h — past the 8 h JWT window
     expect(a.isAuthenticated).toBe(false);
@@ -301,7 +343,7 @@ describe("AuthClient (kooker login gate)", () => {
     const token = fakeJwt(Date.now() + 1000 * 60 * 60 * 8);
     mockFetchOk(token);
     const a = new AuthClient();
-    await a.login("mayor@test.com", "correct");
+    await a.login("mayor@example.invalid", "correct");
     expect(a.isAuthenticated).toBe(true);
     a.logout();
     expect(a.isAuthenticated).toBe(false);
@@ -313,7 +355,7 @@ describe("AuthClient (kooker login gate)", () => {
       throw new Error("network down");
     });
     const a = new AuthClient();
-    const r = await a.login("mayor@test.com", "correct");
+    const r = await a.login("mayor@example.invalid", "correct");
     expect(r.ok).toBe(false);
     expect((r as { ok: false; error: string }).error).toMatch(/network down/);
   });
@@ -391,7 +433,7 @@ describe("AuthClient.login (Spec 077 end-to-end)", () => {
       message: "Account disabled: your access has been revoked.",
     });
     const a = new AuthClient();
-    const r = await a.login("revoked@test.com", "correctpw");
+    const r = await a.login("revoked@example.invalid", "correctpw");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.accountState).toBe("revoked");
@@ -407,7 +449,7 @@ describe("AuthClient.login (Spec 077 end-to-end)", () => {
         "Account disabled: your visitor request is still being reviewed.",
     });
     const a = new AuthClient();
-    const r = await a.login("newbie@test.com", "correctpw");
+    const r = await a.login("newbie@example.invalid", "correctpw");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.accountState).toBe("pending_review");
@@ -421,7 +463,7 @@ describe("AuthClient.login (Spec 077 end-to-end)", () => {
       message: "Account disabled: enter your unlock code to activate.",
     });
     const a = new AuthClient();
-    const r = await a.login("ready@test.com", "correctpw");
+    const r = await a.login("ready@example.invalid", "correctpw");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.pending).toBe(true);
@@ -476,7 +518,7 @@ describe("AuthClient (token refresh)", () => {
     let t = 1_000_000_000;
     mockAuthEndpoints(fakeJwt(t + 1000 * 60 * 60), "r1", {});
     const a = new AuthClient({ now: () => t });
-    await a.login("mayor@test.com", "pw");
+    await a.login("mayor@example.invalid", "pw");
     const tok = await a.getValidToken();
     expect(tok).toBe(fakeJwt(t + 1000 * 60 * 60));
   });
@@ -486,7 +528,7 @@ describe("AuthClient (token refresh)", () => {
     const fresh = fakeJwt(t + 1000 * 60 * 120); // new token valid 2h
     const calls = mockAuthEndpoints(fakeJwt(t + 1000), "r1", { token: fresh }); // login token expires in 1s
     const a = new AuthClient({ now: () => t });
-    await a.login("mayor@test.com", "pw");
+    await a.login("mayor@example.invalid", "pw");
     t += 1000 * 60 * 5; // 5 min later — access token expired
     const tok = await a.getValidToken();
     expect(tok).toBe(fresh);
@@ -500,7 +542,7 @@ describe("AuthClient (token refresh)", () => {
       token: fakeJwt(t + 1000 * 60 * 120),
     });
     const a = new AuthClient({ now: () => t });
-    await a.login("mayor@test.com", "pw");
+    await a.login("mayor@example.invalid", "pw");
     t += 1000 * 60 * 5;
     expect(a.isAuthenticated).toBe(true); // renewable
   });
@@ -509,7 +551,7 @@ describe("AuthClient (token refresh)", () => {
     let t = 1_000_000_000;
     mockAuthEndpoints(fakeJwt(t + 1000), "r1", { status: 401 });
     const a = new AuthClient({ now: () => t });
-    await a.login("mayor@test.com", "pw");
+    await a.login("mayor@example.invalid", "pw");
     t += 1000 * 60 * 5;
     const tok = await a.getValidToken();
     expect(tok).toBeNull();
@@ -522,7 +564,7 @@ describe("AuthClient (token refresh)", () => {
       token: fakeJwt(t + 1000 * 60 * 120),
     });
     const a = new AuthClient({ now: () => t });
-    await a.login("mayor@test.com", "pw");
+    await a.login("mayor@example.invalid", "pw");
     t += 1000 * 60 * 5;
     await Promise.all([
       a.getValidToken(),
@@ -545,7 +587,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    const token = fakeJwt(Date.now() + 3600_000, "operator@test.com");
+    const token = fakeJwt(Date.now() + 3600_000, "operator@example.invalid");
     const ok = await a.issueCookieSession(token);
 
     expect(ok).toBe(true);
@@ -570,7 +612,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    const token = fakeJwt(Date.now() + 3600_000, "operator@test.com");
+    const token = fakeJwt(Date.now() + 3600_000, "operator@example.invalid");
     const ok = await a.issueCookieSession(token);
 
     expect(ok).toBe(true);
@@ -625,7 +667,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
   it("invokes cookie issuance on successful login and cookie clear on logout", async () => {
     const calls: { url: string; method?: string; auth?: string }[] = [];
-    const token = fakeJwt(Date.now() + 3600_000, "player@test.com");
+    const token = fakeJwt(Date.now() + 3600_000, "player@example.invalid");
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       calls.push({
@@ -647,7 +689,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    const loginResult = await a.login("player@test.com", "secret");
+    const loginResult = await a.login("player@example.invalid", "secret");
     expect(loginResult).toEqual({ ok: true });
 
     const cookieCall = calls.find((c) => c.url === KOOKER_COOKIE_PATH);
@@ -663,14 +705,14 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
   it("handles account switch by issuing cookie session for the new account", async () => {
     const issuedTokens: string[] = [];
-    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
-    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@test.com");
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@example.invalid");
+    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@example.invalid");
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
         const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
-        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
-        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        const email = auth.includes(btoa("usera@example.invalid:pw")) ? "userA@example.invalid" : "userB@example.invalid";
+        const tok = email === "userA@example.invalid" ? tokenA : tokenB;
         return {
           ok: true,
           status: 200,
@@ -686,11 +728,11 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    await a.login("userA@test.com", "pw");
-    expect(a.operator?.id).toBe("userA@test.com");
+    await a.login("userA@example.invalid", "pw");
+    expect(a.operator?.id).toBe("userA@example.invalid");
 
-    await a.login("userB@test.com", "pw");
-    expect(a.operator?.id).toBe("userB@test.com");
+    await a.login("userB@example.invalid", "pw");
+    expect(a.operator?.id).toBe("userB@example.invalid");
 
     expect(issuedTokens).toEqual([tokenA, tokenB]);
   });
@@ -699,7 +741,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     let abortObserved = false;
     let finishDeferredFetch: () => void = () => {};
 
-    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@example.invalid");
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
@@ -727,7 +769,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
     const a = new AuthClient();
     // Start login without waiting for slow cookie issuance
-    const loginPromise = a.login("userA@test.com", "pw");
+    const loginPromise = a.login("userA@example.invalid", "pw");
     await new Promise((r) => setTimeout(r, 10));
 
     // User logs out while issuance is still pending
@@ -747,14 +789,14 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     const events: string[] = [];
     let resolveClear: () => void = () => {};
 
-    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
-    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@test.com");
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@example.invalid");
+    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@example.invalid");
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
         const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
-        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
-        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        const email = auth.includes(btoa("usera@example.invalid:pw")) ? "userA@example.invalid" : "userB@example.invalid";
+        const tok = email === "userA@example.invalid" ? tokenA : tokenB;
         return {
           ok: true,
           status: 200,
@@ -780,7 +822,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:userA"]);
 
     // Kick off logout (clear is deferred)
@@ -789,7 +831,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(events).toEqual(["issue:userA", "start:clear"]);
 
     // Account B logs in while clear is still in flight
-    const loginBPromise = a.login("userB@test.com", "pw");
+    const loginBPromise = a.login("userB@example.invalid", "pw");
 
     // Clear has not finished yet, so userB issue MUST NOT have started
     expect(events).not.toContain("issue:userB");
@@ -804,7 +846,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
   });
 
   it("handles failed clear gracefully and allows subsequent login and issuance", async () => {
-    const token = fakeJwt(Date.now() + 3600_000, "user@test.com");
+    const token = fakeJwt(Date.now() + 3600_000, "user@example.invalid");
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
@@ -825,7 +867,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    await a.login("user@test.com", "pw");
+    await a.login("user@example.invalid", "pw");
 
     // Logout should return false (clear failed) without throwing unhandled rejection
     const clearResult = await a.logout();
@@ -833,13 +875,13 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(a.isAuthenticated).toBe(false);
 
     // Subsequent login works without being blocked by previous failed clear
-    const login2 = await a.login("user@test.com", "pw");
+    const login2 = await a.login("user@example.invalid", "pw");
     expect(login2.ok).toBe(true);
     expect(a.isAuthenticated).toBe(true);
   });
 
   it("proves immediate local signout and bounded settlement on deferred/stalled clear", async () => {
-    const token = fakeJwt(Date.now() + 3600_000, "user@test.com");
+    const token = fakeJwt(Date.now() + 3600_000, "user@example.invalid");
     let clearSignal: AbortSignal | null = null;
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
@@ -873,7 +915,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient();
-    await a.login("user@test.com", "pw");
+    await a.login("user@example.invalid", "pw");
     expect(a.isAuthenticated).toBe(true);
 
     vi.useFakeTimers();
@@ -899,16 +941,16 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
   });
 
   it("handles normal clear settlement and late/competing issuance controls cleanly", async () => {
-    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
-    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@test.com");
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@example.invalid");
+    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@example.invalid");
     const events: string[] = [];
     let resolveClear: (() => void) | null = null;
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
         const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
-        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
-        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        const email = auth.includes(btoa("usera@example.invalid:pw")) ? "userA@example.invalid" : "userB@example.invalid";
+        const tok = email === "userA@example.invalid" ? tokenA : tokenB;
         return {
           ok: true,
           status: 200,
@@ -948,7 +990,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
     const a = new AuthClient();
     // 1. Normal login and issuance for user A
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(a.isAuthenticated).toBe(true);
     expect(events).toEqual(["issue:userA"]);
 
@@ -964,7 +1006,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
     // 3. Abort-aware competing issuance: login B while old clear is deferred without manual success
     events.length = 0;
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:userA"]);
 
     const logoutA2Promise = a.logout();
@@ -972,7 +1014,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(events).toEqual(["issue:userA", "start:clear"]);
 
     // User B logs in while clear is still in flight (superseding login triggers controller abort)
-    const loginBPromise = a.login("userB@test.com", "pw");
+    const loginBPromise = a.login("userB@example.invalid", "pw");
 
     const clearResultA2 = await logoutA2Promise;
     const loginBResult = await loginBPromise;
@@ -981,14 +1023,14 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(clearResultA2).toBe(false);
     expect(loginBResult.ok).toBe(true);
     expect(a.isAuthenticated).toBe(true);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
     expect(events).toEqual(["issue:userA", "start:clear", "abort:clear", "issue:userB"]);
   });
 
   it("fences in-flight refresh so post-clear settlement never resurrects cookie session", async () => {
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@example.invalid");
     const events: string[] = [];
     let resolveRefresh: (() => void) | null = null;
     let resolveClear: (() => void) | null = null;
@@ -998,7 +1040,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@example.invalid" } }),
         };
       }
       if (url === KOOKER_REFRESH_PATH) {
@@ -1033,7 +1075,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient({ now: () => now });
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:initial"]);
     expect(a.isAuthenticated).toBe(true);
 
@@ -1074,17 +1116,17 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
   it("fences in-flight refresh so stale A refresh success after B login never overwrites B token or issues A cookie", async () => {
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
-    const tokenB = fakeJwt(now + 3600_000, "userB@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@example.invalid");
+    const tokenB = fakeJwt(now + 3600_000, "userB@example.invalid");
     const events: string[] = [];
     let resolveRefresh: (() => void) | null = null;
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
         const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
-        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
-        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        const email = auth.includes(btoa("usera@example.invalid:pw")) ? "userA@example.invalid" : "userB@example.invalid";
+        const tok = email === "userA@example.invalid" ? tokenA : tokenB;
         return {
           ok: true,
           status: 200,
@@ -1114,7 +1156,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient({ now: () => now });
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:userA"]);
 
     // Trigger refresh for user A
@@ -1124,9 +1166,9 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(events).toEqual(["issue:userA", "start:refresh:userA"]);
 
     // User B logs in while A's refresh is still pending
-    await a.login("userB@test.com", "pw");
+    await a.login("userB@example.invalid", "pw");
     expect(events).toEqual(["issue:userA", "start:refresh:userA", "issue:userB"]);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
     expect(a.authHeader()).toEqual({ Authorization: `Bearer ${tokenB}` });
 
     // Settle stale A refresh with 200 OK
@@ -1136,7 +1178,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     // Verify: stale A was fenced out, user B is completely preserved, no userA2 cookie issued
     expect(tokenFromStaleA).toBeNull();
     expect(a.isAuthenticated).toBe(true);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
     expect(a.authHeader()).toEqual({ Authorization: `Bearer ${tokenB}` });
     expect(events).toEqual([
       "issue:userA",
@@ -1149,16 +1191,16 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
   it("fences in-flight refresh so stale A 401/403 failure after B login never logs out User B", async () => {
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenB = fakeJwt(now + 3600_000, "userB@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenB = fakeJwt(now + 3600_000, "userB@example.invalid");
     const events: string[] = [];
     let resolveRefresh: (() => void) | null = null;
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
         const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
-        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
-        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        const email = auth.includes(btoa("usera@example.invalid:pw")) ? "userA@example.invalid" : "userB@example.invalid";
+        const tok = email === "userA@example.invalid" ? tokenA : tokenB;
         return {
           ok: true,
           status: 200,
@@ -1192,7 +1234,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient({ now: () => now });
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:userA"]);
 
     // Trigger refresh for user A
@@ -1202,9 +1244,9 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(events).toEqual(["issue:userA", "start:refresh:userA"]);
 
     // User B logs in while A's refresh is still pending
-    await a.login("userB@test.com", "pw");
+    await a.login("userB@example.invalid", "pw");
     expect(events).toEqual(["issue:userA", "start:refresh:userA", "issue:userB"]);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
 
     // Settle stale A refresh with 401 failure
     resolveRefresh!();
@@ -1213,7 +1255,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     // Verify: stale 401 was fenced out, B was NOT logged out, clear was NOT called
     expect(tokenFromStaleA).toBeNull();
     expect(a.isAuthenticated).toBe(true);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
     expect(events).toEqual([
       "issue:userA",
       "start:refresh:userA",
@@ -1225,16 +1267,16 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
   it("fences in-flight refresh so stale A 403 failure after B login never logs out User B", async () => {
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenB = fakeJwt(now + 3600_000, "userB@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenB = fakeJwt(now + 3600_000, "userB@example.invalid");
     const events: string[] = [];
     let resolveRefresh: (() => void) | null = null;
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (url.includes("/auth/basic")) {
         const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
-        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
-        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        const email = auth.includes(btoa("usera@example.invalid:pw")) ? "userA@example.invalid" : "userB@example.invalid";
+        const tok = email === "userA@example.invalid" ? tokenA : tokenB;
         return {
           ok: true,
           status: 200,
@@ -1268,7 +1310,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient({ now: () => now });
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:userA"]);
 
     // Trigger refresh for user A
@@ -1278,9 +1320,9 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(events).toEqual(["issue:userA", "start:refresh:userA"]);
 
     // User B logs in while A's refresh is still pending
-    await a.login("userB@test.com", "pw");
+    await a.login("userB@example.invalid", "pw");
     expect(events).toEqual(["issue:userA", "start:refresh:userA", "issue:userB"]);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
 
     // Settle stale A refresh with 403 failure
     resolveRefresh!();
@@ -1289,7 +1331,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     // Verify: stale 403 was fenced out, B was NOT logged out, clear was NOT called
     expect(tokenFromStaleA).toBeNull();
     expect(a.isAuthenticated).toBe(true);
-    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.operator?.id).toBe("userB@example.invalid");
     expect(events).toEqual([
       "issue:userA",
       "start:refresh:userA",
@@ -1301,8 +1343,8 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
   it("fences in-flight refresh at the deferred JSON await boundary so supersession during JSON parsing is rejected", async () => {
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@example.invalid");
     const events: string[] = [];
     let resolveJson: (() => void) | null = null;
 
@@ -1311,7 +1353,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@example.invalid" } }),
         };
       }
       if (url === KOOKER_REFRESH_PATH) {
@@ -1342,7 +1384,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const a = new AuthClient({ now: () => now });
-    await a.login("userA@test.com", "pw");
+    await a.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:initial"]);
 
     // Advance clock to trigger refresh
@@ -1371,8 +1413,8 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
   it("synchronizes refreshed session across active AuthClient instances upon successful refresh", async () => {
     resetSharedAuthClient();
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@example.invalid");
     const events: string[] = [];
 
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
@@ -1380,7 +1422,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@example.invalid" } }),
         };
       }
       if (url === KOOKER_REFRESH_PATH) {
@@ -1400,7 +1442,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     const client1 = getAuthClient({ now: () => now });
     const client2 = new AuthClient({ now: () => now });
 
-    await client1.login("userA@test.com", "pw");
+    await client1.login("userA@example.invalid", "pw");
     expect(client1.isAuthenticated).toBe(true);
     expect(client2.isAuthenticated).toBe(true);
 
@@ -1423,8 +1465,8 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
   it("coordinates shared session authority across instances: app logout invalidates shared singleton and suppresses stale shared refresh cookie", async () => {
     resetSharedAuthClient();
     let now = 1_000_000_000;
-    const tokenA = fakeJwt(now + 1000, "userA@test.com");
-    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const tokenA = fakeJwt(now + 1000, "userA@example.invalid");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@example.invalid");
     const events: string[] = [];
     let resolveRefresh: (() => void) | null = null;
     let resolveClear: (() => void) | null = null;
@@ -1434,7 +1476,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@example.invalid" } }),
         };
       }
       if (url === KOOKER_REFRESH_PATH) {
@@ -1469,7 +1511,7 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     });
 
     const sharedAuth = getAuthClient({ now: () => now });
-    await sharedAuth.login("userA@test.com", "pw");
+    await sharedAuth.login("userA@example.invalid", "pw");
     expect(events).toEqual(["issue:initial"]);
     expect(sharedAuth.isAuthenticated).toBe(true);
 

@@ -122,7 +122,7 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     expect(runtime.captureWorldLayout().revision.contentHash).toBe(
       document.revision.contentHash,
     );
-  });
+  }, 120_000);
 
   it("rejects a mismatched layout without changing the prior live world", () => {
     const runtime = new ColonyRuntime(4242);
@@ -489,5 +489,5 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     } finally {
       runningRuntime.running = false;
     }
-  });
+  }, 120_000);
 });

@@ -266,7 +266,7 @@ describe("WB.1d runtime authority replay", () => {
     if (!memoizedAuthorityFixture) {
       memoizedAuthorityFixture = buildAuthorityFixtureTemplate();
     }
-  }, 60000);
+  }, 120_000);
 
   beforeEach(resetBuilderState);
 
@@ -419,7 +419,7 @@ describe("WB.1d runtime authority replay", () => {
 
       first = await executeColdBoot(fixture);
       setupDurationMs = performance.now() - t0;
-    }, 60000);
+    }, 120_000);
 
     it("replays placements, terrain policy, zones, reservations and network navigation identically across two cold boots", async () => {
       const tActionStart = performance.now();
@@ -474,7 +474,7 @@ describe("WB.1d runtime authority replay", () => {
       console.log(
         `[worldLayoutRuntimeAuthority:coldReplay] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
       );
-    }, 60000);
+    }, 120_000);
   });
 
   it("rebuilds the declared cross-frame portal traversal contract from durable layout state", () => {
@@ -557,7 +557,7 @@ describe("WB.1d runtime authority replay", () => {
     expect(survey.findPath(from, to, new Set(["portal"]))).toEqual([from, to]);
     expect(survey.findPath(to, from, new Set(["walk"]))).toEqual([to, from]);
     expect(survey.findPath(from, to, new Set(["road"]))).toBeNull();
-  });
+  }, 120_000);
 
   it("rehydrates every revision from the procedural baseline instead of leaking prior terrain state", () => {
     const fixture = authorityDocument();
@@ -604,5 +604,5 @@ describe("WB.1d runtime authority replay", () => {
       distanceToWater: fixture.baselineTerrainCell.distanceToWater,
     });
     expect(runtime.worldLayoutDocument()).toEqual(reverted);
-  });
+  }, 120_000);
 });

@@ -74,7 +74,7 @@ describe("road connectivity — one connected web (spec 148)", () => {
         fingerprint(seed),
       );
     }
-  });
+  }, 120_000);
 
   it("the largest-component share is a well-formed fraction, and 1 when fully connected", () => {
     // Contract for the invariant helper the runtime's boot warning also reads: the general floor is

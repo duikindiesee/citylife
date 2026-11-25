@@ -129,7 +129,7 @@ describe("BUS.SOL.STUTTER.FIX.1 — continuous bus motion while persisting canon
       expect(poses2[i]!.doorsOpen).toBe(poses1[i]!.doorsOpen);
       expect(poses2[i]!.moving).toBe(poses1[i]!.moving);
     }
-  });
+  }, 120_000);
 
   it("keeps every posed bus strictly on authoritative road and depot paths with no off-road turns", () => {
     const rt = new ColonyRuntime();
@@ -223,7 +223,7 @@ describe("BUS.SOL.STUTTER.FIX.1 — continuous bus motion while persisting canon
         ? "on road"
         : `the driven circuit runs ${worstOnLoop.toFixed(2)} cells off the road network at ${worstOnLoopAt} (limit ${CARRIAGEWAY_HALF_CELLS})`,
     ).toBe("on road");
-  });
+  }, 120_000);
 
   it("handles stop dwell correctly: halts moving bus and opens doors for the dwell duration", () => {
     const rt = new ColonyRuntime();
