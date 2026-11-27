@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildGarageAnchorShellModel } from "../src/colony/render/garageAnchorShell";
+import {
+  buildGarageAnchorShellModel,
+  garageShowroomFloorCars,
+} from "../src/colony/render/garageAnchorShell";
 
 describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
   it("guarantees 360° rotation clearance, bay containment, and walkable paths", () => {
@@ -19,17 +22,18 @@ describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
     const backWall = model.showroom.z - model.showroom.d / 2;
     const frontWall = model.showroom.z + model.showroom.d / 2;
 
-    const heroX = model.showroom.x - model.showroom.w * 0.1;
-    const heroZ = model.showroom.z + model.showroom.d * 0.04;
-    const secondX = model.showroom.x + model.showroom.w * 0.085;
-    const secondZ = model.showroom.z - model.showroom.d * 0.02;
+    const heroX = model.showroom.x;
+    const heroZ = model.showroom.z;
+    const floor = garageShowroomFloorCars(model.showroom)[0]!;
+    const secondX = floor.x;
+    const secondZ = floor.z;
     const serviceBayLeftWall = model.serviceBay.x - model.serviceBay.w / 2;
 
-    // Authentic vehicle dimensions in world metres (scale 1.05x):
-    const kaapLength = 4.28;
-    const kaapWidth = 1.92;
-    const x19Length = 4.28;
-    const x19Width = 1.92;
+    // Metric GLB size at scale 1/renderScale (raw bbox is 4.08 x 1.825 m).
+    const kaapLength = 4.08;
+    const kaapWidth = 1.825;
+    const x19Length = 4.08;
+    const x19Width = 1.825;
 
     // 1. Secondary car fits entirely within showroom bay without wall penetration,
     // maintaining >= 2.5m clearance to both the service bay dividing wall and showroom exterior.
